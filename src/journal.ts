@@ -50,7 +50,13 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
       trail.items.push({ t: k >= 1 ? 'Followed the water-road west to the Tidewrack Coast, below the Lowtide Lamp.' : 'Follow the west passage in the ruin — the water-road runs on to the sea.', done: k >= 1 });
       if (k >= 1) trail.items.push({ t: k >= 2 ? 'Raised the Tide-Glass at low tide · the custodian causeway stands clear.' : 'At the tide-shrine by the Lowtide Lamp, raise the Tide-Glass when the tide is low.', done: k >= 2 });
       if (k >= 2) trail.items.push({ t: k >= 3 ? 'Reached the sea cave mouth · the Second Seam (+30 XP).' : 'Cross the causeway to the sea cave mouth.', done: k >= 3 });
-      if (k >= 3) trail.items.push({ t: '“The custodians tied one sky shut. The sea has been holding the other open. I have gone down to see how.” — E. M.', lore: true }, { t: 'Chapter II · The Second Seam — to be continued.' });
+      if (k >= 3) { const q = s.sea | 0;
+        trail.items.push({ t: '“The custodians tied one sky shut. The sea has been holding the other open. I have gone down to see how.” — E. M.', lore: true });
+        trail.items.push({ t: q >= 1 ? 'Entered the Listening Pools, the tide-cave beyond the mouth.' : 'Go through the sea cave mouth.', done: q >= 1 });
+        if (q >= 1) trail.items.push({ t: q >= 2 ? 'Woke all three lamp-shells in one ebb · three rings of the round seal burn.' : 'Wake the three lamp-shells with the Tide-Glass — all in one ebb, before the water returns.', done: q >= 2 });
+        if (q >= 2) trail.items.push({ t: q >= 3 ? `Found Enna’s packet by the round seal (+45 XP).` : 'Look by the round seal — something pale in a crack above the water.', done: q >= 3 });
+        if (q >= 3) trail.items.push({ t: '“The custodians never sealed the second seam. They drowned it, and left a keeper in the water. … Do not open the door alone.” — E. M.', lore: true }, { t: 'Chapter II · The Drowned Keeper — the round seal waits for its second key.' });
+      }
     }
   }
   const sections = s.beacon ? [trail, quest, chart, shrine, warden, echo, beacon, lore] : [quest, chart, shrine, warden, echo, beacon, lore];
@@ -146,9 +152,12 @@ export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m
     x.fillStyle = '#5a4a3a'; for (const [lx, lz, r] of [[-27, -33, 3], [-58, -14, 4], [-31, 46, 3], [-45, 20, 6]] as const) { x.beginPath(); x.arc(sxC(lx), szC(lz), r, 0, Math.PI * 2); x.fill(); }
     if (m.save.coast >= 2) { x.strokeStyle = '#3a2814'; x.lineWidth = 2; x.setLineDash([3, 2]); x.beginPath(); x.moveTo(sxC(-3), szC(14)); x.quadraticCurveTo(sxC(-20), szC(22), sxC(-37), szC(20)); x.stroke(); x.setLineDash([]); }
     x.fillStyle = '#2e1e0e'; x.fillRect(sxC(10) - 2, szC(-30) - 7, 4, 9);
+    if ((m.save.sea | 0) >= 1) { // the Listening Pools, charted inside the stack: three pools and the round seal
+      x.strokeStyle = '#1f4f60'; x.lineWidth = 1; for (const [dx, dz] of [[-3, -2], [-6, 2.5], [-9, -1.5]]) { x.beginPath(); x.arc(sxC(-45 + dx), szC(20 + dz), 1.8, 0, Math.PI * 2); x.stroke(); }
+      x.fillStyle = (m.save.sea | 0) >= 2 ? '#2f8fbf' : '#3a2814'; x.beginPath(); x.arc(sxC(-57), szC(20), 2.6, 0, Math.PI * 2); x.fill(); }
     x.restore();
     label('Tidewrack Coast · west', X0 + 4, Y0 + 9, 'left', '#3a2814', fs - 1);
-    label(m.save.coast >= 3 ? 'Sea cave ✦' : 'Sea cave', sxC(-45), szC(20) + 13, 'center', '#1f4f60', fs - 2);
+    label((m.save.sea | 0) >= 1 ? 'Listening Pools' + ((m.save.sea | 0) >= 2 ? ' · seal ◉' : '') : m.save.coast >= 3 ? 'Sea cave ✦' : 'Sea cave', sxC(-45), szC(20) + 13, 'center', '#1f4f60', fs - 2);
     label('Lamp', sxC(10), szC(-30) - 12, 'center', '#3a2814', fs - 2); }
   // Seals.
   for (const d of SEALS) { const X = sx(d.x), Y = sz(d.z), got = !!m.save.seals[d.id]; x.save(); x.translate(X, Y); x.rotate(Math.PI / 4); x.fillStyle = got ? d.color : 'rgba(0,0,0,0)'; x.strokeStyle = '#3a2814'; x.lineWidth = 1.4; x.fillRect(-4.5, -4.5, 9, 9); x.strokeRect(-4.5, -4.5, 9, 9); x.restore(); label(d.short, X + 9, Y, 'left', got ? '#3a2814' : '#6b4a26', fs - 1); }

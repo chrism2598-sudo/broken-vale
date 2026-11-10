@@ -23,6 +23,7 @@ import { makeFloatingIsland, makeLanternStaff, ISLAND_POS, islandTopY } from './
 import { UPDRAFT, MIRRORS, MORNING_DIRS, DIR_ARROWS, BEACON_XP, BEACON_L, CLUE_L, RETURN_L, LANDING_L, ISLAND_WALK_R, CLUE_LINES, UPDRAFT_DORMANT, UPDRAFT_NEEDS_WIND, ENDING_TITLE, ENDING_LINES, ENDING_REWARD, WAYFINDER_BEACON, mirrorsMatch, makeHollowPuzzle, makeUpdraft, makeDawnSky } from './beacon';
 import { buildJournal, drawValeMap, MAPBOX } from './journal';
 import { COAST_LINES, COAST_O, COAST_XP, makeCoast, type Coast } from './coast';
+import { SEA_LINES, SEA_XP, makeSeaCave, type SeaCave } from './seacave';
 import { cutTerrain, cutGrass, STAIR, STAIR_DIR, CAVE_LINES, CAVE_XP, BRAZIERS, RIVER_ORDER, makeStairEntrance, makeCaveInterior, type CaveInterior } from './cave';
 import { ECHO, ECHO_RANGE, ECHO_XP, ECHO_SILENT, echoMemoryLines, MARR_MARKS, CHART_R, CHART_DONE, makeEchoGrove } from './echo';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -295,6 +296,7 @@ async function main() {
     if (lift || dawnCine) return null;
     if (onIsland) return islandInteract();
     if (inCave) return caveInteract();
+    if (inSea) return seaInteract();
     if (inCoast) return coastInteract();
     if (Math.hypot(state.px - stair.mouth.x, state.pz - stair.mouth.z) < 3.4) return { label: save.cave >= 1 ? 'Descend the collapsed stair ↓' : 'Collapsed stair · rubble and dark', act: useStair, x: STAIR.x, z: STAIR.z };
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
@@ -350,16 +352,56 @@ async function main() {
     if (save.coast >= 3) return openDialog('Sea cave', COAST_LINES.seaCave(false));
     const lv = levelOf(save.xp); save.coast = 3; save.xp += COAST_XP; persist(); hudT = 0;
     toast(`The Second Seam · +${COAST_XP} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 5);
-    openDialog('Sea cave', COAST_LINES.seaCave(true), () => {
-      chapterEl.querySelector('.chk')!.textContent = COAST_LINES.card.k; document.getElementById('chtitle')!.textContent = COAST_LINES.card.title;
-      document.getElementById('chtease')!.textContent = COAST_LINES.card.tease; document.getElementById('chxp')!.textContent = `+${COAST_XP} XP · Level ${levelOf(save.xp)} · To be continued`; chapterEl.hidden = false; });
+    openDialog('Sea cave', COAST_LINES.seaCave(true), () => { void enterSea(); });
+  }
+  // ---------- The Listening Pools (sea cave interior) ----------
+  let inSea = false, sea: SeaCave | null = null;
+  async function ensureSea() { if (sea) return sea; caveLoading = true; const tx = await ruinTex(); sea = makeSeaCave(HIGH, { rock: tx.cliff, bed, blocks: tx.blocks }, waterNormals, scene.environment); caveLoading = false; return sea; }
+  async function enterSea(instant = false) {
+    if (inSea || fading) return; fading = true; state.speed = 0; coast?.audio(false);
+    if (!instant) { setFade(true); await sleepMs(520); }
+    const c = await ensureSea(); c.setSolved(save.sea >= 2, true); c.setPacket(save.sea >= 2);
+    inCoast = false; inCave = false; inSea = true; setScene(c.scene);
+    state.px = c.entry.x; state.pz = c.entry.z; state.facing = -Math.PI / 2; state.yaw = Math.PI / 2 - 0.1; state.pitch = 0.16; state.dist = 6; snapCam = true;
+    if (save.sea < 1) { save.sea = 1; persist(); }
+    hudT = 0; fading = false; if (!instant) { setFade(false); toast(SEA_LINES.arrive, 3.6); }
+  }
+  async function leaveSea() {
+    if (!inSea || fading) return; fading = true; state.speed = 0; setFade(true); await sleepMs(520);
+    const c = await ensureCoast(); if (save.coast >= 2) c.reveal(true); inSea = false; inCoast = true; setScene(c.scene); c.audio(true);
+    state.px = c.caveMouth.x + 1.2; state.pz = c.caveMouth.z; state.facing = Math.PI / 2; state.yaw = -Math.PI / 2 + 0.2; state.pitch = 0.16; state.dist = 6.5; snapCam = true;
+    hudT = 0; fading = false; setFade(false);
+  }
+  function wakeShell(i: number) {
+    if (!sea) return; const r = sea.light(i);
+    if (r === 'covered') return toast(SEA_LINES.shellCovered, 3.4);
+    if (r === 'already') return toast(save.sea >= 2 ? 'All three shells burn; the seal holds their light.' : SEA_LINES.shellAlready, 2.6);
+    if (r === 'lit') return toast(SEA_LINES.shellLit(sea.lit.filter(Boolean).length), 2.8);
+    save.sea = 2; persist(); sea.setPacket(true); hudT = 0; shake = 0.3; camFocus = { x: sea.door.x, z: sea.door.z, t: 2.6 };
+    toast(SEA_LINES.shellLit(3), 2.4); openDialog('The Listening Pools', SEA_LINES.solved);
+  }
+  function readPage() {
+    if (save.sea >= 3) return openDialog('Enna’s page', SEA_LINES.pageAgain);
+    const lv = levelOf(save.xp); save.sea = 3; save.xp += SEA_XP; persist(); hudT = 0;
+    toast(`Enna’s salt-stained page · +${SEA_XP} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 5);
+    openDialog('Enna’s page', SEA_LINES.page(profile.name), () => {
+      chapterEl.querySelector('.chk')!.textContent = SEA_LINES.card.k; document.getElementById('chtitle')!.textContent = SEA_LINES.card.title;
+      document.getElementById('chtease')!.textContent = SEA_LINES.card.tease; document.getElementById('chxp')!.textContent = `+${SEA_XP} XP · Level ${levelOf(save.xp)} · The round seal waits`; chapterEl.hidden = false; });
+  }
+  function seaInteract(): Inter | null {
+    if (!sea || fading) return null; const c = sea, d = (p: { x: number; z: number }) => Math.hypot(state.px - p.x, state.pz - p.z);
+    if (d(c.exit) < 2.6) return { label: 'Out to the causeway ↩', act: () => { void leaveSea(); } };
+    for (let i = 0; i < 3; i++) if (d(c.shells[i]) < 3.0) return { label: save.sea >= 2 || c.lit[i] ? 'Lamp-shell · burning' : c.isLow() ? 'Wake the lamp-shell · raise the Tide-Glass' : 'Lamp-shell · under the tide', act: () => wakeShell(i), x: c.shells[i].x, z: c.shells[i].z };
+    if (save.sea >= 2 && d(c.page) < 2.0) return { label: save.sea >= 3 ? 'Enna’s page · read again' : 'Oilcloth packet · Enna’s hand', act: readPage, x: c.page.x, z: c.page.z };
+    if (d(c.door) < 3.2) return { label: 'The round seal', act: () => openDialog('The round seal', save.sea >= 2 ? SEA_LINES.sealWoken : SEA_LINES.sealShut), x: c.door.x - 1.5, z: c.door.z };
+    return null;
   }
   function coastInteract(): Inter | null {
     if (!coast || fading) return null; const c = coast, d = (p: { x: number; z: number }) => Math.hypot(state.px - p.x, state.pz - p.z);
     if (d(c.tunnel) < 2.6) return { label: 'Back along the water-road ↩', act: () => { void leaveCoast(); } };
     if (d(c.shrine) < 2.4) return { label: save.coast >= 2 ? 'Tide-shrine · the sea holds back' : `Raise Enna’s Tide-Glass · tide ${c.tidePhase}`, act: raiseGlass, x: c.shrine.x, z: c.shrine.z };
     if (d(c.lamp) < 2.0) return { label: 'Read the lamp-keeper’s stone', act: () => openDialog('The Lowtide Lamp', COAST_LINES.lamp), x: c.lamp.x, z: c.lamp.z };
-    if (save.coast >= 2 && d(c.caveMouth) < 3.0) return { label: save.coast >= 3 ? 'Sea cave · listen again' : 'Enter the sea cave mouth', act: reachSeaCave, x: c.caveMouth.x - 3, z: c.caveMouth.z };
+    if (save.coast >= 2 && d(c.caveMouth) < 3.0) return { label: save.coast >= 3 ? 'Into the sea cave ↓' : 'Enter the sea cave mouth', act: () => { if (save.coast >= 3) void enterSea(); else reachSeaCave(); }, x: c.caveMouth.x - 3, z: c.caveMouth.z };
     return null;
   }
   async function enterCave(instant = false, at: 'entry' | 'passage' = 'entry') {
@@ -502,7 +544,7 @@ async function main() {
       echoT += dt; for (let i = 0; i < 5; i++) if (echoT >= i * 0.28) grove.light(i);
       if (echoT >= 1.8) { echoT = -1; const lv = levelOf(save.xp); save.echo = true; save.xp += ECHO_XP; persist(); grove.memory(true); toast(`Echo Grove remembered · +${ECHO_XP} XP · Echo${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 5); openDialog('Echo Grove', echoMemoryLines(true)); }
     }
-    chartT -= dt; if (chartT > 0 || onIsland || lift || inCave || inCoast) return; chartT = 0.4;
+    chartT -= dt; if (chartT > 0 || onIsland || lift || inCave || inCoast || inSea) return; chartT = 0.4;
     for (let i = 0; i < MARR_MARKS.length; i++) {
       const m = MARR_MARKS[i]; if (save.charted[i] || Math.hypot(state.px - m.x, state.pz - m.z) > CHART_R) continue;
       save.charted[i] = true; persist(); const n = save.charted.filter(Boolean).length;
@@ -588,15 +630,21 @@ async function main() {
     if (inCave && cave) {
       if (save.cave < 3) { const c = cave.braziers[1]; return { name: 'Braziers · the river’s order', x: c.x, z: c.z }; }
       if (save.cave < 4) return { name: 'Behind the door · Enna’s alcove', x: cave.carving.x, z: cave.carving.z };
-      if (save.coast < 3) return { name: 'West passage · the water-road to the sea', x: cave.passage.x, z: cave.passage.z };
+      if (save.coast < 3 || save.sea < 3) return { name: 'West passage · the water-road to the sea', x: cave.passage.x, z: cave.passage.z };
       return { name: 'Climb out · collapsed stair', x: cave.exit.x, z: cave.exit.z };
+    }
+    if (inSea && sea) {
+      if (save.sea < 2) { const L2 = sea.lit; let bd = 1e9, t = { name: '', x: 0, z: 0 }; sea.shells.forEach((p, i) => { if (L2[i]) return; const dd = Math.hypot(p.x - state.px, p.z - state.pz); if (dd < bd) { bd = dd; t = { name: `Lamp-shell · tide ${sea!.tidePhase} · ${L2.filter(Boolean).length}/3`, x: p.x, z: p.z }; } }); return t; }
+      if (save.sea < 3) return { name: 'Oilcloth packet · by the round seal', x: sea.page.x, z: sea.page.z };
+      return { name: 'Out to the causeway', x: sea.exit.x, z: sea.exit.z };
     }
     if (inCoast && coast) {
       if (save.coast < 2) return { name: `Tide-shrine · tide ${coast.tidePhase}`, x: coast.shrine.x, z: coast.shrine.z };
       if (save.coast < 3) return { name: 'Sea cave mouth · along the causeway', x: coast.caveMouth.x, z: coast.caveMouth.z };
+      if (save.sea < 3) return { name: 'Sea cave · the Listening Pools', x: coast.caveMouth.x, z: coast.caveMouth.z };
       return { name: 'Tunnel · back to the vale', x: coast.tunnel.x, z: coast.tunnel.z };
     }
-    if (save.beacon && save.cave >= 4 && save.coast < 3) return { name: 'Collapsed stair · the water-road west', x: stair.mouth.x, z: stair.mouth.z };
+    if (save.beacon && save.cave >= 4 && (save.coast < 3 || save.sea < 3)) return { name: 'Collapsed stair · the water-road west', x: stair.mouth.x, z: stair.mouth.z };
     if (save.beacon && save.cave >= 1 && save.cave < 4) return { name: 'Collapsed stair · east of Pale Keep', x: stair.mouth.x, z: stair.mouth.z };
     if (save.beacon && save.cave === 0) return { name: 'Wayfinder · word of Enna', x: WAYFINDER.x, z: WAYFINDER.z };
     if (save.started && n < 4) { let bd = 1e9, t = { name: '', x: 0, z: 0 }; for (const d of SEALS) if (!save.seals[d.id]) { const dd = Math.hypot(d.x - state.px, d.z - state.pz); if (dd < bd) { bd = dd; t = { name: `${d.name} · ${d.at}`, x: d.x, z: d.z }; } } return t; }
@@ -612,15 +660,15 @@ async function main() {
     hudT -= dt; if (hudT > 0) return; hudT = 0.15;
     const n = sealCount(save);
     qline.textContent = !save.started ? 'Speak with the Wayfinder' : !save.done ? (n < 4 ? `The Four Seals · ${n}/4` : 'All four seals held — return to the Wayfinder') : !save.beacon ? (onIsland ? `The Unspent Morning · mirrors ${aligned()}/4` : save.wind ? 'The Unspent Morning · ride the Updraft' : 'The Unspent Morning · needs the Wind Shrine blessing') : ['Morning-Bearer · the Wayfinder has word of Enna', 'Enna’s Trail · the collapsed stair by Pale Keep', 'Enna’s Trail · light the braziers as the river runs', 'Enna’s Trail · the sealed door stands open', 'Enna’s Trail · the water-road runs to the sea'][save.cave];
-    if (save.cave >= 4 && save.coast >= 1) qline.textContent = save.coast >= 3 ? 'Chapter II · The Second Seam — to be continued' : save.coast >= 2 ? 'Enna’s Trail · the causeway to the sea cave' : `Enna’s Trail · Tidewrack Coast${inCoast && coast ? ` · tide ${coast.tidePhase}` : ''}`;
+    if (save.cave >= 4 && save.coast >= 1) qline.textContent = save.sea >= 3 ? 'Chapter II · The Drowned Keeper — the round seal waits' : save.sea >= 2 ? 'Enna’s Trail · the packet by the round seal' : save.coast >= 3 ? `Enna’s Trail · the Listening Pools${inSea && sea ? ` · tide ${sea.tidePhase}` : ''}` : save.coast >= 2 ? 'Enna’s Trail · the causeway to the sea cave' : `Enna’s Trail · Tidewrack Coast${inCoast && coast ? ` · tide ${coast.tidePhase}` : ''}`;
     qstats.textContent = `Lv ${levelOf(save.xp)} · ${save.xp} XP · ${SEALS.map((d) => (save.seals[d.id] ? '◆' : '◇')).join('')}`;
     const tgt = objective();
-    const away = inCave || inCoast, hx = away ? STAIR.x : state.px, hz = away ? STAIR.z : state.pz;
+    const away = inCave || inCoast || inSea, hx = away ? STAIR.x : state.px, hz = away ? STAIR.z : state.pz;
     const dx = tgt.x - state.px, dz = tgt.z - state.pz, dist = Math.hypot(dx, dz);
     const fx = -Math.sin(state.yaw), fz = -Math.cos(state.yaw), rx = Math.cos(state.yaw), rz = -Math.sin(state.yaw);
     const sx = dx * rx + dz * rz, sy = dx * fx + dz * fz;
     carrow.style.transform = `rotate(${(Math.atan2(-sy, sx) * 180 / Math.PI).toFixed(0)}deg)`;
-    ctext.textContent = save.beacon && save.cave >= 4 && save.coast >= 3 && !onIsland && !inCave && !inCoast && dist < 6 ? 'Explore freely' : `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}`;
+    ctext.textContent = save.beacon && save.cave >= 4 && save.sea >= 3 && !onIsland && !inCave && !inCoast && !inSea && dist < 6 ? 'Explore freely' : `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}`;
     // Optional Wind Shrine locator line.
     { const ws = { x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z }; const ddx = ws.x - hx, ddz = ws.z - hz, dd = Math.hypot(ddx, ddz);
       const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
@@ -719,6 +767,8 @@ async function main() {
     if (lift) state.speed = 0;
     if (state.speed > 0.02 && inCoast && coast) {
       [state.px, state.pz] = coast.constrain(state.px, state.pz, state.px + Math.sin(state.facing) * state.speed * dt, state.pz + Math.cos(state.facing) * state.speed * dt);
+    } else if (state.speed > 0.02 && inSea && sea) {
+      [state.px, state.pz] = sea.constrain(state.px + Math.sin(state.facing) * state.speed * dt, state.pz + Math.cos(state.facing) * state.speed * dt);
     } else if (state.speed > 0.02 && inCave && cave) {
       [state.px, state.pz] = cave.constrain(state.px + Math.sin(state.facing) * state.speed * dt, state.pz + Math.cos(state.facing) * state.speed * dt);
     } else if (state.speed > 0.02 && onIsland) {
@@ -740,6 +790,7 @@ async function main() {
       state.px = bz.x; state.pz = bz.z; gy = bz.y;
       if (u >= 1) { const down = lift.down; lift = null; onIsland = !down; hudT = 0; if (onIsland) toast(save.beacon ? 'The held morning is spent · ride down from the western edge.' : 'Turn the four morning mirrors · read the Unspent carving.', 4); }
     } else if (inCave) gy = 0;
+    else if (inSea && sea) gy = sea.groundY(state.px, state.pz);
     else if (inCoast && coast) gy = coast.groundY(state.px, state.pz);
     else if (onIsland) gy = islandY(state.px, state.pz) ?? player.root.position.y;
     else gy = Math.max(heightAt(state.px, state.pz), WATER_Y - 0.7);
@@ -771,7 +822,8 @@ async function main() {
       if (tMin < 1) camPos.lerpVectors(camTarget, camPos, Math.max(0.3, tMin - 0.05));
     }
     if (inCave && cave) cave.clampCam(camTarget, camPos);
-    const floor = inCoast && coast ? coast.camFloor(camPos.x, camPos.z) + 0.25 : inCave ? -1e9 : (onIsland || lift ? (islandY(camPos.x, camPos.z) ?? -1e9) : heightAt(camPos.x, camPos.z)) + 0.6;
+    if (inSea && sea) sea.clampCam(camTarget, camPos);
+    const floor = inCoast && coast ? coast.camFloor(camPos.x, camPos.z) + 0.25 : inCave || inSea ? -1e9 : (onIsland || lift ? (islandY(camPos.x, camPos.z) ?? -1e9) : heightAt(camPos.x, camPos.z)) + 0.6;
     // Rigid horizontal follow (no positional lag): a lagged lerp toward a moving target leaves a dt-dependent gap, so on a phone with
     // uneven frame times the camera→player distance pumped every frame while running ("view goes back and forth").
     // Only the occlusion pull-in and the terrain floor push are smoothed (dt-correct), as offsets along the boom / in height.
@@ -822,10 +874,11 @@ async function main() {
     dawnSky.mesh.position.copy(camera.position); dawnSky.set(Math.max(0, dawnK), t);
     const aloft = onIsland || !!lift; grassField.mesh.visible = !aloft; grassFar.mesh.visible = HIGH && !aloft;
     if (onIsland) { const L = toLocal(state.px, state.pz); island.treesNear(L.x, L.z); } else island.treesNear(1e4, 1e4);
-    updraft.update(t, lastDt); hollow.update(t, lastDt); grove.update(t, lastDt); grove.near(inCave || inCoast || aqLevel >= 2 ? 1e9 : Math.hypot(camera.position.x - ECHO.x, camera.position.z - ECHO.z)); updraft.setActive(save.done);
+    updraft.update(t, lastDt); hollow.update(t, lastDt); grove.update(t, lastDt); grove.near(inCave || inCoast || inSea || aqLevel >= 2 ? 1e9 : Math.hypot(camera.position.x - ECHO.x, camera.position.z - ECHO.z)); updraft.setActive(save.done);
     stair.update(t, lastDt); if (inCave && cave) cave.update(t, lastDt); if (inCoast && coast) coast.update(t, lastDt, camera, camTarget);
-    if (!inCave && !inCoast) treeField.update(state.px, state.pz);
-    if (!inCave && !inCoast) { const gd = Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y);
+    if (inSea && sea && sea.update(t, lastDt, player.root.position) === 'reset') { toast(SEA_LINES.reset, 3.4); hudT = 0; }
+    if (!inCave && !inCoast && !inSea) treeField.update(state.px, state.pz);
+    if (!inCave && !inCoast && !inSea) { const gd = Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y);
       if (gd > (HIGH ? 12 : 13)) { grassField.recenter(state.px, state.pz); if (HIGH) grassFar.recenter(state.px, state.pz); } // teleport-sized jump: rebuild now
       else if (gd > (HIGH ? 6 : 5)) { grassField.recenterSoon(state.px + Math.sin(state.facing) * state.speed * 0.4, state.pz + Math.cos(state.facing) * state.speed * 0.4); if (HIGH) grassFar.recenterSoon(state.px, state.pz); } }
     for (const gf of [grassField, grassFar]) { gf.uniforms.uTime.value = t; gf.uniforms.uPlayer.value.set(state.px, gy, state.pz); }
@@ -855,7 +908,7 @@ async function main() {
   function drawMap(t: number) {
     const maxW = Math.min(560, innerWidth - 24) - 20, maxH = innerHeight - 140, ar = (MAPBOX.z1 - MAPBOX.z0) / (MAPBOX.x1 - MAPBOX.x0);
     const w = Math.floor(Math.min(maxW, maxH / ar)), h = Math.floor(w * ar);
-    drawValeMap(mapCv, w, h, { player: inCave || inCoast ? { x: STAIR.x, z: STAIR.z, facing: state.facing } : { x: state.px, z: state.pz, facing: state.facing }, target: inCave || inCoast ? { name: 'Collapsed Stair', x: STAIR.x, z: STAIR.z } : save.started ? objective() : { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z }, save, onIsland, t });
+    drawValeMap(mapCv, w, h, { player: inCave || inCoast || inSea ? { x: STAIR.x, z: STAIR.z, facing: state.facing } : { x: state.px, z: state.pz, facing: state.facing }, target: inCave || inCoast || inSea ? { name: 'Collapsed Stair', x: STAIR.x, z: STAIR.z } : save.started ? objective() : { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z }, save, onIsland, t });
   }
   function openSheet(which: 'journal' | 'map') {
     if (creating || cine || dawnCine || lift) return;
@@ -939,7 +992,7 @@ async function main() {
     if (!paused) stepFrame(dt); else if (!mapEl.hidden) { mapT -= dt; if (mapT <= 0) { mapT = 0.12; drawMap(t); } }
     grassField.pump(motionSmooth ? 4 : 2.5); if (HIGH) grassFar.pump(2);
     if (rec) recFrame(dt);
-    if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : scene, camera);
+    if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : scene, camera);
     unInterp();
     frames++; totalFrames++; fpsT += dt; if (fpsT > 0.5) { fps = frames / fpsT; const fpsT0 = fpsT / frames; adaptQuality(fpsT); frames = 0; fpsT = 0; if (fpsOn) fpsEl.textContent = `${fps.toFixed(0)} fps · ${(fpsT0 * 1000).toFixed(1)} ms · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M tris · ${quality}${aqLevel ? ` · aq${aqLevel}` : ''}`; }
   }
@@ -973,10 +1026,10 @@ async function main() {
       if (name === 'shrine' || name === 'shrine-awake') { state.px = TABLET.x + 2.2; state.pz = TABLET.z + 13; state.facing = Math.PI; state.yaw = 0.16; state.pitch = 0.06; state.dist = 12; }
       if (name === 'warden' || name === 'warden-windup') { const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz), off = name === 'warden' ? 7 : 3; state.px = WARDEN.x + dx / d * off + (name === 'warden' ? 1.5 : 0); state.pz = WARDEN.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + (name === 'warden' ? 0.35 : 0.3); state.pitch = name === 'warden' ? 0.12 : 0.02; state.dist = name === 'warden' ? 7 : 8.5; wd.freeze = name === 'warden' ? 0 : 0.7; wd.awake = true; wd.warned = true; }
       if (name === 'warden-defeated') { save.warden = true; save.xp = 40; wd.phase = 3; const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz); state.px = WARDEN.x + dx / d * 5 + 1.2; state.pz = WARDEN.z + dz / d * 5; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.4; state.pitch = 0.15; state.dist = 6.5; }
-      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0 }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
+      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0, sea: 0 }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
       if (name === 'sunspire' || name === 'dome' || name === 'veilfall') { const l = LANDMARKS.find((x) => x.id === name)!; const rot = name === 'sunspire' ? 0.55 : name === 'veilfall' ? -0.3 : 0, dx0 = SPAWN.x - l.x, dz0 = SPAWN.z - l.z, dx = dx0 * Math.cos(rot) + dz0 * Math.sin(rot), dz = -dx0 * Math.sin(rot) + dz0 * Math.cos(rot), d = Math.hypot(dx, dz), off = name === 'dome' ? 36 : name === 'veilfall' ? 40 : 40; state.px = l.x + dx / d * off; state.pz = l.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.1; state.pitch = name === 'dome' ? 0.02 : name === 'veilfall' ? -0.3 : -0.05; state.dist = 6.5; }
       if (name === 'run') { keys.KeyW = true; }
-      const endgame = (beacon: boolean, mirrors: number[]) => { save = { v: 1, started: true, done: true, xp: beacon ? 335 : 255, seals: { dawn: true, sun: true, tide: true, forge: true }, runes: [1, 0, 2], wind: true, warden: true, mirrors: [...mirrors], beacon, echo: beacon, charted: Array(7).fill(true), cave: 0, coast: 0 }; for (const o of seals) o.claim(); island.light(true, true); updraft.setActive(true, true); island.solve(beacon); hollow.solve(beacon); mirrors.forEach((v, i) => hollow.setMirror(i, v)); };
+      const endgame = (beacon: boolean, mirrors: number[]) => { save = { v: 1, started: true, done: true, xp: beacon ? 335 : 255, seals: { dawn: true, sun: true, tide: true, forge: true }, runes: [1, 0, 2], wind: true, warden: true, mirrors: [...mirrors], beacon, echo: beacon, charted: Array(7).fill(true), cave: 0, coast: 0, sea: 0 }; for (const o of seals) o.claim(); island.light(true, true); updraft.setActive(true, true); island.solve(beacon); hollow.solve(beacon); mirrors.forEach((v, i) => hollow.setMirror(i, v)); };
       if (name === 'beacon-puzzle' || name === 'ending-card') {
         endgame(false, name === 'ending-card' ? MIRRORS.map((m) => m.solve) : [3, 0, 1, 1]); onIsland = true; island.group.updateMatrixWorld(true);
         const P = toWorld(BEACON_L.x + 3.5, BEACON_L.z + 8.2), B = toWorld(BEACON_L.x, BEACON_L.z);
@@ -984,7 +1037,7 @@ async function main() {
       }
       if (name === 'dawn') { endgame(true, MIRRORS.map((m) => m.solve)); const dx = ISLAND_POS.x - SPAWN.x, dz = ISLAND_POS.z - SPAWN.z; state.px = SPAWN.x - 4; state.pz = SPAWN.z - 6; state.facing = Math.atan2(dx, dz) - 0.2; state.yaw = Math.atan2(-dx, -dz) + 0.06; state.pitch = innerHeight > innerWidth ? -0.2 : -0.1; state.dist = innerHeight > innerWidth ? 7.4 : 6.4; }
       if (name === 'flight') { endgame(false, [0, 0, 0, 0]); state.px = UPDRAFT.x; state.pz = UPDRAFT.z + 2; snapCam = true; player.root.position.set(state.px, heightAt(state.px, state.pz), state.pz); beginLift(false); lift!.hold = 2.3; state.dist = 6; }
-      if (name === 'echo-grove') { save = { v: 1, started: true, done: false, xp: 50, seals: { dawn: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0 }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = ECHO.x - 3; state.pz = ECHO.z + 15; state.facing = Math.PI; state.yaw = 0.15; state.pitch = 0.12; state.dist = 7; }
+      if (name === 'echo-grove') { save = { v: 1, started: true, done: false, xp: 50, seals: { dawn: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0, sea: 0 }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = ECHO.x - 3; state.pz = ECHO.z + 15; state.facing = Math.PI; state.yaw = 0.15; state.pitch = 0.12; state.dist = 7; }
       if (name === 'warden-hit') { const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz); state.px = WARDEN.x + dx / d * 2.6; state.pz = WARDEN.z + dz / d * 2.6; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.9; state.pitch = 0.08; state.dist = 5.2; wd.freeze = 0; wd.awake = true; wd.warned = true; }
       if (name === 'cave-entrance' || name === 'cave-interior' || name === 'cave-discovery' || name === 'cave-puzzle') {
         endgame(true, MIRRORS.map((m) => m.solve)); save.cave = name === 'cave-entrance' ? 1 : name === 'cave-discovery' ? 3 : 2; stair.setLit(true);
@@ -1004,11 +1057,19 @@ async function main() {
           if (name === 'sea-cave-mouth') look(c.caveMouth.x + 1.2, c.caveMouth.z - 0.6, c.caveMouth.x - 8, c.caveMouth.z, 0.14, 7.5, 0.3);
           snapCam = true; for (let i = 0; i < 40; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); if (name === 'coast') { for (let i = 0; i < 360 && !c.isLow(); i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); } })();
       }
+      if (name === 'sea-cave-interior' || name === 'sea-cave-solved') {
+        endgame(true, MIRRORS.map((m) => m.solve)); save.cave = 4; save.coast = 3; save.sea = name === 'sea-cave-solved' ? 2 : 1; save.xp = 405;
+        return (async () => { await enterSea(true); const c = sea!;
+          state.px = c.entry.x - 3.5; state.pz = c.entry.z + 1.4; state.facing = -Math.PI / 2 - 0.15; state.yaw = Math.PI / 2 - 0.22; state.pitch = 0.2; state.dist = 6.2; snapCam = true;
+          if (name === 'sea-cave-solved') { state.px = c.door.x + 15; state.pz = c.door.z + 1.2; state.pitch = 0.14; state.dist = 7; }
+          for (let i = 0; i < 400 && !c.isLow(); i++) update(1 / 30, clock.elapsedTime + i / 30); if (name === 'sea-cave-interior') { c.light(0); c.light(1); }
+          for (let i = 0; i < 50; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); })();
+      }
       if (name === 'grove-bases') { save.echo = true; for (let i = 0; i < 5; i++) grove.light(i); grove.memory(true, true); const a = 0.3 + Math.PI * 2 / 5; const tx = ECHO.x + Math.cos(a) * 10, tz = ECHO.z + Math.sin(a) * 10; state.px = tx + 3.2; state.pz = tz + 2.2; state.facing = Math.atan2(tx - state.px, tz - state.pz); state.yaw = state.facing + Math.PI - 0.5; state.pitch = 0.32; state.dist = 4.2; }
-      if (name === 'journal-charting') { save = { v: 1, started: true, done: true, xp: 215, seals: { dawn: true, sun: true, tide: true, forge: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: true, charted: [true, true, false, true, false, true, true], cave: 0, coast: 0 }; for (const o of seals) o.claim(); }
-      if (name === 'journal' || name === 'map') { save = { v: 1, started: true, done: false, xp: 85, seals: { dawn: true, tide: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0 }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = SHRINE.x + 22; state.pz = SHRINE.z + 10; state.facing = 2.4; state.yaw = 2.4 + Math.PI; }
+      if (name === 'journal-charting') { save = { v: 1, started: true, done: true, xp: 215, seals: { dawn: true, sun: true, tide: true, forge: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: true, charted: [true, true, false, true, false, true, true], cave: 0, coast: 0, sea: 0 }; for (const o of seals) o.claim(); }
+      if (name === 'journal' || name === 'map') { save = { v: 1, started: true, done: false, xp: 85, seals: { dawn: true, tide: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0, sea: 0 }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = SHRINE.x + 22; state.pz = SHRINE.z + 10; state.facing = 2.4; state.yaw = 2.4 + Math.PI; }
       camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30);
-      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0 }; interact(); }
+      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0, sea: 0 }; interact(); }
       if (name === 'warden-windup') { wd.sx = state.px + 0.6; wd.sz = state.pz; warden.placeZone(wd.sx, wd.sz); wd.phase = 1; wd.teleT = W_TELE * 0.3; toast('⚠ Warden winds up — move!', 60, true); }
       if (name === 'shrine-awake') { save.runes = [1, 0, 2]; save.wind = true; for (let i = 0; i < 3; i++) shrine.setRune(i, save.runes[i], false); shrine.awaken(true); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); }
       if (name === 'beam') { interact(); for (let i = 0; i < 50; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); if (cine) cine.hold = cine.dur * 0.6; for (let i = 0; i < 130; i++) update(1 / 30, clock.elapsedTime + 5 + i / 30); }
@@ -1035,6 +1096,10 @@ async function main() {
     /** Deterministic stepping: run update() with a given dt sequence while holding the stick at (sx, sy); returns recorder rows. */
     sim(dts: number[], sx: number, sy: number) { const id = stick.id; stick.id = 999; stick.x = sx; stick.y = sy; rec = []; let t = clock.elapsedTime; for (const d of dts) { t += d; const t0 = performance.now(); update(d, t); const t1 = performance.now(); recFrame(d); rec![rec!.length - 1].push(t1 - t0); } stick.id = id; stick.x = stick.y = 0; const r = rec; rec = null; return r; },
     warp(x: number, z: number) { state.px = x; state.pz = z; snapCam = true; },
+    /** Frame cost probe: n full frames (fixed-tick sim + render + 1-px readback to include GPU work). */
+    bench(n = 60) { const px = new Uint8Array(4), gl = renderer.getContext(), ms: number[] = [];
+      for (let i = 0; i < n; i++) { const t0 = performance.now(); stepFrame(1 / 30); grassField.pump(4); if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : scene, camera); unInterp(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); ms.push(performance.now() - t0); }
+      ms.sort((a, b) => a - b); return { avg: ms.reduce((a, b) => a + b, 0) / n, p50: ms[n >> 1], p95: ms[Math.floor(n * 0.95)], tris: renderer.info.render.triangles, calls: renderer.info.render.calls }; },
     interact() { interact(); },
     advance() { if (talking) advance(); },
     runes: RUNES.map((r) => ({ x: r.x, z: r.z })), tablet: TABLET, speedMul: () => (save.wind ? WIND_BLESS : 1),
@@ -1042,6 +1107,7 @@ async function main() {
       return { updraft: UPDRAFT, onIsland, lift: !!lift, mirrors: [...save.mirrors], solve: MIRRORS.map((m) => m.solve), beacon: save.beacon, dawn: dawnK, cine: !!dawnCine, ending: !endEl.hidden, endingText: endEl.innerText,
         mirrorW: MIRRORS.map((m) => w(BEACON_L.x + m.dx + (BEACON_L.x + m.dx > BEACON_L.x ? 0 : 0), BEACON_L.z + m.dz)), clueW: w(CLUE_L.x, CLUE_L.z), returnW: w(RETURN_L.x, RETURN_L.z), beamColor: '#' + sun.color.getHexString() }; },
     echo: () => ({ x: ECHO.x, z: ECHO.z, done: save.echo, active: echoT >= 0, charted: [...save.charted], marks: MARR_MARKS.map((m) => ({ name: m.name, x: m.x, z: m.z })) }),
+    sea: () => ({ stage: save.sea, inSea, level: sea?.level ?? null, low: sea?.isLow() ?? null, phase: sea?.tidePhase ?? null, lit: sea?.lit ?? null, solved: sea?.solved ?? false, shells: sea?.shells, page: sea?.page, door: sea?.door, exit: sea?.exit }),
     coast: () => ({ stage: save.coast, inCoast, tide: coast?.tide() ?? null, phase: coast?.tidePhase ?? null, low: coast?.isLow() ?? null, revealed: !!coast?.revealed, rise: coast?.rise ?? 0, passage: cave?.passage, shrine: coast?.shrine, caveMouth: coast?.caveMouth, pathStart: coast?.pathStart, tunnel: coast?.tunnel, aq: aqLevel }),
     cave: () => ({ stage: save.cave, inCave, fading, mouth: stair.mouth, stair: STAIR, lit: [...litOrder], door: !!cave?.doorOpen, entry: cave?.entry, exit: cave?.exit, braziers: cave?.braziers, carving: cave?.carving, doorAt: cave?.door, order: RIVER_ORDER, names: BRAZIERS.map((b) => b.name) }),
     sheets: () => ({ journal: !jEl.hidden, map: !mapEl.hidden, paused, journalText: jEl.innerText }),

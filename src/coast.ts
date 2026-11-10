@@ -150,9 +150,20 @@ vec3 WG; vec2 TP;`)
   stack(-27, -33, 4.6, 34); stack(-58, -14, 6.5, 40); stack(-31, 46, 5.2, 30); stack(-70, 30, 5, 26);
   // Sea-cave stack: two flanks, a lintel and a back mass leave a dark arch facing the shore.
   const CAVE = { x: -38.2, z: 20 };
-  stackGeos.push(blob(7.2, rnd, 1, 2.6, 1, 3).translate(-45, 7, 12.2), blob(7.2, rnd, 1, 2.4, 1, 3).translate(-45, 6, 27.8), blob(6.4, rnd, 1.1, 0.7, 0.85, 3).translate(-43.5, 10.5, 20), blob(8.5, rnd, 1, 2.2, 1.3, 3).translate(-54, 8, 20), blob(7, rnd, 1, 1.6, 1.25, 3).translate(-53, 13, 20));
+  stackGeos.push(blob(7.2, rnd, 1, 2.6, 1, 3).translate(-45, 7, 11.5), blob(7.2, rnd, 1, 2.4, 1, 3).translate(-45, 6, 28.5), blob(6.4, rnd, 1.1, 0.7, 0.85, 3).translate(-43.5, 10.5, 20), blob(8.5, rnd, 1, 2.2, 1.3, 3).translate(-54, 8, 20), blob(7, rnd, 1, 1.6, 1.25, 3).translate(-53, 13, 20));
   const stacks = new THREE.Mesh(mergeGeometries(stackGeos), rockMat); stacks.castShadow = stacks.receiveShadow = true; g.add(stacks);
-  { const m = new THREE.Mesh(new THREE.PlaneGeometry(7, 9), new THREE.MeshBasicMaterial({ color: '#030405' })); m.position.set(-41.6, 2.5, 20); m.rotation.y = Math.PI / 2; g.add(m); } // the dark beyond the arch
+  // The throat beyond the arch: a tapering tunnel whose vertex colour falls from wet rock to black, a glistening lip, and a faint teal glow far inside.
+  { const len = 8, x0 = -39.4; const tg = new THREE.CylinderGeometry(1.5, 2.7, len, 28, 8, true); tg.rotateZ(Math.PI / 2); tg.scale(1, 1.5, 1); tg.translate(x0 - len / 2, 2.4, 20);
+    const p = tg.attributes.position as THREE.BufferAttribute, col = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { const k = Math.min(1, Math.max(0, (x0 - p.getX(i)) / len)); const f = (1 - k) ** 2.2 * 0.05 + 0.0015; const wob = 1 + 0.25 * Math.sin(p.getY(i) * 3.1 + p.getZ(i) * 2.3); p.setY(i, p.getY(i) + 0.18 * Math.sin(p.getZ(i) * 2.7 + p.getX(i))); col[i * 3] = f * 0.8 * wob; col[i * 3 + 1] = f * 0.95 * wob; col[i * 3 + 2] = f * wob; }
+    tg.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const throat = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false })); throat.userData.noAO = true; g.add(throat);
+    const cap = new THREE.Mesh(new THREE.CircleGeometry(1.7, 20), new THREE.MeshBasicMaterial({ color: '#000102', fog: false })); cap.scale.y = 1.5; cap.position.set(x0 - len + 0.1, 2.4, 20); cap.rotation.y = Math.PI / 2; g.add(cap);
+    const lipG = new THREE.TorusGeometry(2.55, 0.26, 8, 40, Math.PI * 1.15); lipG.rotateZ(-0.075 * Math.PI); lipG.scale(1, 1.5, 1); const lp = lipG.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < lp.count; i++) lp.setXYZ(i, lp.getX(i) * (1 + 0.06 * Math.sin(i * 1.7)), lp.getY(i), lp.getZ(i) * (1 + 0.5 * Math.sin(i * 0.9)));
+    lipG.computeVertexNormals(); const lip = new THREE.Mesh(lipG, new THREE.MeshStandardMaterial({ color: '#57514a', roughness: 0.3, metalness: 0.0, envMapIntensity: 0.25 })); lip.rotation.y = Math.PI / 2; lip.position.set(x0 + 0.15, 2.4 - 0.2, 20); lip.castShadow = lip.receiveShadow = true; g.add(lip);
+    const glowM = new THREE.SpriteMaterial({ map: (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(110,235,220,0.9)'); gr.addColorStop(1, 'rgba(40,160,180,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })(), transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    const gl = new THREE.Sprite(glowM); gl.scale.set(3.4, 2.6, 1); gl.position.set(x0 - len + 0.6, 1.4, 20); gl.layers.set(1); g.add(gl); }
   // shelf at the mouth (dry once the sea draws back)
   { const b = blob(3.2, rnd, 1.2, 0.25, 1.0, 2); b.translate(CAVE.x - 1.5, -0.25, CAVE.z); const m = new THREE.Mesh(b, rockMat); m.receiveShadow = true; g.add(m); }
   const bould: THREE.BufferGeometry[] = [];
@@ -234,12 +245,21 @@ ${SKY}
 void main(){ vec2 L=vW.xz-uO; float depth=uTide-coastH(L); float dist=distance(vW,cameraPosition);
   float det=1.-smoothstep(60.,260.,dist);
   vec3 t1=texture2D(uNor,vW.xz*.045+vec2(uTime*.018,uTime*.008)).xyz*2.-1.; vec3 t2=texture2D(uNor,vW.xz*.12-vec2(uTime*.012,-uTime*.021)).xyz*2.-1.;
-  vec3 n=normalize(normalize(vN)+vec3(t1.x+t2.x,0.,t1.y+t2.y)*mix(.16,.24,float(WAVES<3))*det);
+  vec3 dn=vec3(t1.x+t2.x,0.,t1.y+t2.y);
+  #if WAVES < 3
+  vec3 t3=texture2D(uNor,vW.xz*.31+vec2(uTime*.024,-uTime*.017)).xyz*2.-1.; dn+=vec3(t3.x,0.,t3.y)*.8; // Lite: an extra fine layer stands in for the missing Gerstner octaves
+  #endif
+  vec3 n=normalize(normalize(vN)+dn*mix(.16,.38,float(WAVES<3))*det);
   vec3 v=normalize(cameraPosition-vW); float ndv=max(dot(n,v),0.); float fres=.02+.98*pow(1.-ndv,5.);
   vec3 r=reflect(-v,n); r.y=abs(r.y); vec3 refl=skyCol(r);
   vec3 deep=vec3(.018,.074,.094), shal=vec3(.055,.215,.2); vec3 body=mix(shal,deep,smoothstep(.2,7.,depth));
   body*=.55+.45*max(uSunDir.y+.4,0.); body+=vec3(.02,.09,.075)*clamp(vCrest,0.,1.)*(1.-smoothstep(1.,6.,depth));
+  #if WAVES < 3
+  body=mix(body,vec3(.008,.05,.078),.35); fres=min(fres*.75,.3+.2*(1.-det)); vec3 col=mix(body,mix(refl,vec3(.16,.34,.42),.4)*.72,fres); // Lite: deeper, less milky
+  col+=vec3(.0,.03,.035)*smoothstep(.1,.5,t3.x+t1.y)*det; col*=.82+.36*clamp(.5+.6*(dn.x-dn.z),0.,1.)*(.4+.6*det); // ripple light/dark keeps the surface reading as moving water // glints of green in the troughs
+  #else
   fres=min(fres,.62+.2*(1.-det)); vec3 col=mix(body,refl*.86,fres);
+  #endif
   col+=uSunCol*pow(max(dot(r,uSunDir),0.),520.)*6.;
   float fn=texture2D(uNor,vW.xz*.21+vec2(uTime*.03,0.)).x*.5+.5;
   float band=sin(depth*7.5-uTime*1.7+fn*4.)*.5+.5;
@@ -249,7 +269,11 @@ void main(){ vec2 L=vW.xz-uO; float depth=uTide-coastH(L); float dist=distance(v
   #endif
   foam=clamp(foam,0.,1.); vec3 lit=vec3(.95,.93,.9)*(.6+.4*max(uSunDir.y+.3,0.)); col=mix(col,lit,foam*.92);
   float a=max(smoothstep(-.03,.45,depth),foam*.9);
-  float ff=1.-exp(-uFogD*uFogD*dist*dist); col=mix(col,HOR,ff);
+  float ff=1.-exp(-uFogD*uFogD*dist*dist);
+  #if WAVES < 3
+  ff*=.6;
+  #endif
+  col=mix(col,HOR,ff);
   gl_FragColor=vec4(col,a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -287,7 +311,7 @@ void main(){ vec2 L=vW.xz-uO; float depth=uTide-coastH(L); float dist=distance(v
       tideT += dt; if (held) holdK = Math.min(1, holdK + dt / 4); rise += (riseWant - rise) * Math.min(1, dt * 0.8); if (riseWant && rise > 0.995) rise = 1;
       uTide.value = level(); seaMat.uniforms.uTime.value = time;
       const s = 2; sea.position.set(Math.round(cam.position.x / s) * s, 0, Math.round(cam.position.z / s) * s); sky.position.copy(cam.position);
-      for (const st of stones.children) { st.position.y = TOP - (1 - rise) * (1.5 + (st.userData.k % 3) * 0.2); }
+      stones.visible = rise > 0.004; for (const st of stones.children) { st.position.y = TOP - (1 - rise) * (2.4 + (st.userData.k % 3) * 0.2); } // fully sunk (and hidden) until revealed: no edges through high water
       shrineMat.emissiveIntensity = 0.05 + glow * (0.6 + 0.2 * Math.sin(time * 3)) + (held ? 0.25 : 0);
       sun.target.position.copy(focus); { const tx = 90 / sun.shadow.mapSize.x, tp = sun.target.position; const u = SNU.crossVectors(COAST_SUN, SNY).normalize(), v = SNV.crossVectors(u, COAST_SUN).normalize(); tp.addScaledVector(u, Math.round(tp.dot(u) / tx) * tx - tp.dot(u)).addScaledVector(v, Math.round(tp.dot(v) / tx) * tx - tp.dot(v)); } sun.position.copy(sun.target.position).addScaledVector(COAST_SUN, 150); // texel-snapped: no shadow crawl while running
       for (const gl of gulls) { const a = gl.ph + time * gl.s; gl.o.position.set(gl.c[0] + Math.cos(a) * gl.r, gl.h + Math.sin(time * 0.7 + gl.ph) * 1.2, gl.c[1] + Math.sin(a) * gl.r); gl.o.rotation.y = -a + (gl.s > 0 ? 0 : Math.PI); gl.o.rotation.z = gl.s > 0 ? -0.25 : 0.25; const f = Math.sin(time * 5 + gl.ph) * (Math.sin(time * 0.3 + gl.ph) > 0.3 ? 0.08 : 0.55); gl.wl.rotation.z = f; gl.wr.rotation.z = -f; }

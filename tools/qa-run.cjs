@@ -120,9 +120,25 @@ await p.waitForFunction('window.__vale.coast().rise>0.95',{timeout:120000});awai
 await p.evaluate((x,z)=>window.__vale.warp(x,z),k.pathStart.x,k.pathStart.z);await sleep(500);
 await p.evaluate((x,z)=>window.__vale.warp(x,z),k.caveMouth.x,k.caveMouth.z);await sleep(900);pp=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,y:v.y,z:v.z};});
 const nM=(await Q()).near;await p.keyboard.press('KeyE');await sleep(600);const dM=(await Q()).dlg;await closeDlg();await sleep(400);
-log('sea cave mouth',{near:nM,onShelf:Math.hypot(pp.x-k.caveMouth.x,pp.z-k.caveMouth.z)<1,standY:+pp.y.toFixed(2),dialog:dM,xpGain:(await Q()).save.xp-xpK0,stage:(await K()).stage,chapter:await p.$eval('#chapter',e=>e.hidden?null:e.innerText.replace(/\n+/g,' | '))});
-await p.screenshot({path:'shots/qa-coast-chapter.png'});await p.click('#chok').catch(()=>{});await sleep(400);
-await p.keyboard.press('KeyE');await sleep(500);await closeDlg();log('sea cave again (no farming)',{xpGain:(await Q()).save.xp-xpK0});
+await p.waitForFunction('window.__vale.sea().inSea&&window.__vale.ready',{timeout:120000});await sleep(900);
+log('sea cave mouth → Listening Pools',{near:nM,onShelf:Math.hypot(pp.x-k.caveMouth.x,pp.z-k.caveMouth.z)<1,standY:+pp.y.toFixed(2),dialog:dM,xpGain:(await Q()).save.xp-xpK0,stage:(await K()).stage,inSea:(await p.evaluate(()=>window.__vale.sea())).inSea,inCoast:(await K()).inCoast,chapterCard:await p.$eval('#chapter',e=>!e.hidden),qline:await p.$eval('#qline',e=>e.textContent),toast:await toastTxt()});
+// M12 · the Listening Pools: wake three lamp-shells with the Tide-Glass in one ebb → round seal stirs → Enna's page (+45 once) → back out
+{const S=()=>p.evaluate(()=>window.__vale.sea());let s=await S();const xpS0=(await Q()).save.xp;const at=async(pt,dx=2.2)=>{await p.evaluate((x,z)=>window.__vale.warp(x,z),pt.x+dx,pt.z);await sleep(450);};
+log('sea stage on entry',{stage:s.stage,tide:+s.level.toFixed(2),phase:s.phase});
+await p.waitForFunction('!window.__vale.sea().low',{timeout:60000});await at(s.shells[0]);const nH=(await Q()).near;await p.keyboard.press('KeyE');await sleep(400);s=await S();
+log('lamp-shell at high water (covered)',{near:nH,toast:await toastTxt(),lit:s.lit,phase:s.phase});
+await p.waitForFunction('window.__vale.sea().low',{timeout:60000});await sleep(300);await p.keyboard.press('KeyE');await sleep(400);s=await S();log('one shell woken at low water',{toast:await toastTxt(),lit:s.lit});
+await p.waitForFunction('!window.__vale.sea().low',{timeout:60000});await sleep(400);s=await S();log('tide returns → partial set resets',{lit:s.lit,toast:await toastTxt(),stage:s.stage});
+await p.waitForFunction('window.__vale.sea().low',{timeout:60000});const tL=Date.now();
+for(let i=0;i<3;i++){await at(s.shells[i]);await p.keyboard.press('KeyE');await sleep(350);if(i<2)log('shell '+(i+1),{toast:await toastTxt(),lit:(await S()).lit});}
+const dS=(await Q()).dlg;await closeDlg();await sleep(600);s=await S();log('all three in one ebb → seal wakes',{secs:+((Date.now()-tL)/1000).toFixed(1),dialog:dS,stage:s.stage,solved:s.solved,lowStill:s.low,xpUnchanged:(await Q()).save.xp===xpS0,hud:await p.$eval('#qline',e=>e.textContent)});
+await at(s.door,0.2);await p.keyboard.press('KeyE');await sleep(400);const dD=(await Q()).dlg;await closeDlg();log('round seal (still shut, wants a second key)',{dialog:dD});
+await at(s.page,0);const nPg=(await Q()).near;await p.keyboard.press('KeyE');await sleep(500);const pg=[(await Q()).dlg];for(let i=0;i<6&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);if((await Q()).talking)pg.push((await Q()).dlg);}await sleep(400);
+log('Enna’s page',{near:nPg,lines:pg.length,keeper:pg.some(t=>/keeper/.test(t)),alone:pg.some(t=>/alone/.test(t)),xpGain:(await Q()).save.xp-xpS0,stage:(await S()).stage,chapter:await p.$eval('#chapter',e=>e.hidden?null:e.innerText.replace(/\n+/g,' | '))});
+await p.screenshot({path:'shots/qa-sea-chapter.png'});await p.click('#chok').catch(()=>{});await sleep(400);
+await p.keyboard.press('KeyE');await sleep(500);await closeDlg();log('page again (no farming)',{xpGain:(await Q()).save.xp-xpS0});
+s=await S();await at(s.exit,-0.4);const nX=(await Q()).near;await p.keyboard.press('KeyE');await p.waitForFunction('!window.__vale.sea().inSea&&window.__vale.coast().inCoast&&window.__vale.ready',{timeout:60000});await sleep(700);
+log('out to the causeway',{near:nX,inSea:(await S()).inSea,inCoast:(await K()).inCoast,mouthLabel:(await Q()).near,xpTotal:(await Q()).save.xp});}
 k=await K();await p.evaluate((x,z)=>window.__vale.warp(x,z),k.tunnel.x,k.tunnel.z);await sleep(700);const nT=(await Q()).near;await p.keyboard.press('KeyE');
 await p.waitForFunction('window.__vale.cave().inCave&&!window.__vale.coast().inCoast&&window.__vale.ready',{timeout:120000});await sleep(700);
 log('back through the water-road',{near:nT,inCave:(await C()).inCave,inCoast:(await K()).inCoast});}
@@ -130,11 +146,11 @@ c=await C();await p.evaluate((x,z)=>window.__vale.warp(x,z),c.exit.x,c.exit.z);a
 await p.waitForFunction('!window.__vale.cave().inCave&&window.__vale.ready',{timeout:120000});await sleep(800);const pe=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,z:v.z};});c=await C();
 log('exited cave',{near:nE,inCave:c.inCave,distFromStair:+Math.hypot(pe.x-c.mouth.x,pe.z-c.mouth.z).toFixed(1),qline:await p.$eval('#qline',e=>e.textContent)});
 await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(1200);
-log('after reload (cave + coast persisted)',{stage:(await C()).stage,coast:(await p.evaluate(()=>window.__vale.coast())).stage,xp:(await Q()).save.xp,inCave:(await C()).inCave,inCoast:(await p.evaluate(()=>window.__vale.coast())).inCoast});}
+log('after reload (cave + coast + sea persisted)',{stage:(await C()).stage,coast:(await p.evaluate(()=>window.__vale.coast())).stage,sea:(await p.evaluate(()=>window.__vale.sea())).stage,xp:(await Q()).save.xp,inCave:(await C()).inCave,inCoast:(await p.evaluate(()=>window.__vale.coast())).inCoast});}
 // Journal / Map: open, state, input paused, close
 const ppos=()=>p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,z:v.z};});
 await p.keyboard.press('KeyJ');await sleep(500);let sh=await p.evaluate(()=>window.__vale.sheets());
-log('journal open (J)',{open:sh.journal,paused:sh.paused,seals:/Forge Heart — found/.test(sh.journalText),shrine:/Windward Blessing quickens/.test(sh.journalText),warden:/Crest claimed/.test(sh.journalText),beacon:/Dawn released/.test(sh.journalText),lore:/Sefa Lune/.test(sh.journalText),echo:/Memory of the Break heard/.test(sh.journalText),charting:/7\/7 charted/i.test(sh.journalText),trail:/Enna’s carved message found/.test(sh.journalText),coast:/Second Seam/i.test(sh.journalText)});
+log('journal open (J)',{open:sh.journal,paused:sh.paused,seals:/Forge Heart — found/.test(sh.journalText),shrine:/Windward Blessing quickens/.test(sh.journalText),warden:/Crest claimed/.test(sh.journalText),beacon:/Dawn released/.test(sh.journalText),lore:/Sefa Lune/.test(sh.journalText),echo:/Memory of the Break heard/.test(sh.journalText),charting:/7\/7 charted/i.test(sh.journalText),trail:/Enna’s carved message found/.test(sh.journalText),coast:/Second Seam/i.test(sh.journalText),sea:/Drowned Keeper/.test(sh.journalText)&&/lamp-shells/.test(sh.journalText)});
 let p0=await ppos();await p.keyboard.down('KeyW');await sleep(1500);await p.keyboard.up('KeyW');let p1=await ppos();log('input paused (W held 1.5 s)',{moved:+Math.hypot(p1.x-p0.x,p1.z-p0.z).toFixed(2)});
 await p.keyboard.press('Escape');await sleep(300);log('journal closed',!(await p.evaluate(()=>window.__vale.sheets())).journal);
 await p.click('#menubtn');await sleep(300);await p.click('#mbtn');await sleep(800);sh=await p.evaluate(()=>window.__vale.sheets());

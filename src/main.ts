@@ -686,7 +686,7 @@ async function main() {
 
   /** Frame-rate-independent damping factor: 1 - e^(-k·dt). */
   const damp = (k: number, dt: number) => 1 - Math.exp(-k * dt);
-  let camYOff = 0, camDistS = -1, camGy = 0; const backV = new THREE.Vector3(), rightV = new THREE.Vector3(), fwdV = new THREE.Vector3(), shU = new THREE.Vector3(), shV = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0);
+  let camYOff = 0, camDistS = -1, camGy = 0; const stickF = { x: 0, y: 0 }; const backV = new THREE.Vector3(), rightV = new THREE.Vector3(), fwdV = new THREE.Vector3(), shU = new THREE.Vector3(), shV = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0);
   function update(dt: number, t: number) {
     if (creating) { previewUpdate(dt, t); return; }
     lastDt = dt;
@@ -697,7 +697,15 @@ async function main() {
     if (keys.KeyA || keys.ArrowLeft) ix -= 1; if (keys.KeyD || keys.ArrowRight) ix += 1;
     let mag = Math.min(1, Math.hypot(ix, iz)); if (mag > 0) { const l = Math.hypot(ix, iz); ix /= l; iz /= l; }
     let target = mag * (keys.ShiftLeft || keys.ShiftRight ? 1.9 : 5.6);
-    if (stick.id >= 0 && Math.hypot(stick.x, stick.y) > 0.12) { ix = stick.x; iz = stick.y; mag = Math.min(1, Math.hypot(ix, iz)); target = mag < 0.7 ? 1.9 * mag / 0.7 : 1.9 + (mag - 0.7) / 0.3 * 3.7; }
+    if (legacyMotion) { if (stick.id >= 0 && Math.hypot(stick.x, stick.y) > 0.12) { ix = stick.x; iz = stick.y; mag = Math.min(1, Math.hypot(ix, iz)); target = mag < 0.7 ? 1.9 * mag / 0.7 : 1.9 + (mag - 0.7) / 0.3 * 3.7; } }
+    else {
+      // Touch stick: radial deadzone (rescaled), then a dt-correct low-pass on the vector so thumb noise at full deflection
+      // doesn't wiggle the heading (a wiggling heading = the world sliding left/right behind a rigidly following camera).
+      let rx = 0, ry = 0; if (stick.id >= 0) { const l = Math.hypot(stick.x, stick.y); if (l > 0.15) { const k = Math.min(1, (l - 0.15) / 0.8) / l; rx = stick.x * k; ry = stick.y * k; } }
+      const kk = damp(rx || ry ? 9 : 20, dt); stickF.x += (rx - stickF.x) * kk; stickF.y += (ry - stickF.y) * kk;
+      const fm = Math.hypot(stickF.x, stickF.y); if (fm > 0.06) { ix = stickF.x; iz = stickF.y; mag = Math.min(1, fm); target = mag < 0.7 ? 1.9 * mag / 0.7 : 1.9 + (mag - 0.7) / 0.3 * 3.7; }
+      if (mag > 0.05 && camFocus) camFocus = null; // never auto-swing the camera while the player is steering
+    }
     if (save.wind) target *= WIND_BLESS; // Windward Blessing
     state.speed += (target - state.speed) * damp(target > state.speed ? 4 : 7, dt);
     if (mag > 0.05) {
@@ -705,7 +713,8 @@ async function main() {
       const wx = ix * c + iz * s, wz = -ix * s + iz * c;
       const want = Math.atan2(wx, wz);
       let d = want - state.facing; d = Math.atan2(Math.sin(d), Math.cos(d));
-      state.facing += d * damp(10, dt);
+      if (legacyMotion) state.facing += d * damp(10, dt);
+      else if (mag > 0.2 || Math.abs(d) > 0.6) { const step = d * damp(Math.abs(d) < 0.25 ? 6 : 10, dt), cap = 9 * dt; /* gentle for small corrections (noise), brisk for real turns */ state.facing += Math.max(-cap, Math.min(cap, step)); state.facing = Math.atan2(Math.sin(state.facing), Math.cos(state.facing)); }
     }
     if (lift) state.speed = 0;
     if (state.speed > 0.02 && inCoast && coast) {
@@ -882,17 +891,37 @@ async function main() {
     if (aqLevel === 4) setPR(0.75);
   }
   // Per-frame motion recorder (QA): wall time, dt, player root, hips (mesh) world pos, camera pos, camera→target distance, player screen pos.
+  let legacyMotion = params.has('legacymotion'); // QA only: the M11 motion path, for before/after probes
   let rec: number[][] | null = null; const hipsBone = player.root.getObjectByName('Hips'); const recV = new THREE.Vector3();
   function recFrame(dt: number) {
     camera.updateMatrixWorld(); const hp = hipsBone ? hipsBone.getWorldPosition(recV).clone() : player.root.position.clone(); recV.copy(player.root.position).add(new THREE.Vector3(0, 1.1, 0)).project(camera);
-    rec!.push([performance.now(), dt, state.px, state.pz, hp.x, hp.z, camera.position.x, camera.position.y, camera.position.z, camera.position.distanceTo(camTarget), recV.x, recV.y, state.speed, state.facing, state.yaw]);
+    rec!.push([performance.now(), dt, player.root.position.x, player.root.position.z, hp.x, hp.z, camera.position.x, camera.position.y, camera.position.z, camera.position.distanceTo(player.root.position) , recV.x, recV.y, state.speed, player.root.rotation.y, state.yaw, camera.rotation.y]);
   }
-  function frame() {
+  // Fixed 60 Hz simulation + render interpolation. Frame dt comes from the vsync-aligned rAF timestamp (not from when the
+  // callback happens to start), so irregular JS start latency on phones no longer turns into uneven per-frame motion.
+  const FIXED = 1 / 60; let acc = 0, simT = 0, lastTs = -1, interpOn = false;
+  const ipP0 = new THREE.Vector3(), ipP1 = new THREE.Vector3(), ipC0 = new THREE.Vector3(), ipC1 = new THREE.Vector3(), ipQ0 = new THREE.Quaternion(), ipQ1 = new THREE.Quaternion(); let ipR0 = 0, ipR1 = 0;
+  function stepFrame(frameDt: number) {
+    if (legacyMotion) { update(frameDt, clock.elapsedTime); interpOn = false; return; }
+    if (simT === 0) { simT = clock.elapsedTime; acc = FIXED; } // first frame always simulates once (state/sky applied immediately)
+    acc += frameDt; let n = 0;
+    while (acc >= FIXED && n < 7) { ipP0.copy(player.root.position); ipR0 = player.root.rotation.y; ipC0.copy(camera.position); ipQ0.copy(camera.quaternion); simT += FIXED; update(FIXED, simT); acc -= FIXED; n++; }
+    if (n === 7) acc = Math.min(acc, FIXED);
+    ipP1.copy(player.root.position); ipR1 = player.root.rotation.y; ipC1.copy(camera.position); ipQ1.copy(camera.quaternion);
+    const a = acc / FIXED; interpOn = true;
+    if (ipP0.distanceToSquared(ipP1) > 9 || ipC0.distanceToSquared(ipC1) > 9 || cine || dawnCine) return; // teleports/cinematics: no blend
+    player.root.position.lerpVectors(ipP0, ipP1, a); let dr = ipR1 - ipR0; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); player.root.rotation.y = ipR0 + dr * a;
+    camera.position.lerpVectors(ipC0, ipC1, a); camera.quaternion.slerpQuaternions(ipQ0, ipQ1, a);
+  }
+  function unInterp() { if (!interpOn) return; player.root.position.copy(ipP1); player.root.rotation.y = ipR1; camera.position.copy(ipC1); camera.quaternion.copy(ipQ1); interpOn = false; }
+  function frame(ts?: number) {
     renderer.info.reset();
-    const dt = Math.min(0.1, clock.getDelta()), t = clock.elapsedTime;
-    if (!paused) update(dt, t); else if (!mapEl.hidden) { mapT -= dt; if (mapT <= 0) { mapT = 0.12; drawMap(t); } }
+    const cd = Math.min(0.1, clock.getDelta()), t = clock.elapsedTime;
+    let dt = cd; if (!legacyMotion && ts !== undefined) { dt = lastTs < 0 ? cd : Math.max(0, Math.min(0.1, (ts - lastTs) / 1000)); lastTs = ts; }
+    if (!paused) stepFrame(dt); else if (!mapEl.hidden) { mapT -= dt; if (mapT <= 0) { mapT = 0.12; drawMap(t); } }
     if (rec) recFrame(dt);
     if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : scene, camera);
+    unInterp();
     frames++; totalFrames++; fpsT += dt; if (fpsT > 0.5) { fps = frames / fpsT; adaptQuality(fpsT); frames = 0; fpsT = 0; if (fpsOn) fpsEl.textContent = `${fps.toFixed(0)} fps · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M tris · ${quality}${aqLevel ? ` · aq${aqLevel}` : ''}`; }
   }
   renderer.setAnimationLoop(frame);
@@ -975,7 +1004,10 @@ async function main() {
     get profile() { return profile; },
     get creating() { return creating; },
     talkLine() { return say('Wayfinder', LINES.wayfinder.greet, profile); },
-    recStart() { rec = []; }, recStop() { const r = rec; rec = null; return r; },
+    /** Phone-condition simulation through the real frame path (minus GPU): f = [vsync dt, callback-measured dt, stickX, stickY]. */
+    simFrames(fr: number[][]) { const id = stick.id; stick.id = 999; rec = []; for (const [vd, md, sx, sy] of fr) { stick.x = sx; stick.y = sy; stepFrame(legacyMotion ? md : vd); recFrame(vd); unInterp(); } stick.id = id; stick.x = stick.y = 0; const r = rec; rec = null; return r; },
+    setLegacyMotion(on: boolean) { legacyMotion = on; stickF.x = stickF.y = 0; acc = 0; },
+    recStart() { rec = [];}, recStop() { const r = rec; rec = null; return r; },
     /** Deterministic stepping: run update() with a given dt sequence while holding the stick at (sx, sy); returns recorder rows. */
     sim(dts: number[], sx: number, sy: number) { const id = stick.id; stick.id = 999; stick.x = sx; stick.y = sy; rec = []; let t = clock.elapsedTime; for (const d of dts) { t += d; const t0 = performance.now(); update(d, t); const t1 = performance.now(); recFrame(d); rec![rec!.length - 1].push(t1 - t0); } stick.id = id; stick.x = stick.y = 0; const r = rec; rec = null; return r; },
     warp(x: number, z: number) { state.px = x; state.pz = z; snapCam = true; },

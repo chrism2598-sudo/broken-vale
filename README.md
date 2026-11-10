@@ -97,3 +97,21 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - At 0 HP the Wayfinder pulls you to safety 34 m away. Your HP is restored and you keep all XP; the Warden resets.
 - `warden` is saved in `vale3d-save` and cleared by Reset. Menu → New character asks for confirmation when you have progress, then starts fresh progress in the character creator.
 - Screenshots: `?shot=warden`, `?shot=warden-windup`, `?shot=warden-defeated`. QA: `tools/qa-run.cjs` covers hits, recovery, defeat, persistence, reset and New character.
+
+## Hollow Beacon endgame, Journal & Map (Milestone 8)
+- **Unlock (Page logic):** the Updraft east of the Wind Shrine stays dormant until the four seals burn and the Chapter I card has played. Riding it also needs the Wind Shrine's Windward Blessing, as on the Page. Action/E there lifts you on a ~6 s flight to the floating isle.
+- **Puzzle:** four morning mirrors (Pale, Sun, Azure, Iron) stand around the beacon. Action turns a mirror N→E→S→W. The Unspent carving gives the Page's clue. Solution: Pale faces West, Sun faces South, Azure faces East, Iron faces South. An aligned mirror sends its coloured light into the hollow.
+- **Dawn ending:**
+  - A 9 s camera orbit climbs the beam while the world blends to sunrise:
+    - the sun turns warm and drops low in the east, giving long shadows;
+    - a sunrise sky shell fades in over the HDRI;
+    - IBL and background intensity are lowered;
+    - hemisphere and fog colours shift to peach;
+    - exposure lifts;
+    - the sky rift fades;
+    - the beam and shard turn gold.
+  - Then the ending card (Page text) appears and +60 XP is awarded once. The dawn persists, and turning mirrors afterwards gives nothing.
+  - Ride down from the mint ring at the western edge.
+- **Save:** `mirrors` and `beacon` are saved in `vale3d-save` and cleared by Reset and New character. Max XP is 315 (seals 100 + Chapter 80 + shrine 35 + Warden 40 + beacon 60). The Page's 335 also counts the Echo Grove (+20), which is not ported.
+- **Journal** (☰ Menu or J) shows live state for the seals and their clues, the shrine, the Warden and the beacon, plus lore lines from the Page. **Map** (☰ Menu or M) is a parchment top-down map drawn from the terrain, with landmarks, seals, the Updraft and isle, the player arrow and the current objective. Gameplay pauses while either is open; Esc, J or M closes it.
+- **Screenshot presets:** `?shot=beacon-puzzle`, `dawn`, `ending-card`, `journal`, `map`.

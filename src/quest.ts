@@ -3,14 +3,14 @@ import { SEALS, heightAt, WAYFINDER, type SealDef } from './world';
 import { fill, type Profile } from './dialogue';
 
 /** Save format (localStorage 'vale3d-save'). */
-export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean };
+export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean; mirrors: number[]; beacon: boolean };
 const KEY = 'vale3d-save';
 export const SEAL_XP = 25, QUEST_XP = 80;
 export const levelOf = (xp: number) => 1 + Math.floor(xp / 50);
 
 export function loadSave(): Save {
-  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.v === 1) return { v: 1, started: !!s.started, done: !!s.done, xp: Math.max(0, +s.xp || 0), seals: { ...s.seals }, runes: Array.isArray(s.runes) && s.runes.length === 3 ? s.runes.map((v: number) => ((v | 0) % 3 + 3) % 3) : [0, 0, 0], wind: !!s.wind, warden: !!s.warden }; } catch { /* corrupt → fresh */ }
-  return { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false };
+  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.v === 1) return { v: 1, started: !!s.started, done: !!s.done, xp: Math.max(0, +s.xp || 0), seals: { ...s.seals }, runes: Array.isArray(s.runes) && s.runes.length === 3 ? s.runes.map((v: number) => ((v | 0) % 3 + 3) % 3) : [0, 0, 0], wind: !!s.wind, warden: !!s.warden, mirrors: Array.isArray(s.mirrors) && s.mirrors.length === 4 ? s.mirrors.map((v: number) => ((v | 0) % 4 + 4) % 4) : [0, 0, 0, 0], beacon: !!s.beacon }; } catch { /* corrupt → fresh */ }
+  return { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false };
 }
 export function writeSave(s: Save) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode */ } }
 export function clearSave() { try { localStorage.removeItem(KEY); } catch { /* */ } }
@@ -29,7 +29,7 @@ export const WAYFINDER_LINES = {
   ],
   complete: [
     'Do you see it, {name}? The Hollow Beacon answers — all four seals burn, and the wild vale stirs once more!',
-    'The Hollow Beacon on the floating isle still keeps an unspent morning. That road is for another day, {name}.',
+    'The Hollow Beacon on the floating isle still keeps an unspent morning. Ride the Updraft east of the Wind Shrine once its Windward Blessing knows your name.',
     'You are a Vale Walker. +80 XP',
   ],
   after: [

@@ -19,7 +19,9 @@ import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLin
 import { addRimFill } from './shading';
 import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
 import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, type Kind, type TreeInst } from './nature';
-import { makeFloatingIsland, makeLanternStaff, ISLAND_POS } from './island';
+import { makeFloatingIsland, makeLanternStaff, ISLAND_POS, islandTopY } from './island';
+import { UPDRAFT, MIRRORS, MORNING_DIRS, DIR_ARROWS, BEACON_XP, BEACON_L, CLUE_L, RETURN_L, LANDING_L, ISLAND_WALK_R, CLUE_LINES, UPDRAFT_DORMANT, UPDRAFT_NEEDS_WIND, ENDING_TITLE, ENDING_LINES, ENDING_REWARD, WAYFINDER_BEACON, mirrorsMatch, makeHollowPuzzle, makeUpdraft, makeDawnSky } from './beacon';
+import { buildJournal, drawValeMap, MAPBOX } from './journal';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep } from './world';
 
@@ -53,6 +55,8 @@ scene.fog = new THREE.FogExp2(fogColor, HIGH ? 0.0034 : 0.0042);
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1500);
 
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, -0.64).normalize(); // late-morning sun ahead-left, backlighting the meadow
+const DAWN_DIR = new THREE.Vector3(0.9, 0.16, 0.12).normalize(); // released dawn: a low sun in the east, behind the floating isle from the meadow
+const sunDir = SUN_DIR.clone();
 const sun = new THREE.DirectionalLight('#fff1d6', 2.6);
 sun.castShadow = true;
 sun.shadow.mapSize.set(HIGH ? 2048 : 1024, HIGH ? 2048 : 1024);
@@ -127,6 +131,11 @@ async function main() {
   const plinthMat = new THREE.MeshStandardMaterial({ color: '#cfc3a8', roughness: 0.9 }); addRimFill(plinthMat, { fill: 0.2, rim: 0.2 });
   const shrine = makeWindShrine(rock, { runes: save.runes, solved: save.wind }); scene.add(shrine.group);
   const warden = makeWarden({ rock, metal: metalT }); scene.add(warden.group); SOLIDS.push({ x: WARDEN.x, z: WARDEN.z, r: 1.5 });
+  // Hollow Beacon endgame: the Updraft, the four morning mirrors on the island, and the sunrise sky shell.
+  const updraft = makeUpdraft(rock); scene.add(updraft.group); updraft.setActive(save.done, true);
+  const hollow = makeHollowPuzzle(rock, islandTopY, { mirrors: save.mirrors, solved: save.beacon }); island.group.add(hollow.group);
+  const dawnSky = makeDawnSky(DAWN_DIR); scene.add(dawnSky.mesh);
+  island.solve(save.beacon);
   for (const r of RUNES) SOLIDS.push({ x: r.x, z: r.z, r: 0.9 }); SOLIDS.push({ x: TABLET.x, z: TABLET.z, r: 1.2 });
   const seals = SEALS.map((d) => { const o = new SealObject(d, plinthMat, !!save.seals[d.id]); scene.add(o.group); SOLIDS.push({ x: d.x, z: d.z, r: 1.3 }); return o; });
   const rift = makeRift();
@@ -182,7 +191,13 @@ async function main() {
   // ---------- player / camera state ----------
   const state = { yaw: Math.PI, pitch: 0.2, dist: 7.4, speed: 0, facing: Math.PI, px: SPAWN.x, pz: SPAWN.z };
   const keys: Record<string, boolean> = {};
-  addEventListener('keydown', (e) => { if (creating || (e.target as HTMLElement).tagName === 'INPUT') return; keys[e.code] = true; if (e.code === 'KeyE') interact(); });
+  let paused = false;
+  addEventListener('keydown', (e) => {
+    if (creating || (e.target as HTMLElement).tagName === 'INPUT') return;
+    if (paused) { if (e.code === 'Escape' || e.code === 'KeyJ' || e.code === 'KeyM') closeSheets(); return; }
+    if (e.code === 'KeyJ' && !e.repeat) { openSheet('journal'); return; } if (e.code === 'KeyM' && !e.repeat) { openSheet('map'); return; }
+    keys[e.code] = true; if (e.code === 'KeyE') interact();
+  });
   addEventListener('keyup', (e) => { keys[e.code] = false; });
   // Joystick.
   const joy = document.getElementById('joy')!, knob = document.getElementById('knob')!;
@@ -220,7 +235,7 @@ async function main() {
   function talkWayfinder() {
     wayfinder.play('Wave');
     const n = sealCount(save);
-    if (save.done) return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.after, profile));
+    if (save.done) return openDialog('Wayfinder', fillLines([WAYFINDER_LINES.after[0], save.beacon ? WAYFINDER_BEACON.done : WAYFINDER_BEACON.open, WAYFINDER_LINES.after[1]], profile));
     if (!save.started) { save.started = true; persist(); toast('Quest: The Four Seals'); return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.start, profile)); }
     if (n < 4) return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.progress, profile, { n }));
     startFinale();
@@ -258,13 +273,93 @@ async function main() {
   type Inter = { label: string; act: () => void; x?: number; z?: number; combat?: boolean };
   let camFocus: { x: number; z: number; t: number } | null = null;
   function nearestInteract(): Inter | null {
+    if (lift || dawnCine) return null;
+    if (onIsland) return islandInteract();
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 3.8) return { label: !save.started ? 'Talk · begin quest' : save.done ? 'Talk' : `Talk · seals ${sealCount(save)}/4`, act: talkWayfinder };
     for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return { label: `Claim ${o.def.name}`, act: () => claimSeal(o), x: o.def.x, z: o.def.z };
     if (Math.hypot(state.px - TABLET.x, state.pz - TABLET.z) < 2.8) return { label: 'Read Wind Tablet', act: () => openDialog('Wind Shrine', TABLET_LINES), x: TABLET.x, z: TABLET.z };
+    if (Math.hypot(state.px - UPDRAFT.x, state.pz - UPDRAFT.z) < 4.6) return { label: !save.done ? 'Updraft · dormant' : !save.wind ? 'Updraft · needs Windward Blessing' : 'Ride the Updraft ↑', act: useUpdraft, x: UPDRAFT.x, z: UPDRAFT.z };
     if (!save.warden && wardenDist() < W_MELEE) return { label: atkCd > 0 ? `Wait ${atkCd.toFixed(1)}s` : `Attack Warden · ${wd.hp}/${HP_MAX}`, act: attackWarden, x: WARDEN.x, z: WARDEN.z, combat: true };
     for (let i = 0; i < RUNES.length; i++) if (Math.hypot(state.px - RUNES[i].x, state.pz - RUNES[i].z) < 2.6) { const v = save.runes[i]; return { label: save.wind ? `${RUNES[i].name} · ${RUNE_GLYPHS[v]}` : `Turn ${RUNES[i].name} · ${RUNE_GLYPHS[v]} ${RUNE_LABELS[v]}`, act: () => turnRune(i), x: RUNES[i].x, z: RUNES[i].z }; }
     return null;
+  }
+  // ---------- Hollow Beacon: Updraft lift, morning mirrors, dawn ending ----------
+  let onIsland = false, lift: { t: number; dur: number; down: boolean; p0: THREE.Vector3 } | null = null, dawnCine: { t: number; a0: number } | null = null, dawnDelay = -1;
+  const ray = new THREE.Raycaster(), rv = new THREE.Vector3(), DOWN = new THREE.Vector3(0, -1, 0), lp = new THREE.Vector3();
+  function islandY(x: number, z: number): number | null { ray.set(rv.set(x, 400, z), DOWN); ray.far = 600; const h = ray.intersectObject(island.top, false)[0]; return h ? h.point.y : null; }
+  const toLocal = (x: number, z: number, y = player.root.position.y) => island.group.worldToLocal(lp.set(x, y, z));
+  const toWorld = (lx: number, lz: number) => island.group.localToWorld(new THREE.Vector3(lx, islandTopY(lx, lz), lz));
+  const aligned = () => save.mirrors.filter((v, i) => v === MIRRORS[i].solve).length;
+  const ISOLIDS = [{ x: BEACON_L.x, z: BEACON_L.z, r: 4.6 }, { x: CLUE_L.x, z: CLUE_L.z, r: 1.1 }, ...MIRRORS.map((m) => ({ x: BEACON_L.x + m.dx, z: BEACON_L.z + m.dz, r: 1.15 }))];
+  function islandConstrain(nx: number, nz: number): [number, number] {
+    const L = toLocal(nx, nz); const r = Math.hypot(L.x, L.z); if (r > ISLAND_WALK_R) { L.x *= ISLAND_WALK_R / r; L.z *= ISLAND_WALK_R / r; }
+    for (const o of ISOLIDS) { const dx = L.x - o.x, dz = L.z - o.z, dd = Math.hypot(dx, dz); if (dd < o.r) { L.x = o.x + dx / dd * o.r; L.z = o.z + dz / dd * o.r; } }
+    const w = island.group.localToWorld(L); return [w.x, w.z];
+  }
+  function islandInteract(): Inter | null {
+    const L = toLocal(state.px, state.pz);
+    for (let i = 0; i < MIRRORS.length; i++) {
+      const m = MIRRORS[i], mx = BEACON_L.x + m.dx, mz = BEACON_L.z + m.dz; if (Math.hypot(L.x - mx, L.z - mz) > 2.7) continue;
+      const v = save.mirrors[i], w = toWorld(mx, mz);
+      if (save.beacon) return { label: `${m.name} mirror · ${MORNING_DIRS[v]} ✓`, act: () => toast('The mirror holds its morning.', 2), x: w.x, z: w.z };
+      return { label: `Turn ${m.name} mirror · ${DIR_ARROWS[v]} ${MORNING_DIRS[v]}${v === m.solve ? ' ✓' : ''}`, act: () => turnMirror(i), x: w.x, z: w.z };
+    }
+    if (Math.hypot(L.x - CLUE_L.x, L.z - CLUE_L.z) < 2.6) { const w = toWorld(CLUE_L.x, CLUE_L.z); return { label: 'Read the Unspent carving', act: () => openDialog('Hollow Beacon', CLUE_LINES), x: w.x, z: w.z }; }
+    if (Math.hypot(L.x - RETURN_L.x, L.z - RETURN_L.z) < 2.8) return { label: 'Ride down ↓', act: () => beginLift(true) };
+    return null;
+  }
+  function useUpdraft() {
+    if (!save.done) return openDialog('Updraft', fillLines(UPDRAFT_DORMANT, profile));
+    if (!save.wind) return openDialog('Updraft', fillLines(UPDRAFT_NEEDS_WIND, profile));
+    beginLift(false);
+  }
+  function beginLift(down: boolean) {
+    lift = { t: 0, dur: down ? 5 : 6, down, p0: player.root.position.clone() }; state.speed = 0; for (const k of Object.keys(keys)) keys[k] = false;
+    toast(down ? `${profile.name} glides back to the meadow crossing…` : `The Updraft carries ${profile.name} toward the held morning…`, 3);
+  }
+  const bz = new THREE.Vector3(), b1 = new THREE.Vector3(), b2 = new THREE.Vector3(), b3 = new THREE.Vector3();
+  function liftPoint(e: number, out: THREE.Vector3) {
+    const l = lift!, p0 = l.p0;
+    if (!l.down) { b3.copy(toWorld(LANDING_L.x, LANDING_L.z)); b1.set(UPDRAFT.x, p0.y + 46, UPDRAFT.z); const dx = UPDRAFT.x - b3.x, dz = UPDRAFT.z - b3.z, d = Math.hypot(dx, dz); b2.set(b3.x + dx / d * 18, b3.y + 12, b3.z + dz / d * 18); }
+    else { b3.set(UPDRAFT.x + 2.4, heightAt(UPDRAFT.x + 2.4, UPDRAFT.z + 3.2), UPDRAFT.z + 3.2); const dx = UPDRAFT.x - p0.x, dz = UPDRAFT.z - p0.z, d = Math.hypot(dx, dz); b1.set(p0.x + dx / d * 16, p0.y + 7, p0.z + dz / d * 16); b2.set(UPDRAFT.x, b3.y + 30, UPDRAFT.z); }
+    const u = 1 - e; out.copy(p0).multiplyScalar(u * u * u).addScaledVector(b1, 3 * u * u * e).addScaledVector(b2, 3 * u * e * e).addScaledVector(b3, e * e * e); return out;
+  }
+  function turnMirror(i: number) {
+    if (save.beacon || dawnCine) return;
+    const m = MIRRORS[i], v = (save.mirrors[i] + 1) % 4; save.mirrors[i] = v; persist(); hollow.setMirror(i, v);
+    toast(`${m.name} mirror now faces ${MORNING_DIRS[v]} ${DIR_ARROWS[v]}${v === m.solve ? ' · its light reaches the hollow' : ''} · ${aligned()}/4`, 2.2);
+    if (mirrorsMatch(save.mirrors)) dawnDelay = 0.9;
+  }
+  function startDawn() {
+    if (dawnCine || save.beacon) return;
+    const bw = island.beaconWorld(); dawnCine = { t: 0, a0: Math.atan2(camera.position.x - bw.x, camera.position.z - bw.z) };
+    island.solve(true); hollow.solve(true); document.body.classList.add('cine'); actBtn.hidden = true; for (const k of Object.keys(keys)) keys[k] = false;
+    toast('The Unspent Morning is opening…', 4);
+  }
+  const endEl = document.getElementById('ending')!;
+  document.getElementById('endok')!.onclick = () => { endEl.hidden = true; toast('Morning-Bearer · ride the return current at the western island edge.', 5); };
+  function finishDawn() {
+    dawnCine = null; document.body.classList.remove('cine');
+    const lv = levelOf(save.xp);
+    if (!save.beacon) { save.beacon = true; save.xp += BEACON_XP; persist(); }
+    document.getElementById('endtitle')!.textContent = ENDING_TITLE;
+    const box = document.getElementById('endlines')!; box.textContent = '';
+    for (const l of fillLines(ENDING_LINES, profile)) { const pEl = document.createElement('p'); pEl.textContent = l; box.appendChild(pEl); }
+    document.getElementById('endxp')!.textContent = `${ENDING_REWARD} · Level ${levelOf(save.xp)}${levelOf(save.xp) > lv ? ' (up!)' : ''}`;
+    endEl.hidden = false;
+  }
+  // ---------- Dawn: sun colour/angle, sky shell, IBL/exposure and fog blend ----------
+  const DC = { sun0: new THREE.Color('#fff1d6'), sun1: new THREE.Color('#ffb07a'), fog0: new THREE.Color('#a8bfd2'), fog1: new THREE.Color('#e2b29c'), hs0: new THREE.Color('#cfe0ff'), hs1: new THREE.Color('#ffc6a6'), hg0: new THREE.Color('#4b5a2e'), hg1: new THREE.Color('#5e4634') };
+  const fogD0 = (scene.fog as THREE.FogExp2).density; let dawnK = -1;
+  function applyDawn(k: number) {
+    if (Math.abs(k - dawnK) < 1e-3) return; dawnK = k;
+    sun.color.copy(DC.sun0).lerp(DC.sun1, k); sun.intensity = 2.6 + 0.35 * k; sunDir.copy(SUN_DIR).lerp(DAWN_DIR, k).normalize();
+    hemi.color.copy(DC.hs0).lerp(DC.hs1, k); hemi.groundColor.copy(DC.hg0).lerp(DC.hg1, k); hemi.intensity = 0.25 + 0.3 * k;
+    const fog = scene.fog as THREE.FogExp2; fog.color.copy(DC.fog0).lerp(DC.fog1, k); fog.density = fogD0 * (1 + 0.18 * k);
+    renderer.toneMappingExposure = 0.92 + 0.1 * k; scene.environmentIntensity = 0.85 - 0.3 * k; scene.backgroundIntensity = 0.95 - 0.4 * k;
+    (rift.material as THREE.ShaderMaterial).uniforms.uFade.value = 1 - 0.9 * k; island.setDawn(k);
+    const wu = ((water.mesh as THREE.Mesh).material as THREE.ShaderMaterial).uniforms; if (wu?.sunColor) { wu.sunColor.value.copy(sun.color); wu.sunDirection.value.copy(sunDir); }
   }
   // ---------- Vale Warden (optional) ----------
   const wd = { hp: HP_MAX, phase: save.warden ? 3 : 0, teleT: 0, recT: 0, sx: WARDEN.x, sz: WARDEN.z, awake: false, warned: false, freeze: -1 };
@@ -287,7 +382,7 @@ async function main() {
   function tickWarden(dt: number) {
     atkCd = Math.max(0, atkCd - dt); swingT = Math.max(0, swingT - dt);
     if (save.warden) { wd.phase = 3; return; }
-    if (talking || cine || creating) return;
+    if (talking || cine || creating || dawnCine || lift || onIsland) return;
     const dist = wardenDist();
     if (dist < W_WAKE) { if (!wd.warned) { wd.warned = true; toast('Warden stirs — step out of the ring', 3.2); } wd.awake = true; }
     else if (dist > W_SLEEP) { wd.awake = false; if (wd.phase === 1 || wd.phase === 2) { wd.phase = 0; wd.teleT = 0; wd.recT = 0; } if (playerHp < HP_MAX && dist > W_SLEEP + 15) playerHp = HP_MAX; }
@@ -320,10 +415,10 @@ async function main() {
       openDialog('Wind Shrine', SOLVED_LINES);
     } else { persist(); shrine.setRune(i, v, true); toast(`${RUNES[i].name} → ${RUNE_GLYPHS[v]} ${RUNE_LABELS[v]} · not yet`, 2.2); }
   }
-  function interact() { if (creating || cine || !chapterEl.hidden) return; if (talking) { advance(); return; } const it = nearestInteract(); if (!it) return; if (it.x !== undefined && it.z !== undefined) camFocus = { x: it.x, z: it.z, t: 1.4 }; it.act(); }
+  function interact() { if (creating || cine || dawnCine || lift || paused || !chapterEl.hidden || !endEl.hidden) return; if (talking) { advance(); return; } const it = nearestInteract(); if (!it) return; if (it.x !== undefined && it.z !== undefined) camFocus = { x: it.x, z: it.z, t: 1.4 }; it.act(); }
   function talk() { interact(); }
   actBtn.onclick = (e) => { e.stopPropagation(); interact(); };
-  addEventListener('keydown', (e) => { if (creating || (e.target as HTMLElement).tagName === 'INPUT') return; if (talking && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.preventDefault(); if (e.code === 'Escape') { dq = []; } advance(); } });
+  addEventListener('keydown', (e) => { if (creating || paused || (e.target as HTMLElement).tagName === 'INPUT') return; if (talking && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.preventDefault(); if (e.code === 'Escape') { dq = []; } advance(); } });
   renderer.domElement.addEventListener('dblclick', talk);
   // Menu: quality, new character, FPS, reset (tap twice).
   const menuBtn = document.getElementById('menubtn')!, menuEl = document.getElementById('menu')!, resetBtn = document.getElementById('reset')!;
@@ -340,18 +435,28 @@ async function main() {
   const wArrow = document.getElementById('warrow')!, wText = document.getElementById('wtext')!;
   const qline = document.getElementById('qline')!, qstats = document.getElementById('qstats')!, carrow = document.getElementById('carrow')!, ctext = document.getElementById('ctext')!;
   let hudT = 0;
+  function objective(): { name: string; x: number; z: number } {
+    const n = sealCount(save);
+    if (save.started && n < 4) { let bd = 1e9, t = { name: '', x: 0, z: 0 }; for (const d of SEALS) if (!save.seals[d.id]) { const dd = Math.hypot(d.x - state.px, d.z - state.pz); if (dd < bd) { bd = dd; t = { name: `${d.name} · ${d.at}`, x: d.x, z: d.z }; } } return t; }
+    if (save.done && !save.beacon) {
+      if (onIsland) { const w = toWorld(BEACON_L.x, BEACON_L.z); return { name: `Hollow Beacon · mirrors ${aligned()}/4`, x: w.x, z: w.z }; }
+      if (!save.wind) return { name: 'Wind Shrine · Windward Blessing', x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z };
+      return { name: 'Updraft · Hollow Beacon', x: UPDRAFT.x, z: UPDRAFT.z };
+    }
+    if (onIsland) { const w = toWorld(RETURN_L.x, RETURN_L.z); return { name: 'Ride down · western edge', x: w.x, z: w.z }; }
+    return { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z };
+  }
   function updateHud(dt: number) {
     hudT -= dt; if (hudT > 0) return; hudT = 0.15;
     const n = sealCount(save);
-    qline.textContent = !save.started ? 'Speak with the Wayfinder' : save.done ? 'Vale Walker · the seals burn again' : n < 4 ? `The Four Seals · ${n}/4` : 'All four seals held — return to the Wayfinder';
+    qline.textContent = !save.started ? 'Speak with the Wayfinder' : !save.done ? (n < 4 ? `The Four Seals · ${n}/4` : 'All four seals held — return to the Wayfinder') : !save.beacon ? (onIsland ? `The Unspent Morning · mirrors ${aligned()}/4` : 'The Unspent Morning · ride the Updraft') : 'Morning-Bearer · the vale keeps its dawn';
     qstats.textContent = `Lv ${levelOf(save.xp)} · ${save.xp} XP · ${SEALS.map((d) => (save.seals[d.id] ? '◆' : '◇')).join('')}`;
-    let tgt = { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z };
-    if (save.started && n < 4) { let bd = 1e9; for (const d of SEALS) if (!save.seals[d.id]) { const dd = Math.hypot(d.x - state.px, d.z - state.pz); if (dd < bd) { bd = dd; tgt = { name: `${d.name} · ${d.at}`, x: d.x, z: d.z }; } } }
+    const tgt = objective();
     const dx = tgt.x - state.px, dz = tgt.z - state.pz, dist = Math.hypot(dx, dz);
     const fx = -Math.sin(state.yaw), fz = -Math.cos(state.yaw), rx = Math.cos(state.yaw), rz = -Math.sin(state.yaw);
     const sx = dx * rx + dz * rz, sy = dx * fx + dz * fz;
     carrow.style.transform = `rotate(${(Math.atan2(-sy, sx) * 180 / Math.PI).toFixed(0)}deg)`;
-    ctext.textContent = save.done && dist < 6 ? 'Explore freely' : `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}`;
+    ctext.textContent = save.beacon && !onIsland && dist < 6 ? 'Explore freely' : `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}`;
     // Optional Wind Shrine locator line.
     { const ws = { x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z }; const ddx = ws.x - state.px, ddz = ws.z - state.pz, dd = Math.hypot(ddx, ddz);
       const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
@@ -362,7 +467,7 @@ async function main() {
       wdText.textContent = save.warden ? "Warden dormant · Warden's Crest" : `Vale Warden (optional) · ${dd < 12 ? 'here' : Math.round(dd) + ' m'}`;
       const show = !save.warden && (wd.awake || playerHp < HP_MAX);
       combatEl.hidden = !show; if (show) { hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(HP_MAX - playerHp); whpEl.textContent = '■'.repeat(wd.hp) + '□'.repeat(HP_MAX - wd.hp); combatEl.classList.toggle('alert', wd.phase === 1); } }
-    const it = talking || cine ? null : nearestInteract();
+    const it = talking || cine || dawnCine ? null : nearestInteract();
     actBtn.hidden = !it; if (it) actBtn.textContent = it.label; actBtn.classList.toggle('combat', !!it?.combat); actBtn.style.setProperty('--cd', it?.combat ? (atkCd / PLAYER_ATK_CD).toFixed(2) : '0');
     document.getElementById('hint')!.textContent = it ? `E / Action: ${it.label}` : 'Drag to look · WASD / stick to move · Shift walks';
   }
@@ -394,7 +499,7 @@ async function main() {
   };
   // New character = fresh progress (with a confirm when there is progress to lose).
   const ncBox = document.getElementById('ncconfirm')!;
-  const hasProgress = () => { const sv = loadSave(); return sv.started || sv.xp > 0 || sv.wind || sv.warden || Object.keys(sv.seals).length > 0 || sv.runes.some((v) => v !== 0); };
+  const hasProgress = () => { const sv = loadSave(); return sv.started || sv.xp > 0 || sv.wind || sv.warden || sv.beacon || sv.mirrors.some((v) => v !== 0) || Object.keys(sv.seals).length > 0 || sv.runes.some((v) => v !== 0); };
   document.getElementById('newchar')!.onclick = () => { if (hasProgress()) ncBox.hidden = !ncBox.hidden; else { document.getElementById('menu')!.hidden = true; openCreate(); } };
   document.getElementById('ncno')!.onclick = () => { ncBox.hidden = true; };
   document.getElementById('ncyes')!.onclick = () => { clearSave(); try { sessionStorage.setItem('vale3d-newchar', '1'); } catch { /* */ } location.reload(); };
@@ -420,7 +525,7 @@ async function main() {
     lastDt = dt;
     // Input → desired velocity in camera space.
     let ix = 0, iz = 0;
-    if (talking || cine) { for (const k of Object.keys(keys)) keys[k] = false; }
+    if (talking || cine || dawnCine || lift) { for (const k of Object.keys(keys)) keys[k] = false; }
     if (keys.KeyW || keys.ArrowUp) iz -= 1; if (keys.KeyS || keys.ArrowDown) iz += 1;
     if (keys.KeyA || keys.ArrowLeft) ix -= 1; if (keys.KeyD || keys.ArrowRight) ix += 1;
     let mag = Math.min(1, Math.hypot(ix, iz)); if (mag > 0) { const l = Math.hypot(ix, iz); ix /= l; iz /= l; }
@@ -435,7 +540,10 @@ async function main() {
       let d = want - state.facing; d = Math.atan2(Math.sin(d), Math.cos(d));
       state.facing += d * Math.min(1, dt * 10);
     }
-    if (state.speed > 0.02) {
+    if (lift) state.speed = 0;
+    if (state.speed > 0.02 && onIsland) {
+      [state.px, state.pz] = islandConstrain(state.px + Math.sin(state.facing) * state.speed * dt, state.pz + Math.cos(state.facing) * state.speed * dt);
+    } else if (state.speed > 0.02) {
       let nx = state.px + Math.sin(state.facing) * state.speed * dt, nz = state.pz + Math.cos(state.facing) * state.speed * dt;
       for (const s of solids) { const dx = nx - s.x, dz = nz - s.z, dd = Math.hypot(dx, dz); if (dd < s.r) { nx = s.x + dx / dd * s.r; nz = s.z + dz / dd * s.r; } }
       const R = 235; const rr = Math.hypot(nx, nz); if (rr > R) { nx *= R / rr; nz *= R / rr; }
@@ -443,7 +551,16 @@ async function main() {
       if (Math.abs(nx - creekX(nz)) < creekHalf(nz)) { nx = state.px + (nx - state.px) * 0.5; nz = state.pz + (nz - state.pz) * 0.5; }
       state.px = nx; state.pz = nz;
     }
-    const gy = Math.max(heightAt(state.px, state.pz), WATER_Y - 0.7);
+    let gy: number;
+    if (lift) {
+      lift.t += dt; const u = Math.min(1, lift.t / lift.dur), e = u * u * (3 - 2 * u);
+      liftPoint(e, bz); const ahead = liftPoint(Math.min(1, e + 0.02), new THREE.Vector3());
+      if (Math.hypot(ahead.x - bz.x, ahead.z - bz.z) > 0.05) { const want = Math.atan2(ahead.x - bz.x, ahead.z - bz.z); let d = want - state.facing; d = Math.atan2(Math.sin(d), Math.cos(d)); state.facing += d * Math.min(1, dt * 3); let dy = state.facing + Math.PI - state.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); state.yaw += dy * Math.min(1, dt * 1.6); }
+      state.pitch += (0.3 - state.pitch) * Math.min(1, dt * 2);
+      state.px = bz.x; state.pz = bz.z; gy = bz.y;
+      if (u >= 1) { const down = lift.down; lift = null; onIsland = !down; hudT = 0; if (onIsland) toast(save.beacon ? 'The held morning is spent · ride down from the western edge.' : 'Turn the four morning mirrors · read the Unspent carving.', 4); }
+    } else if (onIsland) gy = islandY(state.px, state.pz) ?? player.root.position.y;
+    else gy = Math.max(heightAt(state.px, state.pz), WATER_Y - 0.7);
     player.root.position.set(state.px, gy, state.pz);
     player.root.rotation.y = state.facing;
     player.setSpeed(state.speed, dt);
@@ -462,10 +579,21 @@ async function main() {
     const back = new THREE.Vector3(Math.sin(state.yaw) * cp, sp, Math.cos(state.yaw) * cp);
     const right = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
     camPos.copy(camTarget).addScaledVector(back, state.dist).addScaledVector(right, 0.65);
-    const floor = heightAt(camPos.x, camPos.z) + 0.6; if (camPos.y < floor) camPos.y = floor;
+    const floor = (onIsland || lift ? (islandY(camPos.x, camPos.z) ?? -1e9) : heightAt(camPos.x, camPos.z)) + 0.6; if (camPos.y < floor) camPos.y = floor;
     if (snapCam) { camera.position.copy(camPos); snapCam = false; } else camera.position.lerp(camPos, Math.min(1, dt * 8));
     tmp.copy(camTarget).addScaledVector(right, 0.65); tmp.y += 0.15;
     if (finaleDelay > 0) { finaleDelay -= dt; if (finaleDelay <= 0) startFinale(); }
+    if (dawnDelay > 0) { dawnDelay -= dt; if (dawnDelay <= 0) startDawn(); }
+    if (onIsland && !lift && !dawnCine && !save.beacon && dawnDelay <= 0 && mirrorsMatch(save.mirrors)) startDawn();
+    if (dawnCine) {
+      // The Unspent Morning: orbit out from the beacon and climb the beam while the sky turns to sunrise.
+      dawnCine.t += dt; const u = Math.min(1, dawnCine.t / 9), e = u * u * (3 - 2 * u), kin = THREE.MathUtils.smoothstep(dawnCine.t, 0, 1.4);
+      const bw = island.beaconWorld(), a = dawnCine.a0 + e * 1.35, r = 12 + 22 * e;
+      const pos = new THREE.Vector3(bw.x + Math.sin(a) * r, bw.y - 3 + 12 * e, bw.z + Math.cos(a) * r);
+      camera.position.lerp(pos, kin); tmp.lerp(bw.clone().add(new THREE.Vector3(0, 1 + 16 * e, 0)), kin);
+      if (u >= 1) finishDawn();
+    }
+    applyDawn(save.beacon ? 1 : dawnCine ? THREE.MathUtils.smoothstep(dawnCine.t, 1.2, 7.6) : 0);
     if (cine) {
       // Pan: rise and pull back while the gaze swings from the hero to the waking beacon, hold, then return.
       if (cine.hold < 0 || cine.t < cine.hold) cine.t += dt;
@@ -484,9 +612,13 @@ async function main() {
 
   function tick(t: number, gy: number) {
     // Sun shadow frustum follows the player (fitted).
-    sun.position.copy(camTarget).addScaledVector(SUN_DIR, 120);
+    sun.position.copy(camTarget).addScaledVector(sunDir, 120);
     sun.target.position.copy(camTarget).addScaledVector(new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw)), SH * 0.55);
-    sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 120);
+    sun.position.copy(sun.target.position).addScaledVector(sunDir, 120);
+    dawnSky.mesh.position.copy(camera.position); dawnSky.set(Math.max(0, dawnK), t);
+    const aloft = onIsland || !!lift; grassField.mesh.visible = !aloft; grassFar.mesh.visible = HIGH && !aloft;
+    if (onIsland) { const L = toLocal(state.px, state.pz); island.treesNear(L.x, L.z); } else island.treesNear(1e4, 1e4);
+    updraft.update(t, lastDt); hollow.update(t, lastDt); updraft.setActive(save.done);
     treeField.update(state.px, state.pz);
     if (Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y) > (HIGH ? 9 : 6)) { grassField.recenter(state.px, state.pz); grassFar.recenter(state.px, state.pz); }
     for (const gf of [grassField, grassFar]) { gf.uniforms.uTime.value = t; gf.uniforms.uPlayer.value.set(state.px, gy, state.pz); }
@@ -499,6 +631,36 @@ async function main() {
     vignette.uniforms.uTime.value = t % 100;
   }
 
+  // ---------- Journal & Map (☰ Menu, J / M): gameplay pauses while open ----------
+  const jEl = document.getElementById('journal')!, mapEl = document.getElementById('mapov')!, mapCv = document.getElementById('mapcv') as HTMLCanvasElement;
+  let mapT = 0;
+  function renderJournal() {
+    const j = buildJournal(save, profile, onIsland);
+    document.getElementById('jtitle')!.textContent = j.title; document.getElementById('jsub')!.textContent = j.sub;
+    const body = document.getElementById('jbody')!; body.textContent = '';
+    for (const sec of j.sections) {
+      const h = document.createElement('h3'); h.textContent = sec.h; body.appendChild(h);
+      const ul = document.createElement('ul');
+      for (const it of sec.items) { const li = document.createElement('li'); li.textContent = it.t; if (it.done) li.className = 'done'; if (it.lore) li.className = 'lore'; ul.appendChild(li); }
+      body.appendChild(ul);
+    }
+  }
+  function drawMap(t: number) {
+    const maxW = Math.min(560, innerWidth - 24) - 20, maxH = innerHeight - 140, ar = (MAPBOX.z1 - MAPBOX.z0) / (MAPBOX.x1 - MAPBOX.x0);
+    const w = Math.floor(Math.min(maxW, maxH / ar)), h = Math.floor(w * ar);
+    drawValeMap(mapCv, w, h, { player: { x: state.px, z: state.pz, facing: state.facing }, target: save.started ? objective() : { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z }, save, onIsland, t });
+  }
+  function openSheet(which: 'journal' | 'map') {
+    if (creating || cine || dawnCine || lift) return;
+    closeSheets(); setMenu(false);
+    paused = true; for (const k of Object.keys(keys)) keys[k] = false; stick.id = -1; stick.x = stick.y = 0; knob.style.transform = ''; state.speed = 0;
+    if (which === 'journal') { renderJournal(); jEl.hidden = false; } else { mapEl.hidden = false; drawMap(clock.elapsedTime); }
+    document.body.classList.add('sheet');
+  }
+  function closeSheets() { jEl.hidden = true; mapEl.hidden = true; paused = false; document.body.classList.remove('sheet'); clock.getDelta(); }
+  document.getElementById('jbtn')!.onclick = () => openSheet('journal');
+  document.getElementById('mbtn')!.onclick = () => openSheet('map');
+  document.getElementById('jclose')!.onclick = closeSheets; document.getElementById('mclose')!.onclick = closeSheets;
   // On-screen FPS readout (corner chip; tap it or press F to toggle; remembered).
   const fpsEl = document.getElementById('fps')!;
   let fpsOn = params.has('fps') || localStorage.getItem('vale3d-fps') === '1';
@@ -510,7 +672,7 @@ async function main() {
   function frame() {
     renderer.info.reset();
     const dt = Math.min(0.1, clock.getDelta()), t = clock.elapsedTime;
-    update(dt, t);
+    if (!paused) update(dt, t); else if (!mapEl.hidden) { mapT -= dt; if (mapT <= 0) { mapT = 0.12; drawMap(t); } }
     if (composer) composer.render(); else renderer.render(scene, camera);
     frames++; totalFrames++; fpsT += dt; if (fpsT > 0.5) { fps = frames / fpsT; frames = 0; fpsT = 0; if (fpsOn) fpsEl.textContent = `${fps.toFixed(0)} fps · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M tris · ${quality}`; }
   }
@@ -543,14 +705,24 @@ async function main() {
       if (name === 'shrine' || name === 'shrine-awake') { state.px = TABLET.x + 2.2; state.pz = TABLET.z + 13; state.facing = Math.PI; state.yaw = 0.16; state.pitch = 0.06; state.dist = 12; }
       if (name === 'warden' || name === 'warden-windup') { const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz), off = name === 'warden' ? 7 : 3; state.px = WARDEN.x + dx / d * off + (name === 'warden' ? 1.5 : 0); state.pz = WARDEN.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + (name === 'warden' ? 0.35 : 0.3); state.pitch = name === 'warden' ? 0.12 : 0.02; state.dist = name === 'warden' ? 7 : 8.5; wd.freeze = name === 'warden' ? 0 : 0.7; wd.awake = true; wd.warned = true; }
       if (name === 'warden-defeated') { save.warden = true; save.xp = 40; wd.phase = 3; const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz); state.px = WARDEN.x + dx / d * 5 + 1.2; state.pz = WARDEN.z + dz / d * 5; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.4; state.pitch = 0.15; state.dist = 6.5; }
-      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
+      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
       if (name === 'sunspire' || name === 'dome' || name === 'veilfall') { const l = LANDMARKS.find((x) => x.id === name)!; const rot = name === 'sunspire' ? 0.55 : name === 'veilfall' ? -0.3 : 0, dx0 = SPAWN.x - l.x, dz0 = SPAWN.z - l.z, dx = dx0 * Math.cos(rot) + dz0 * Math.sin(rot), dz = -dx0 * Math.sin(rot) + dz0 * Math.cos(rot), d = Math.hypot(dx, dz), off = name === 'dome' ? 36 : name === 'veilfall' ? 40 : 40; state.px = l.x + dx / d * off; state.pz = l.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.1; state.pitch = name === 'dome' ? 0.02 : name === 'veilfall' ? -0.3 : -0.05; state.dist = 6.5; }
       if (name === 'run') { keys.KeyW = true; }
+      const endgame = (beacon: boolean, mirrors: number[]) => { save = { v: 1, started: true, done: true, xp: beacon ? 315 : 255, seals: { dawn: true, sun: true, tide: true, forge: true }, runes: [1, 0, 2], wind: true, warden: true, mirrors: [...mirrors], beacon }; for (const o of seals) o.claim(); island.light(true, true); updraft.setActive(true, true); island.solve(beacon); hollow.solve(beacon); mirrors.forEach((v, i) => hollow.setMirror(i, v)); };
+      if (name === 'beacon-puzzle' || name === 'ending-card') {
+        endgame(false, name === 'ending-card' ? MIRRORS.map((m) => m.solve) : [3, 0, 1, 1]); onIsland = true; island.group.updateMatrixWorld(true);
+        const P = toWorld(BEACON_L.x + 3.5, BEACON_L.z + 8.2), B = toWorld(BEACON_L.x, BEACON_L.z);
+        state.px = P.x; state.pz = P.z; state.facing = Math.atan2(B.x - P.x, B.z - P.z); state.yaw = state.facing + Math.PI + 0.2; state.pitch = 0.42; state.dist = 7.5;
+      }
+      if (name === 'dawn') { endgame(true, MIRRORS.map((m) => m.solve)); const dx = ISLAND_POS.x - SPAWN.x, dz = ISLAND_POS.z - SPAWN.z; state.px = SPAWN.x - 4; state.pz = SPAWN.z - 6; state.facing = Math.atan2(dx, dz) - 0.2; state.yaw = Math.atan2(-dx, -dz) + 0.06; state.pitch = innerHeight > innerWidth ? -0.2 : -0.1; state.dist = innerHeight > innerWidth ? 7.4 : 6.4; }
+      if (name === 'journal' || name === 'map') { save = { v: 1, started: true, done: false, xp: 85, seals: { dawn: true, tide: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = SHRINE.x + 22; state.pz = SHRINE.z + 10; state.facing = 2.4; state.yaw = 2.4 + Math.PI; }
       camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30);
-      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false }; interact(); }
+      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false }; interact(); }
       if (name === 'warden-windup') { wd.sx = state.px + 0.6; wd.sz = state.pz; warden.placeZone(wd.sx, wd.sz); wd.phase = 1; wd.teleT = W_TELE * 0.3; toast('⚠ Warden winds up — move!', 60, true); }
       if (name === 'shrine-awake') { save.runes = [1, 0, 2]; save.wind = true; for (let i = 0; i < 3; i++) shrine.setRune(i, save.runes[i], false); shrine.awaken(true); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); }
       if (name === 'beam') { interact(); for (let i = 0; i < 50; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); if (cine) cine.hold = cine.dur * 0.6; for (let i = 0; i < 130; i++) update(1 / 30, clock.elapsedTime + 5 + i / 30); }
+      if (name === 'ending-card') { for (let i = 0; i < 330 && endEl.hidden; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); }
+      if (name === 'journal' || name === 'map') openSheet(name);
       if (name === 'seal') { save.started = true; interact(); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); hudT = 0; updateHud(0); }
     },
     key(code: string, down: boolean) { keys[code] = down; },
@@ -561,6 +733,10 @@ async function main() {
     interact() { interact(); },
     advance() { if (talking) advance(); },
     runes: RUNES.map((r) => ({ x: r.x, z: r.z })), tablet: TABLET, speedMul: () => (save.wind ? WIND_BLESS : 1),
+    beacon: () => { island.group.updateMatrixWorld(true); const w = (lx: number, lz: number) => { const v = toWorld(lx, lz); return { x: v.x, z: v.z }; };
+      return { updraft: UPDRAFT, onIsland, lift: !!lift, mirrors: [...save.mirrors], solve: MIRRORS.map((m) => m.solve), beacon: save.beacon, dawn: dawnK, cine: !!dawnCine, ending: !endEl.hidden, endingText: endEl.innerText,
+        mirrorW: MIRRORS.map((m) => w(BEACON_L.x + m.dx + (BEACON_L.x + m.dx > BEACON_L.x ? 0 : 0), BEACON_L.z + m.dz)), clueW: w(CLUE_L.x, CLUE_L.z), returnW: w(RETURN_L.x, RETURN_L.z), beamColor: '#' + sun.color.getHexString() }; },
+    sheets: () => ({ journal: !jEl.hidden, map: !mapEl.hidden, paused, journalText: jEl.innerText }),
     warden: () => ({ x: WARDEN.x, z: WARDEN.z, hp: wd.hp, phase: wd.phase, awake: wd.awake, playerHp, atkCd, recovery: recoveryPoint(), melee: W_MELEE }),
     quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
     debug: { scene, camera, renderer, get player() { return player.root; }, wayfinder: wayfinder.root },
@@ -665,7 +841,7 @@ function okSpot(x: number, z: number, clearPath = 2.2, clearCreek = 2): boolean 
   if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < 6 || Math.hypot(x - SPAWN.x, z - SPAWN.z - 6) < 6 || Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 3 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 20) return false;
   for (const l of LANDMARKS) if (Math.hypot(x - l.x, z - l.z) < l.r * (l.id === 'veilfall' ? 1.7 : 1.25)) return false;
   for (const d of SEALS) if (Math.hypot(x - d.x, z - d.z) < 7) return false;
-  if (Math.hypot(x - WARDEN.x, z - WARDEN.z) < 14) return false;
+  if (Math.hypot(x - WARDEN.x, z - WARDEN.z) < 14 || Math.hypot(x - UPDRAFT.x, z - UPDRAFT.z) < 9) return false;
   void clearPath; return true;
 }
 function place(src: THREE.Object3D, x: number, z: number, s: number, ry: number, sink = 0.05) {
@@ -740,9 +916,9 @@ function makeRift() {
   // Sky rift: a soft violet/teal glow tear in the north-east sky (additive, unaffected by fog).
   const m = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide,
-    uniforms: { uTime: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uFade: { value: 1 } },
     vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `uniform float uTime;varying vec2 vUv;
+    fragmentShader: `uniform float uTime,uFade;varying vec2 vUv;
       float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
       float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
       void main(){vec2 p=vUv*2.-1.; float bend=.18*sin(p.x*2.6+.8)+.07*sin(p.x*7.+uTime*.2);
@@ -750,7 +926,7 @@ function makeRift() {
         float flick=.75+.25*n(vec2(p.x*6.+uTime*.4,uTime*.3));
         float core=exp(-d*d*900.)*fall*flick, halo=exp(-d*d*22.)*fall*(.55+.45*n(p*3.+uTime*.05));
         vec3 col=vec3(.62,.42,1.)*core*1.6+mix(vec3(.25,.75,.85),vec3(.55,.35,.9),smoothstep(-.6,.6,p.x))*halo*.38;
-        gl_FragColor=vec4(col,1.);}`,
+        gl_FragColor=vec4(col*uFade,1.);}`,
   });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(520, 140), m);
   mesh.position.set(260, 230, -520); mesh.lookAt(0, 20, 0); mesh.rotateZ(-0.22);

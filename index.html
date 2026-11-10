@@ -79,6 +79,32 @@ body.creating #joy,body.creating #pname,body.creating .hud p{display:none}
 #chtease{font-style:italic;line-height:1.5;margin:0 0 10px;color:#e6dcf7}
 .chxp{font-size:13px;opacity:.85;margin:0 0 14px}
 #chok{min-height:46px;min-width:150px;border-radius:10px;font:16px Georgia,serif;background:linear-gradient(#e2c98a,#c9a95e);color:#1d1a12;border:1px solid #f0dca4}
+#ending{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(80,40,10,.25),rgba(30,12,8,.62));animation:chin 1.6s ease}
+#ending[hidden]{display:none}
+.endin{box-shadow:0 0 60px rgba(255,190,90,.55);border-color:#f0c56a;max-height:calc(100vh - 32px);overflow:auto}
+.endin h2{font-size:24px}
+#endlines p{font-style:italic;line-height:1.5;margin:0 0 10px;color:#f6ead2}
+#endok{min-height:46px;min-width:150px;border-radius:10px;font:16px Georgia,serif;background:linear-gradient(#f2d792,#d9a94e);color:#1d1a12;border:1px solid #f0dca4}
+.sheet{position:fixed;inset:0;z-index:28;display:flex;align-items:center;justify-content:center;background:rgba(5,12,16,.62);backdrop-filter:blur(2px)}
+.sheet[hidden]{display:none}
+.sheetin{position:relative;width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;box-sizing:border-box;padding:16px 18px 14px;border-radius:14px;background:linear-gradient(#f1e5c4,#e3d0a0);color:#2e1e0e;border:1px solid #8a6a3a;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.sheetin h2{margin:0 90px 2px 0;font-weight:600;font-size:21px;color:#3a2814}
+#jsub{margin:0 0 8px;font-size:13px;color:#6b4a26;font-style:italic}
+#jbody h3{margin:12px 0 4px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#7a4e1c;border-bottom:1px solid rgba(122,78,28,.35);padding-bottom:2px}
+#jbody ul{margin:0;padding:0;list-style:none}
+#jbody li{position:relative;padding:3px 0 3px 22px;font-size:15px;line-height:1.4}
+#jbody li::before{content:'○';position:absolute;left:2px;color:#8a6a3a}
+#jbody li.done::before{content:'✓';color:#2f7a3a;font-weight:700}
+#jbody li.lore{font-style:italic;color:#4a3420}
+#jbody li.lore::before{content:'❧';color:#8a6a3a}
+.sheetin .foot{margin:12px 0 0;font-size:12px;opacity:.7}
+.sheetin .close{position:absolute;right:10px;top:10px;min-height:40px;min-width:84px;border-radius:10px;font:15px Georgia,serif;background:rgba(58,40,20,.85);color:#f4ead2;border:1px solid #c9a95e}
+.sheetin.map{padding:10px;width:auto;max-width:calc(100vw - 16px);text-align:center}
+.sheetin.map .close{right:16px;top:16px;z-index:2}
+#mapcv{display:block;margin:0 auto;border-radius:6px}
+.legend{margin:6px 0 0;font-size:13px;color:#3a2814}
+#menu .k{float:right;opacity:.55;font-size:13px;border:1px solid rgba(244,234,210,.4);border-radius:5px;padding:0 5px;margin-top:14px;line-height:18px}
+body.sheet #joy,body.sheet #action{display:none}
 @keyframes chin{from{opacity:0}to{opacity:1}}
 body.cine #quest,body.cine #menubtn,body.cine #joy,body.cine #action,body.cine #hint{opacity:0;pointer-events:none;transition:opacity .6s}
 body.talking #joy,body.talking #action,body.creating #quest,body.creating #menubtn,body.creating #action{display:none}
@@ -90,9 +116,11 @@ body.talking #joy,body.talking #action,body.creating #quest,body.creating #menub
 <div class="hud"><h1>The Broken Vale<span id="pname"></span></h1><p id="hint">Drag to look · WASD / stick to move · Shift walks</p></div>
 <button class="btn" id="menubtn" aria-expanded="false" aria-controls="menu">☰ Menu</button>
 <div id="menu" hidden>
+  <button id="jbtn">Journal <span class="k">J</span></button>
+  <button id="mbtn">Map <span class="k">M</span></button>
   <button id="quality">Quality: …</button>
   <button id="newchar">New character</button>
-  <div id="ncconfirm" hidden><p>New character starts fresh: seals, shrine, Warden and XP reset.</p><button id="ncyes" class="warn">Start fresh</button><button id="ncno">Cancel</button></div>
+  <div id="ncconfirm" hidden><p>New character starts fresh: seals, shrine, Warden, Hollow Beacon and XP reset.</p><button id="ncyes" class="warn">Start fresh</button><button id="ncno">Cancel</button></div>
   <button id="fpsmenu">Show FPS</button>
   <button id="reset">Reset progress</button>
 </div>
@@ -100,6 +128,9 @@ body.talking #joy,body.talking #action,body.creating #quest,body.creating #menub
 <div id="toast" aria-live="polite"></div>
 <div id="combat" hidden aria-live="polite"><span class="lbl">HP</span> <span id="hp"></span><span class="sep">·</span><span class="lbl">Warden</span> <span id="whp"></span></div>
 <div id="chapter" hidden role="dialog" aria-labelledby="chtitle"><div class="chin"><div class="chk">Chapter I complete</div><h2 id="chtitle">The Four Seals</h2><p id="chtease"></p><p class="chxp" id="chxp"></p><button id="chok">Continue</button></div></div>
+<div id="ending" hidden role="dialog" aria-labelledby="endtitle"><div class="chin endin"><div class="chk">The Unspent Morning</div><h2 id="endtitle"></h2><div id="endlines"></div><p class="chxp" id="endxp"></p><button id="endok">Continue</button></div></div>
+<div id="journal" class="sheet" hidden role="dialog" aria-labelledby="jtitle"><div class="sheetin"><button class="close" id="jclose">✕ Close</button><h2 id="jtitle"></h2><p id="jsub"></p><div id="jbody"></div><p class="foot">Progress is saved on this device · Reset clears it.</p></div></div>
+<div id="mapov" class="sheet" hidden role="dialog" aria-label="Map of the Broken Vale"><div class="sheetin map"><button class="close" id="mclose">✕ Close</button><canvas id="mapcv"></canvas><p class="legend"><b style="color:#1f6f78">➤</b> you · <b style="color:#c83c14">◎</b> objective · ◆ seal found · ◇ missing · <b style="color:#7a5ae0">✶</b> Hollow Beacon</p></div></div>
 <form id="create" hidden autocomplete="off">
   <h2>Who walks the Vale?</h2>
   <p class="sub" id="csub">Seventeen, Enna’s daughter. Choose a first name — Marr is your family’s.</p>

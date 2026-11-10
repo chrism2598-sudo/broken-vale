@@ -1,0 +1,113 @@
+import { LANDMARKS, SEALS, WAYFINDER, SHRINE, heightAt, creekX, creekHalf, pathMask } from './world';
+import { WARDEN } from './warden';
+import { UPDRAFT, MIRRORS } from './beacon';
+import { ISLAND_POS } from './island';
+import { sealCount, levelOf, type Save } from './quest';
+import { fill, type Profile } from './dialogue';
+
+// ---------- Journal (live quest state + lore from the Page) ----------
+export type JSection = { h: string; items: { t: string; done?: boolean; lore?: boolean }[] };
+const CLUES: Record<string, string> = { dawn: 'northwest approach to Pale Keep', sun: 'southwest toward the golden Sunspire', tide: 'northeast near Azure Keep', forge: 'southeast Iron Dome approach' };
+export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: string; sub: string; sections: JSection[] } {
+  const n = sealCount(s);
+  const quest: JSection = { h: 'The Four Seals', items: [] };
+  quest.items.push({ t: !s.started ? 'Talk to the Wayfinder by the meadow crossing to begin.' : s.done ? 'Complete — the seals burn again. You are a Vale Walker.' : n >= 4 ? 'All four seals held — return to the Wayfinder.' : `Seek the ancient seals (${n}/4).`, done: s.done });
+  for (const d of SEALS) quest.items.push({ t: s.seals[d.id] ? `${d.name} — found` : `${d.name} — missing · ${CLUES[d.id]}`, done: !!s.seals[d.id] });
+  const shrine: JSection = { h: 'Wind Shrine (optional)', items: [{ t: s.wind ? 'Awake · Windward Blessing quickens your step (+35 XP).' : 'Three carved runes; the tablet waits by the old crossing.', done: s.wind }] };
+  const warden: JSection = { h: 'Vale Warden (optional)', items: [{ t: s.warden ? 'Dormant on the Iron Dome approach · Warden’s Crest claimed (+40 XP).' : 'Clockwork guard on the Iron Dome approach. When its arms rise, step out of the bright ring before it strikes.', done: s.warden }] };
+  const aligned = s.mirrors.filter((v, i) => v === MIRRORS[i].solve).length;
+  const beacon: JSection = { h: 'The Hollow Beacon', items: [] };
+  if (s.beacon) beacon.items.push({ t: 'Dawn released · Morning-Bearer · Hollow Light carried (+60 XP).', done: true }, { t: 'Enna’s last page points beyond the sea.', lore: true });
+  else if (!s.done) beacon.items.push({ t: 'Dark above the vale. The four seals must burn before its Updraft will lift anyone.' });
+  else {
+    beacon.items.push({ t: s.wind ? 'Ride the Updraft east of the Wind Shrine to the root-hung island.' : 'The Updraft east of the Wind Shrine needs the Windward Blessing.' });
+    beacon.items.push({ t: `Four Unspent mirrors record the landmark mornings; read the island carving. ${onIsland || aligned ? `(${aligned}/4 facing their morning)` : ''}`.trim() });
+    if (onIsland) beacon.items.push({ t: 'Ride down from the western island edge. Its rim keeps your feet safe.' });
+  }
+  const lore: JSection = { h: 'Overheard on the road', items: [
+    { t: '“Your mother’s map left room for that sound. Don’t hurry to fill every blank.” — Sefa Lune', lore: true },
+    { t: s.warden ? '“You’ve let the old Warden sleep. Thank you for not breaking its heart.” — Dov Hask' : '“It was built to warn before it was built to strike.” — Dov Hask', lore: true },
+    { t: '“Enna never paid me to follow her map. She paid me to bring her home.” — Ress', lore: true },
+  ] };
+  if (s.done) lore.items.push({ t: 'Far beyond the root-hung islands, a second seam answers — not in the sky, but beneath the sea.', lore: true });
+  const sections = [quest, shrine, warden, beacon, lore];
+  return {
+    title: fill('Field notes — {fullname}', p),
+    sub: fill(`{Name}, 17 · Enna’s {child} · Level ${levelOf(s.xp)} · ${s.xp} XP`, p),
+    sections,
+  };
+}
+
+// ---------- Map (parchment, top-down) ----------
+export const MAPBOX = { x0: -140, x1: 126, z0: -166, z1: 112 };
+let terrainCache: { w: number; h: number; c: HTMLCanvasElement } | null = null;
+function parchment(w: number, h: number): HTMLCanvasElement {
+  if (terrainCache && terrainCache.w === w && terrainCache.h === h) return terrainCache.c;
+  const sw = Math.ceil(w / 2), sh = Math.ceil(h / 2), c = document.createElement('canvas'); c.width = sw; c.height = sh;
+  const x = c.getContext('2d')!, img = x.createImageData(sw, sh), d = img.data;
+  const wx = (i: number) => MAPBOX.x0 + (i + 0.5) / sw * (MAPBOX.x1 - MAPBOX.x0), wz = (j: number) => MAPBOX.z0 + (j + 0.5) / sh * (MAPBOX.z1 - MAPBOX.z0);
+  const hs: number[] = new Array(sw * sh);
+  for (let j = 0; j < sh; j++) for (let i = 0; i < sw; i++) hs[j * sw + i] = heightAt(wx(i), wz(j));
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let j = 0; j < sh; j++) for (let i = 0; i < sw; i++) {
+    const k = j * sw + i, hh = hs[k], hx = hs[j * sw + Math.min(sw - 1, i + 1)] - hs[j * sw + Math.max(0, i - 1)], hz = hs[Math.min(sh - 1, j + 1) * sw + i] - hs[Math.max(0, j - 1) * sw + i];
+    const X = wx(i), Z = wz(j);
+    let r = 236, g = 222, b = 184;
+    const e = Math.min(1, Math.max(0, (hh - 6) / 34)); r -= 40 * e; g -= 52 * e; b -= 64 * e;
+    const shade = Math.max(-0.35, Math.min(0.3, (-hx * 0.6 - hz * 0.8) * 0.09)); r *= 1 + shade; g *= 1 + shade; b *= 1 + shade;
+    const pm = pathMask(X, Z); if (pm > 0.3) { const t = Math.min(1, (pm - 0.3) * 2.5) * 0.6; r += (176 - r) * t; g += (138 - g) * t; b += (92 - b) * t; }
+    const cw = Math.abs(X - creekX(Z)) - creekHalf(Z); if (cw < 1.2) { const t = cw < 0 ? 0.85 : 0.5; r += (92 - r) * t; g += (138 - g) * t; b += (150 - b) * t; }
+    // Contour every 5 m.
+    const lvl = Math.floor(hh / 5); if (Math.floor(hs[j * sw + Math.min(sw - 1, i + 1)] / 5) !== lvl || Math.floor(hs[Math.min(sh - 1, j + 1) * sw + i] / 5) !== lvl) { r -= 34; g -= 40; b -= 44; }
+    const sp = (rnd() - 0.5) * 12; d[k * 4] = r + sp; d[k * 4 + 1] = g + sp; d[k * 4 + 2] = b + sp * 0.8; d[k * 4 + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  terrainCache = { w, h, c }; return c;
+}
+export type MapData = { player: { x: number; z: number; facing: number }; target: { x: number; z: number; name: string } | null; save: Save; onIsland: boolean; t: number };
+export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m: MapData) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr); cv.style.width = `${cssW}px`; cv.style.height = `${cssH}px`;
+  const x = cv.getContext('2d')!; x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = cssW, H = cssH, sx = (X: number) => (X - MAPBOX.x0) / (MAPBOX.x1 - MAPBOX.x0) * W, sz = (Z: number) => (Z - MAPBOX.z0) / (MAPBOX.z1 - MAPBOX.z0) * H, k = W / (MAPBOX.x1 - MAPBOX.x0);
+  x.imageSmoothingEnabled = true; x.drawImage(parchment(Math.round(W), Math.round(H)), 0, 0, W, H);
+  // Aged edges.
+  const vg = x.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72); vg.addColorStop(0, 'rgba(120,80,30,0)'); vg.addColorStop(1, 'rgba(110,70,25,.45)'); x.fillStyle = vg; x.fillRect(0, 0, W, H);
+  x.strokeStyle = '#6b4a26'; x.lineWidth = 2; x.strokeRect(5, 5, W - 10, H - 10); x.lineWidth = 0.8; x.strokeRect(9, 9, W - 18, H - 18);
+  const fs = Math.max(11, Math.min(14, W / 34));
+  const label = (t: string, X: number, Y: number, al: CanvasTextAlign = 'left', col = '#3a2814', size = fs, italic = true) => {
+    x.font = `${italic ? 'italic ' : ''}${size}px Georgia,serif`; x.textAlign = al; x.textBaseline = 'middle';
+    x.lineWidth = 3; x.strokeStyle = 'rgba(240,228,196,.9)'; x.strokeText(t, X, Y); x.fillStyle = col; x.fillText(t, X, Y);
+  };
+  // Landmarks: small towers.
+  for (const l of LANDMARKS) {
+    const X = sx(l.x), Y = sz(l.z);
+    x.fillStyle = 'rgba(90,60,30,.18)'; x.beginPath(); x.arc(X, Y, l.r * k * 0.7, 0, Math.PI * 2); x.fill();
+    x.fillStyle = '#5a3d20'; x.strokeStyle = '#2e1e0e'; x.lineWidth = 1;
+    if (l.id === 'dome') { x.beginPath(); x.arc(X, Y + 3, 7, Math.PI, 0); x.closePath(); x.fill(); }
+    else if (l.id === 'sunspire') { x.beginPath(); x.moveTo(X, Y - 11); x.lineTo(X + 4, Y + 5); x.lineTo(X - 4, Y + 5); x.closePath(); x.fill(); }
+    else if (l.id === 'veilfall') { x.beginPath(); x.moveTo(X - 8, Y + 5); x.lineTo(X - 2, Y - 7); x.lineTo(X + 3, Y - 2); x.lineTo(X + 8, Y + 5); x.closePath(); x.fill(); x.strokeStyle = '#4f7f8c'; x.lineWidth = 2; x.beginPath(); x.moveTo(X + 1, Y - 4); x.lineTo(X + 1, Y + 6); x.stroke(); }
+    else { x.fillRect(X - 7, Y - 3, 14, 8); x.fillRect(X - 7, Y - 7, 3, 4); x.fillRect(X - 1.5, Y - 9, 3, 6); x.fillRect(X + 4, Y - 7, 3, 4); }
+    label(l.name, X, Y + 15, 'center', '#2e1e0e', fs, false);
+  }
+  // Wind Shrine, Wayfinder, Warden, Updraft.
+  { const X = sx(SHRINE.x), Y = sz(SHRINE.z); x.strokeStyle = m.save.wind ? '#b07a1a' : '#5a3d20'; x.lineWidth = 2; x.beginPath(); x.arc(X, Y, 6, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.arc(X, Y, 2.2, 0, Math.PI * 2); x.stroke(); label('Wind Shrine', X - 9, Y - 2, 'right'); }
+  { const X = sx(WAYFINDER.x), Y = sz(WAYFINDER.z); x.fillStyle = '#c98a1a'; x.beginPath(); x.arc(X, Y, 3.5, 0, Math.PI * 2); x.fill(); label('Wayfinder', X + 7, Y - 8); }
+  { const X = sx(WARDEN.x), Y = sz(WARDEN.z); x.strokeStyle = m.save.warden ? '#8a7a66' : '#9c3d1c'; x.lineWidth = 2; x.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; x.moveTo(X + Math.cos(a) * 4, Y + Math.sin(a) * 4); x.lineTo(X + Math.cos(a) * 7, Y + Math.sin(a) * 7); } x.stroke(); x.beginPath(); x.arc(X, Y, 4, 0, Math.PI * 2); x.stroke(); label(m.save.warden ? 'Warden (dormant)' : 'Vale Warden', X - 10, Y, 'right'); }
+  { const X = sx(UPDRAFT.x), Y = sz(UPDRAFT.z); x.strokeStyle = m.save.done ? '#2f8f7a' : '#7f9a90'; x.lineWidth = 1.6; x.beginPath(); for (let a = 0; a < 12; a += 0.3) { const r = 1 + a * 0.6; const px = X + Math.cos(a) * r, py = Y + Math.sin(a) * r; if (a === 0) x.moveTo(px, py); else x.lineTo(px, py); } x.stroke(); label('Updraft', X + 10, Y + 4); }
+  // Floating island + Hollow Beacon.
+  { const X = sx(ISLAND_POS.x), Y = sz(ISLAND_POS.z); x.setLineDash([4, 4]); x.strokeStyle = '#4a3a6a'; x.lineWidth = 1.4; x.beginPath(); x.ellipse(X, Y, 24 * k, 22 * k, 0, 0, Math.PI * 2); x.stroke(); x.setLineDash([]);
+    const BX = sx(ISLAND_POS.x - 3), BY = sz(ISLAND_POS.z + 2), lit = m.save.done;
+    x.fillStyle = m.save.beacon ? '#e0a020' : lit ? '#7a5ae0' : '#6a6070'; x.beginPath(); for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 3 : 7; x.lineTo(BX + Math.cos(a) * r, BY + Math.sin(a) * r); } x.closePath(); x.fill();
+    label('Hollow Beacon', X - 6, Y - 22 * k - 8 - fs, 'center', '#3a2a5a'); label('(floating isle)', X - 6, Y - 22 * k - 8, 'center', '#3a2a5a', fs - 2); }
+  // Seals.
+  for (const d of SEALS) { const X = sx(d.x), Y = sz(d.z), got = !!m.save.seals[d.id]; x.save(); x.translate(X, Y); x.rotate(Math.PI / 4); x.fillStyle = got ? d.color : 'rgba(0,0,0,0)'; x.strokeStyle = '#3a2814'; x.lineWidth = 1.4; x.fillRect(-4.5, -4.5, 9, 9); x.strokeRect(-4.5, -4.5, 9, 9); x.restore(); label(d.short, X + 9, Y, 'left', got ? '#3a2814' : '#6b4a26', fs - 1); }
+  // Objective marker.
+  if (m.target) { const X = sx(m.target.x), Y = sz(m.target.z), p = 0.5 + 0.5 * Math.sin(m.t * 4); x.strokeStyle = `rgba(200,60,20,${0.55 + 0.4 * p})`; x.lineWidth = 2.5; x.beginPath(); x.arc(X, Y, 10 + p * 3, 0, Math.PI * 2); x.stroke(); x.lineWidth = 1.2; x.beginPath(); x.arc(X, Y, 15 + p * 3, 0, Math.PI * 2); x.stroke(); }
+  // Player arrow.
+  { const X = sx(m.player.x), Y = sz(m.player.z), dx = Math.sin(m.player.facing), dz = Math.cos(m.player.facing);
+    x.save(); x.translate(X, Y); x.rotate(Math.atan2(dz, dx) + Math.PI / 2); x.fillStyle = '#1f6f78'; x.strokeStyle = '#f4ead2'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, -11); x.lineTo(7, 8); x.lineTo(0, 4); x.lineTo(-7, 8); x.closePath(); x.stroke(); x.fill(); x.restore(); }
+  // Compass rose + title.
+  { const X = W - 30, Y = H - 34; x.strokeStyle = '#4a3218'; x.fillStyle = '#4a3218'; x.lineWidth = 1; x.beginPath(); x.arc(X, Y, 12, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.moveTo(X, Y - 17); x.lineTo(X + 3.5, Y); x.lineTo(X, Y + 17); x.lineTo(X - 3.5, Y); x.closePath(); x.fill(); label('N', X - 16, Y - 12, 'center', '#4a3218', fs - 1, false); }
+  label('Marr’s Unfinished Map', 20, 24, 'left', '#3a2814', fs + 4);
+  label('The Broken Vale', 20, 24 + fs + 4, 'left', '#6b4a26', fs - 1);
+}

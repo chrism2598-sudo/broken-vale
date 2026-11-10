@@ -29,7 +29,7 @@ export const CLUE_LINES = [
   'Let each mirror face its own morning; its back will give that light to the hollow.',
 ];
 export const UPDRAFT_DORMANT = ['A thin current turns here, too weak to lift anyone. Above the vale the Hollow Beacon is dark — the four seals must burn first.'];
-export const UPDRAFT_NEEDS_WIND = ['The current curls away from {name}’s hands. Wake the Wind Shrine and carry its Windward Blessing to ride it.'];
+export const UPDRAFT_NEEDS_WIND = ['The current curls away from {name}’s hands. Wake the Wind Shrine and carry its Windward Blessing to ride it.', 'Locked: the Updraft needs the Wind Shrine’s Windward Blessing. Turn the shrine’s three runes — the Wind Tablet by the old crossing tells how.'];
 export const ENDING_TITLE = 'Hollow Beacon — The Unspent Morning';
 export const ENDING_LINES = [
   'The lantern opens without breaking. Across the vale, a morning held too long finally learns to arrive.',
@@ -50,7 +50,9 @@ function beamMat(color: string) {
     uniforms: { uTime: { value: 0 }, uFade: { value: 0 }, uC: { value: new THREE.Color(color) } },
     vertexShader: 'varying vec2 vUv;varying float vF;void main(){vUv=uv;vec4 mv=modelViewMatrix*vec4(position,1.);vF=abs(dot(normalize(normalMatrix*normal),normalize(-mv.xyz)));gl_Position=projectionMatrix*mv;}',
     fragmentShader: `uniform float uTime,uFade;uniform vec3 uC;varying vec2 vUv;varying float vF;
-      void main(){float pulse=.65+.35*sin(vUv.y*24.-uTime*6.);float a=smoothstep(.1,.9,vF)*uFade*pulse*.85;gl_FragColor=vec4(uC*a*1.6,a);}`,
+      void main(){float pulse=.65+.35*sin(vUv.y*24.-uTime*6.);float a=smoothstep(.1,.9,vF)*uFade*pulse*.85;gl_FragColor=vec4(uC*a*1.6,a);
+      #include <colorspace_fragment>
+      }`,
   });
 }
 
@@ -146,7 +148,9 @@ export function makeUpdraft(rock: GroundTex) {
     vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
     fragmentShader: `uniform float uTime,uPow;varying vec2 vUv;
       void main(){float s=fract(vUv.x*${k.toFixed(1)}+vUv.y*5.-uTime*${speed.toFixed(2)});float streak=smoothstep(.0,.15,s)*smoothstep(.45,.15,s);
-        float fade=smoothstep(0.,.08,vUv.y)*(1.-smoothstep(.45,1.,vUv.y));gl_FragColor=vec4(vec3(.86,1.,.93),streak*fade*.42*uPow);}`,
+        float fade=smoothstep(0.,.08,vUv.y)*(1.-smoothstep(.45,1.,vUv.y));gl_FragColor=vec4(vec3(.86,1.,.93),streak*fade*.42*uPow);
+        #include <colorspace_fragment>
+        }`,
   });
   const cols = [colMat(3, 0.55), colMat(2, 0.8)];
   const c1 = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 2.6, 70, 32, 1, true), cols[0]); c1.position.y = 35;

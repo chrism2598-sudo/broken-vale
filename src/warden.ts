@@ -88,17 +88,22 @@ export function makeWarden(t: { rock: GroundTex; metal: GroundTex }) {
   root.rotation.y = Math.atan2(SPAWN.x - WARDEN.x, SPAWN.z - WARDEN.z);
   const group = new THREE.Group(); group.add(root, zone, dust);
 
-  let flash = 0, slam = 0, kneel = 0, dustT = 0;
+  // Hit spark: a star burst at the chest when struck.
+  const sc = document.createElement('canvas'); sc.width = sc.height = 128; { const x = sc.getContext('2d')!; const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,250,230,1)'); gr.addColorStop(0.25, 'rgba(255,210,140,.8)'); gr.addColorStop(1, 'rgba(255,140,60,0)'); x.fillStyle = gr; x.beginPath(); for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2, r = i % 2 ? 18 : 64; x.lineTo(64 + Math.cos(a) * r, 64 + Math.sin(a) * r); } x.closePath(); x.fill(); }
+  const sparkTex = new THREE.CanvasTexture(sc); sparkTex.colorSpace = THREE.SRGBColorSpace;
+  const spark = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTex, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+  spark.position.set(0, 1.55, 0.75); spark.visible = false; spark.renderOrder = 6; root.add(spark);
+  let flash = 0, slam = 0, kneel = 0, dustT = 0, held = false;
   return {
     group,
     placeZone,
-    hit() { flash = 1; },
+    hit(hold = false) { flash = hold ? 0.8 : 1; held = hold; },
     impact(x: number, z: number) { slam = 1; dustT = 1; dust.position.set(x, heightAt(x, z) + 0.08, z); },
     /** phase: 0 idle · 1 windup (k = 0..1 progress) · 2 recover · 3 dormant */
     update(time: number, dt: number, s: { phase: number; k: number; awake: boolean; face: number | null; zone: boolean }) {
       const dormant = s.phase === 3;
       kneel = THREE.MathUtils.clamp(kneel + (dormant ? dt : -dt) * 1.2, 0, 1);
-      flash = Math.max(0, flash - dt * 3); slam = Math.max(0, slam - dt * 2.2); dustT = Math.max(0, dustT - dt * 1.6);
+      if (!held) flash = Math.max(0, flash - dt * 2.6); slam = Math.max(0, slam - dt * 2.2); dustT = Math.max(0, dustT - dt * 1.6);
       if (s.face !== null && !dormant) { let d = s.face - root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); root.rotation.y += d * Math.min(1, dt * (s.phase === 1 ? 1.5 : 3)); }
       // Arm pose: rest (slight forward) → overhead on windup → slam down → settle.
       const up = s.phase === 1 ? THREE.MathUtils.smoothstep(s.k, 0, 0.75) : 0;
@@ -112,7 +117,9 @@ export function makeWarden(t: { rock: GroundTex; metal: GroundTex }) {
       coreMat.emissiveIntensity = 0.05 + awakeGlow * (1.4 + up * 2.5) + flash * 3; coreMat.emissive.set(flash > 0.3 ? '#fff0d0' : '#ff8a3a');
       eyeMat.color.set(dormant ? '#2a2018' : up > 0.2 ? '#ff5a2a' : '#ffb36a');
       glow.intensity = awakeGlow * (4 + up * 10) + flash * 8;
-      stone.emissive.setRGB(flash * 0.35, flash * 0.28, flash * 0.2);
+      stone.emissive.setRGB(flash * 0.5, flash * 0.36, flash * 0.22); wood.emissive.setRGB(flash * 0.45, flash * 0.28, flash * 0.15); mossM.emissive.setRGB(flash * 0.3, flash * 0.3, flash * 0.15);
+      spark.visible = flash > 0.02; spark.material.opacity = Math.min(1, flash * 1.4); spark.scale.setScalar(0.8 + (1 - flash) * 2.6); spark.material.rotation = time * 3;
+      torso.rotation.x -= flash * 0.3;
       root.position.x = WARDEN.x + (flash > 0 ? Math.sin(time * 70) * 0.06 * flash : 0);
       zone.visible = s.zone; zoneMat.uniforms.uFill.value = s.k; zoneMat.uniforms.uTime.value = time; zoneMat.uniforms.uA.value = 0.75 + 0.25 * Math.sin(time * 14 * (0.5 + s.k));
       (dust.material as THREE.MeshBasicMaterial).opacity = dustT * 0.6; dust.scale.setScalar(1 + (1 - dustT) * 3.2); dust.visible = dustT > 0;

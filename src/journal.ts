@@ -4,6 +4,7 @@ import { UPDRAFT, MIRRORS } from './beacon';
 import { ISLAND_POS } from './island';
 import { sealCount, levelOf, type Save } from './quest';
 import { fill, type Profile } from './dialogue';
+import { MARR_MARKS, CHART_DONE, ECHO } from './echo';
 
 // ---------- Journal (live quest state + lore from the Page) ----------
 export type JSection = { h: string; items: { t: string; done?: boolean; lore?: boolean }[] };
@@ -20,17 +21,22 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
   if (s.beacon) beacon.items.push({ t: 'Dawn released · Morning-Bearer · Hollow Light carried (+60 XP).', done: true }, { t: 'Enna’s last page points beyond the sea.', lore: true });
   else if (!s.done) beacon.items.push({ t: 'Dark above the vale. The four seals must burn before its Updraft will lift anyone.' });
   else {
-    beacon.items.push({ t: s.wind ? 'Ride the Updraft east of the Wind Shrine to the root-hung island.' : 'The Updraft east of the Wind Shrine needs the Windward Blessing.' });
+    beacon.items.push({ t: s.wind ? 'Ride the Updraft east of the Wind Shrine to the root-hung island.' : 'Locked — the Updraft east of the Wind Shrine needs the Wind Shrine’s Windward Blessing. Solve the shrine’s three runes first.' });
     beacon.items.push({ t: `Four Unspent mirrors record the landmark mornings; read the island carving. ${onIsland || aligned ? `(${aligned}/4 facing their morning)` : ''}`.trim() });
     if (onIsland) beacon.items.push({ t: 'Ride down from the western island edge. Its rim keeps your feet safe.' });
   }
+  const echo: JSection = { h: 'Echo Grove (optional)', items: [{ t: s.echo ? 'Memory of the Break heard · Echo carried (+20 XP).' : 'Pale crystal trees east of the old crossing; a seal may wake them.', done: s.echo }] };
+  if (s.echo) echo.items.push({ t: 'The old custodians stretched one sky across five beacons, then tried to keep every sunrise at once.', lore: true });
+  const nC = s.charted.filter(Boolean).length;
+  const chart: JSection = { h: `Marr’s Unfinished Map · ${nC}/${MARR_MARKS.length} charted`, items: MARR_MARKS.map((m, i) => ({ t: `${m.name} — ${s.charted[i] ? 'charted' : 'uncharted'}`, done: s.charted[i] })) };
+  if (nC === MARR_MARKS.length) chart.items.push({ t: CHART_DONE, lore: true });
   const lore: JSection = { h: 'Overheard on the road', items: [
     { t: '“Your mother’s map left room for that sound. Don’t hurry to fill every blank.” — Sefa Lune', lore: true },
     { t: s.warden ? '“You’ve let the old Warden sleep. Thank you for not breaking its heart.” — Dov Hask' : '“It was built to warn before it was built to strike.” — Dov Hask', lore: true },
     { t: '“Enna never paid me to follow her map. She paid me to bring her home.” — Ress', lore: true },
   ] };
   if (s.done) lore.items.push({ t: 'Far beyond the root-hung islands, a second seam answers — not in the sky, but beneath the sea.', lore: true });
-  const sections = [quest, shrine, warden, beacon, lore];
+  const sections = [quest, chart, shrine, warden, echo, beacon, lore];
   return {
     title: fill('Field notes — {fullname}', p),
     sub: fill(`{Name}, 17 · Enna’s {child} · Level ${levelOf(s.xp)} · ${s.xp} XP`, p),
@@ -79,8 +85,11 @@ export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m
     x.lineWidth = 3; x.strokeStyle = 'rgba(240,228,196,.9)'; x.strokeText(t, X, Y); x.fillStyle = col; x.fillText(t, X, Y);
   };
   // Landmarks: small towers.
+  const charted = (name: string) => { const i = MARR_MARKS.findIndex((m) => m.name === name); return i < 0 || !!m.save.charted[i]; };
+  const blank = (X: number, Y: number, r: number) => { x.save(); x.setLineDash([2, 4]); x.strokeStyle = 'rgba(90,60,30,.55)'; x.lineWidth = 1.2; x.beginPath(); x.arc(X, Y, r, 0, Math.PI * 2); x.stroke(); x.restore(); label('?', X, Y, 'center', 'rgba(90,60,30,.7)', fs + 2, false); };
   for (const l of LANDMARKS) {
     const X = sx(l.x), Y = sz(l.z);
+    if (!charted(l.name)) { blank(X, Y, 10); continue; }
     x.fillStyle = 'rgba(90,60,30,.18)'; x.beginPath(); x.arc(X, Y, l.r * k * 0.7, 0, Math.PI * 2); x.fill();
     x.fillStyle = '#5a3d20'; x.strokeStyle = '#2e1e0e'; x.lineWidth = 1;
     if (l.id === 'dome') { x.beginPath(); x.arc(X, Y + 3, 7, Math.PI, 0); x.closePath(); x.fill(); }
@@ -90,7 +99,12 @@ export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m
     label(l.name, X, Y + 15, 'center', '#2e1e0e', fs, false);
   }
   // Wind Shrine, Wayfinder, Warden, Updraft.
-  { const X = sx(SHRINE.x), Y = sz(SHRINE.z); x.strokeStyle = m.save.wind ? '#b07a1a' : '#5a3d20'; x.lineWidth = 2; x.beginPath(); x.arc(X, Y, 6, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.arc(X, Y, 2.2, 0, Math.PI * 2); x.stroke(); label('Wind Shrine', X - 9, Y - 2, 'right'); }
+  { const X = sx(ECHO.x), Y = sz(ECHO.z);
+    if (!charted('Echo Grove')) blank(X, Y, 8);
+    else { x.fillStyle = m.save.echo ? '#3fae9a' : '#7fb5a8'; for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5 + 0.3; x.beginPath(); x.moveTo(X + Math.cos(a) * 9, Y + Math.sin(a) * 9 - 4); x.lineTo(X + Math.cos(a) * 9 + 3, Y + Math.sin(a) * 9 + 3); x.lineTo(X + Math.cos(a) * 9 - 3, Y + Math.sin(a) * 9 + 3); x.closePath(); x.fill(); }
+      if (m.save.echo) { x.fillStyle = '#d4fff1'; x.strokeStyle = '#244e46'; x.beginPath(); x.arc(X, Y, 3.5, 0, Math.PI * 2); x.fill(); x.stroke(); }
+      label('Echo Grove', X, Y + 17, 'center', '#244e46', fs - 1); } }
+  if (!charted('Wind Shrine')) blank(sx(SHRINE.x), sz(SHRINE.z), 8); else { const X = sx(SHRINE.x), Y = sz(SHRINE.z); x.strokeStyle = m.save.wind ? '#b07a1a' : '#5a3d20'; x.lineWidth = 2; x.beginPath(); x.arc(X, Y, 6, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.arc(X, Y, 2.2, 0, Math.PI * 2); x.stroke(); label('Wind Shrine', X - 9, Y - 2, 'right'); }
   { const X = sx(WAYFINDER.x), Y = sz(WAYFINDER.z); x.fillStyle = '#c98a1a'; x.beginPath(); x.arc(X, Y, 3.5, 0, Math.PI * 2); x.fill(); label('Wayfinder', X + 7, Y - 8); }
   { const X = sx(WARDEN.x), Y = sz(WARDEN.z); x.strokeStyle = m.save.warden ? '#8a7a66' : '#9c3d1c'; x.lineWidth = 2; x.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; x.moveTo(X + Math.cos(a) * 4, Y + Math.sin(a) * 4); x.lineTo(X + Math.cos(a) * 7, Y + Math.sin(a) * 7); } x.stroke(); x.beginPath(); x.arc(X, Y, 4, 0, Math.PI * 2); x.stroke(); label(m.save.warden ? 'Warden (dormant)' : 'Vale Warden', X - 10, Y, 'right'); }
   { const X = sx(UPDRAFT.x), Y = sz(UPDRAFT.z); x.strokeStyle = m.save.done ? '#2f8f7a' : '#7f9a90'; x.lineWidth = 1.6; x.beginPath(); for (let a = 0; a < 12; a += 0.3) { const r = 1 + a * 0.6; const px = X + Math.cos(a) * r, py = Y + Math.sin(a) * r; if (a === 0) x.moveTo(px, py); else x.lineTo(px, py); } x.stroke(); label('Updraft', X + 10, Y + 4); }

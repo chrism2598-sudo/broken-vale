@@ -19,7 +19,7 @@ function noise3(x: number, y: number, z: number) {
 }
 
 /** The floating island: grassy top, jagged rock underside, trees, a ribbon waterfall and a glowing rift shard. */
-export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundTex, rock: GroundTex, trees: Kind[]): { group: THREE.Group; top: THREE.Mesh; update: (t: number, dt?: number) => void; light: (on: boolean, instant?: boolean) => void; beaconWorld: () => THREE.Vector3; setDawn: (k: number) => void; treesNear: (lx: number, lz: number) => void; solve: (on: boolean) => void } {
+export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundTex, rock: GroundTex, trees: Kind[]): { group: THREE.Group; top: THREE.Mesh; trees: TreeInst[]; update: (t: number, dt?: number) => void; light: (on: boolean, instant?: boolean) => void; beaconWorld: () => THREE.Vector3; setDawn: (k: number) => void; treesNear: (lx: number, lz: number) => void; solve: (on: boolean) => void } {
   const g = new THREE.Group(); g.position.copy(ISLAND_POS); g.rotation.set(-0.03, 0, 0.1); // tip the top toward spawn so it reads from the meadow
   const r = rng(5);
   // Top: a slightly domed disc with a wavy rim.
@@ -115,7 +115,9 @@ export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundT
       void main(){float prof=${rim ? 'smoothstep(.0,.35,vF)*(1.-smoothstep(.35,.75,vF))' : 'smoothstep(.25,1.,vF)'};
         float top=1.-smoothstep(.35,1.,vUv.y);float fl=.82+.18*sin(vUv.y*60.-uTime*4.+vUv.x*12.57);
         vec3 c=mix(uA,uB,vUv.y)${rim ? '' : '*mix(1.1,.78,vF)'};
-        gl_FragColor=vec4(c,clamp(prof*top*fl*uFade*${k.toFixed(2)},0.,1.));}`,
+        gl_FragColor=vec4(c,clamp(prof*top*fl*uFade*${k.toFixed(2)},0.,1.));
+        #include <colorspace_fragment>
+        }`,
   });
   const core = beamMat('#6a52ff', '#5a3fe8', 0.9, false), sheath = beamMat('#ffc23a', '#f0a91c', 0.95, true);
   const beamCore = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.8, 220, 20, 1, true), core); beamCore.position.set(-3, 9 + 110, 2);
@@ -127,7 +129,7 @@ export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundT
   let lit = false, fade = 0, dawn = -1, solved = false;
   const V0 = ['#6a52ff', '#5a3fe8', '#ffc23a', '#f0a91c'].map((c) => new THREE.Color(c)), V1 = ['#ffe08a', '#ffc24a', '#ffb43a', '#ff9418'].map((c) => new THREE.Color(c));
   return {
-    group: g, top: topMesh,
+    group: g, top: topMesh, trees: list,
     treesNear(lx: number, lz: number) { tf.update(lx, lz); },
     solve(on: boolean) { solved = on; },
     setDawn(k: number) {

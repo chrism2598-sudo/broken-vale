@@ -12,6 +12,9 @@ for(let i=0;i<4;i++){await p.keyboard.press('Space');await sleep(400);}log('clos
 const B0=await p.evaluate(()=>window.__vale.beacon());await p.evaluate((x,z)=>window.__vale.warp(x,z+3),B0.updraft.x,B0.updraft.z);await sleep(1200);
 log('updraft before seals',(await Q()).near);await p.keyboard.press('KeyE');await sleep(600);log('locked',{dlg:(await Q()).dlg,lift:(await p.evaluate(()=>window.__vale.beacon())).lift});
 for(let i=0;i<4&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);}
+// Echo Grove silent before any seal; charting starts (Wind Shrine is within reach of the Updraft)
+const E0=await p.evaluate(()=>window.__vale.echo());log('charted after visiting the Updraft',E0.marks.filter((m,i)=>E0.charted[i]).map(m=>m.name));
+await p.evaluate((x,z)=>window.__vale.warp(x,z+4),E0.x,E0.z);await sleep(1200);log('echo before seals',{near:(await Q()).near});await p.keyboard.press('KeyE');await sleep(500);log('echo silent',{toast:await p.$eval('#toast',e=>e.textContent),done:(await p.evaluate(()=>window.__vale.echo())).done,xp:(await Q()).save.xp});
 for(const s of q.seals){await p.evaluate((x,z)=>window.__vale.warp(x+1.5,z+1.2),s.x,s.z);await sleep(1500);const n=(await Q()).near;await p.keyboard.press('KeyE');await sleep(700);const qq=await Q();log('seal '+s.id,{near:n,claimed:qq.save.seals[s.id],xp:qq.save.xp,toast:await p.$eval('#toast',e=>e.textContent)});}
 // finale: cine → Wayfinder completion dialogue → chapter card
 await p.waitForFunction('window.__vale.quest().cine',{timeout:60000}).catch(()=>{});log('cine started',(await Q()).cine);
@@ -49,6 +52,16 @@ qd=await Q();log('attacks',atk.slice(0,6));log('warden defeated',{warden:qd.save
 await p.keyboard.press('KeyE');await sleep(400);await p.keyboard.press('KeyE');await sleep(400);log('no farming',{xpGain:(await Q()).save.xp-xpW0,near:(await Q()).near,phase:(await p.evaluate(()=>window.__vale.warden())).phase});
 await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(800);
 qd=await Q();log('after reload (warden persisted)',{warden:qd.save.warden,xp:qd.save.xp,phase:(await p.evaluate(()=>window.__vale.warden())).phase,wdtext:await p.$eval('#wdtext',e=>e.textContent)});
+// Echo Grove: listen (+20 once) → recall (no reward)
+const E=await p.evaluate(()=>window.__vale.echo());const xpE0=(await Q()).save.xp;
+await p.evaluate((x,z)=>window.__vale.warp(x,z+4),E.x,E.z);await sleep(1000);log('echo near',(await Q()).near);await p.keyboard.press('KeyE');
+await p.waitForFunction('window.__vale.quest().talking',{timeout:120000});let qe=await Q();log('echo memory',{dlg:qe.dlg,xpGain:qe.save.xp-xpE0,echo:qe.save.echo,toast:await toastTxt()});
+for(let i=0;i<6&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);}
+await p.keyboard.press('KeyE');await sleep(500);qe=await Q();const recallTxt=await p.evaluate(()=>document.getElementById('dtxt').textContent);for(let i=0;i<6&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(250);}
+log('echo recall (no farming)',{talking:qe.talking,first:recallTxt,xpGain:(await Q()).save.xp-xpE0});
+// Marr's Unfinished Map: visit every mark
+for(let i=0;i<E.marks.length;i++){const m=E.marks[i];await p.evaluate((x,z)=>window.__vale.warp(x,z),m.x+20,m.z+20);await p.waitForFunction(i=>window.__vale.echo().charted[i],{timeout:60000},i).catch(()=>log('chart timeout',m.name));await sleep(300);}
+const EC=await p.evaluate(()=>window.__vale.echo());log('charting',{charted:EC.charted.filter(Boolean).length+'/'+EC.charted.length,toast:await toastTxt()});
 // Hollow Beacon: Updraft → island → carving → wrong mirror → right mirrors → dawn ending (+60 once) → ride down → reload persists
 const closeDlg=async()=>{for(let i=0;i<5&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);}};
 const xpB0=(await Q()).save.xp;let B=await p.evaluate(()=>window.__vale.beacon());
@@ -71,11 +84,11 @@ B=await p.evaluate(()=>window.__vale.beacon());await p.evaluate((x,z)=>window.__
 await p.waitForFunction('!window.__vale.beacon().onIsland&&!window.__vale.beacon().lift',{timeout:240000});await sleep(500);
 B=await p.evaluate(()=>window.__vale.beacon());const pd=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,z:v.z};});log('rode down',{onIsland:B.onIsland,distFromUpdraft:+Math.hypot(pd.x-B.updraft.x,pd.z-B.updraft.z).toFixed(1)});
 await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(1200);
-B=await p.evaluate(()=>window.__vale.beacon());log('after reload (beacon persisted)',{beacon:B.beacon,dawn:B.dawn,mirrors:B.mirrors,xp:(await Q()).save.xp,qline:await p.$eval('#qline',e=>e.textContent)});
+B=await p.evaluate(()=>window.__vale.beacon());log('after reload (beacon persisted)',{echo:(await p.evaluate(()=>window.__vale.echo())).done,charted:(await p.evaluate(()=>window.__vale.echo())).charted.filter(Boolean).length,beacon:B.beacon,dawn:B.dawn,mirrors:B.mirrors,xp:(await Q()).save.xp,qline:await p.$eval('#qline',e=>e.textContent)});
 // Journal / Map: open, state, input paused, close
 const ppos=()=>p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,z:v.z};});
 await p.keyboard.press('KeyJ');await sleep(500);let sh=await p.evaluate(()=>window.__vale.sheets());
-log('journal open (J)',{open:sh.journal,paused:sh.paused,seals:/Forge Heart — found/.test(sh.journalText),shrine:/Windward Blessing quickens/.test(sh.journalText),warden:/Crest claimed/.test(sh.journalText),beacon:/Dawn released/.test(sh.journalText),lore:/Sefa Lune/.test(sh.journalText)});
+log('journal open (J)',{open:sh.journal,paused:sh.paused,seals:/Forge Heart — found/.test(sh.journalText),shrine:/Windward Blessing quickens/.test(sh.journalText),warden:/Crest claimed/.test(sh.journalText),beacon:/Dawn released/.test(sh.journalText),lore:/Sefa Lune/.test(sh.journalText),echo:/Memory of the Break heard/.test(sh.journalText),charting:/7\/7 charted/i.test(sh.journalText)});
 let p0=await ppos();await p.keyboard.down('KeyW');await sleep(1500);await p.keyboard.up('KeyW');let p1=await ppos();log('input paused (W held 1.5 s)',{moved:+Math.hypot(p1.x-p0.x,p1.z-p0.z).toFixed(2)});
 await p.keyboard.press('Escape');await sleep(300);log('journal closed',!(await p.evaluate(()=>window.__vale.sheets())).journal);
 await p.click('#menubtn');await sleep(300);await p.click('#mbtn');await sleep(800);sh=await p.evaluate(()=>window.__vale.sheets());

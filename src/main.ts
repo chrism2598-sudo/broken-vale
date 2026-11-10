@@ -22,6 +22,7 @@ import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, type Kin
 import { makeFloatingIsland, makeLanternStaff, ISLAND_POS, islandTopY } from './island';
 import { UPDRAFT, MIRRORS, MORNING_DIRS, DIR_ARROWS, BEACON_XP, BEACON_L, CLUE_L, RETURN_L, LANDING_L, ISLAND_WALK_R, CLUE_LINES, UPDRAFT_DORMANT, UPDRAFT_NEEDS_WIND, ENDING_TITLE, ENDING_LINES, ENDING_REWARD, WAYFINDER_BEACON, mirrorsMatch, makeHollowPuzzle, makeUpdraft, makeDawnSky } from './beacon';
 import { buildJournal, drawValeMap, MAPBOX } from './journal';
+import { ECHO, ECHO_RANGE, ECHO_XP, ECHO_SILENT, echoMemoryLines, MARR_MARKS, CHART_R, CHART_DONE, makeEchoGrove } from './echo';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep } from './world';
 
@@ -136,6 +137,9 @@ async function main() {
   const hollow = makeHollowPuzzle(rock, islandTopY, { mirrors: save.mirrors, solved: save.beacon }); island.group.add(hollow.group);
   const dawnSky = makeDawnSky(DAWN_DIR); scene.add(dawnSky.mesh);
   island.solve(save.beacon);
+  const grove = makeEchoGrove(HIGH); scene.add(grove.group);
+  for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5 + 0.3; SOLIDS.push({ x: ECHO.x + Math.cos(a) * 10, z: ECHO.z + Math.sin(a) * 10, r: 1.2 }); if (save.echo) grove.light(i); }
+  if (save.echo) grove.memory(true, true);
   for (const r of RUNES) SOLIDS.push({ x: r.x, z: r.z, r: 0.9 }); SOLIDS.push({ x: TABLET.x, z: TABLET.z, r: 1.2 });
   const seals = SEALS.map((d) => { const o = new SealObject(d, plinthMat, !!save.seals[d.id]); scene.add(o.group); SOLIDS.push({ x: d.x, z: d.z, r: 1.3 }); return o; });
   const rift = makeRift();
@@ -158,7 +162,7 @@ async function main() {
   wayfinder.root.rotation.y = Math.atan2(SPAWN.x - WAYFINDER.x, SPAWN.z - WAYFINDER.z);
   scene.add(wayfinder.root);
   const staff = makeLanternStaff(); scene.add(staff.group);
-  const handBone = wayfinder.root.getObjectByName('Wrist.R') ?? wayfinder.root; const handPos = new THREE.Vector3();
+  const handBone = wayfinder.root.getObjectByName('Wrist.R') ?? wayfinder.root.getObjectByName('WristR') ?? wayfinder.root; const handPos = new THREE.Vector3();
 
   // ---------- post ----------
   let composer: EffectComposer | null = null;
@@ -279,13 +283,14 @@ async function main() {
     if (dW < 3.8) return { label: !save.started ? 'Talk · begin quest' : save.done ? 'Talk' : `Talk · seals ${sealCount(save)}/4`, act: talkWayfinder };
     for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return { label: `Claim ${o.def.name}`, act: () => claimSeal(o), x: o.def.x, z: o.def.z };
     if (Math.hypot(state.px - TABLET.x, state.pz - TABLET.z) < 2.8) return { label: 'Read Wind Tablet', act: () => openDialog('Wind Shrine', TABLET_LINES), x: TABLET.x, z: TABLET.z };
-    if (Math.hypot(state.px - UPDRAFT.x, state.pz - UPDRAFT.z) < 4.6) return { label: !save.done ? 'Updraft · dormant' : !save.wind ? 'Updraft · needs Windward Blessing' : 'Ride the Updraft ↑', act: useUpdraft, x: UPDRAFT.x, z: UPDRAFT.z };
+    if (Math.hypot(state.px - ECHO.x, state.pz - ECHO.z) < ECHO_RANGE) return { label: save.echo ? 'Echo Grove · recall the Memory' : echoT >= 0 ? 'Echo Grove · the crystal trees remember…' : sealCount(save) < 1 ? 'Echo Grove · silent' : 'Echo Grove hums · listen', act: useEcho, x: ECHO.x, z: ECHO.z };
+    if (Math.hypot(state.px - UPDRAFT.x, state.pz - UPDRAFT.z) < 4.6) return { label: !save.done ? 'Updraft · dormant' : !save.wind ? 'Updraft · locked — needs Wind Shrine blessing' : 'Ride the Updraft ↑', act: useUpdraft, x: UPDRAFT.x, z: UPDRAFT.z };
     if (!save.warden && wardenDist() < W_MELEE) return { label: atkCd > 0 ? `Wait ${atkCd.toFixed(1)}s` : `Attack Warden · ${wd.hp}/${HP_MAX}`, act: attackWarden, x: WARDEN.x, z: WARDEN.z, combat: true };
     for (let i = 0; i < RUNES.length; i++) if (Math.hypot(state.px - RUNES[i].x, state.pz - RUNES[i].z) < 2.6) { const v = save.runes[i]; return { label: save.wind ? `${RUNES[i].name} · ${RUNE_GLYPHS[v]}` : `Turn ${RUNES[i].name} · ${RUNE_GLYPHS[v]} ${RUNE_LABELS[v]}`, act: () => turnRune(i), x: RUNES[i].x, z: RUNES[i].z }; }
     return null;
   }
   // ---------- Hollow Beacon: Updraft lift, morning mirrors, dawn ending ----------
-  let onIsland = false, lift: { t: number; dur: number; down: boolean; p0: THREE.Vector3 } | null = null, dawnCine: { t: number; a0: number } | null = null, dawnDelay = -1;
+  let onIsland = false, lift: { t: number; dur: number; down: boolean; p0: THREE.Vector3; hold?: number } | null = null, dawnCine: { t: number; a0: number } | null = null, dawnDelay = -1;
   const ray = new THREE.Raycaster(), rv = new THREE.Vector3(), DOWN = new THREE.Vector3(0, -1, 0), lp = new THREE.Vector3();
   function islandY(x: number, z: number): number | null { ray.set(rv.set(x, 400, z), DOWN); ray.far = 600; const h = ray.intersectObject(island.top, false)[0]; return h ? h.point.y : null; }
   const toLocal = (x: number, z: number, y = player.root.position.y) => island.group.worldToLocal(lp.set(x, y, z));
@@ -359,17 +364,36 @@ async function main() {
     const fog = scene.fog as THREE.FogExp2; fog.color.copy(DC.fog0).lerp(DC.fog1, k); fog.density = fogD0 * (1 + 0.18 * k);
     renderer.toneMappingExposure = 0.92 + 0.1 * k; scene.environmentIntensity = 0.85 - 0.3 * k; scene.backgroundIntensity = 0.95 - 0.4 * k;
     (rift.material as THREE.ShaderMaterial).uniforms.uFade.value = 1 - 0.9 * k; island.setDawn(k);
-    const wu = ((water.mesh as THREE.Mesh).material as THREE.ShaderMaterial).uniforms; if (wu?.sunColor) { wu.sunColor.value.copy(sun.color); wu.sunDirection.value.copy(sunDir); }
+    water.setDawn(k); const wu = ((water.mesh as THREE.Mesh).material as THREE.ShaderMaterial).uniforms; if (wu?.sunColor) { wu.sunColor.value.copy(sun.color); wu.sunDirection.value.copy(sunDir); }
+  }
+  // ---------- Echo Grove (optional) + Marr's Unfinished Map charting ----------
+  let echoT = -1, chartT = 0;
+  function useEcho() {
+    if (save.echo) return openDialog('Echo Grove', echoMemoryLines(false));
+    if (sealCount(save) < 1) return toast(ECHO_SILENT, 3);
+    if (echoT < 0) { echoT = 0; state.speed = 0; toast('Five crystal boughs answer, one by one…', 2.2); }
+  }
+  function tickEcho(dt: number) {
+    if (echoT >= 0 && !save.echo && !talking) {
+      echoT += dt; for (let i = 0; i < 5; i++) if (echoT >= i * 0.28) grove.light(i);
+      if (echoT >= 1.8) { echoT = -1; const lv = levelOf(save.xp); save.echo = true; save.xp += ECHO_XP; persist(); grove.memory(true); toast(`Echo Grove remembered · +${ECHO_XP} XP · Echo${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 5); openDialog('Echo Grove', echoMemoryLines(true)); }
+    }
+    chartT -= dt; if (chartT > 0 || onIsland || lift) return; chartT = 0.4;
+    for (let i = 0; i < MARR_MARKS.length; i++) {
+      const m = MARR_MARKS[i]; if (save.charted[i] || Math.hypot(state.px - m.x, state.pz - m.z) > CHART_R) continue;
+      save.charted[i] = true; persist(); const n = save.charted.filter(Boolean).length;
+      toast(n === MARR_MARKS.length ? CHART_DONE : `Charted on Marr’s Unfinished Map: ${m.name} · ${n}/${MARR_MARKS.length}`, n === MARR_MARKS.length ? 5 : 3);
+    }
   }
   // ---------- Vale Warden (optional) ----------
   const wd = { hp: HP_MAX, phase: save.warden ? 3 : 0, teleT: 0, recT: 0, sx: WARDEN.x, sz: WARDEN.z, awake: false, warned: false, freeze: -1 };
-  let playerHp = HP_MAX, atkCd = 0, shake = 0, swingT = 0;
+  let playerHp = HP_MAX, atkCd = 0, shake = 0, swingT = 0, swingFreeze = false;
   const wardenDist = () => Math.hypot(state.px - WARDEN.x, state.pz - WARDEN.z);
   function resetWarden() { if (save.warden) { wd.phase = 3; wd.hp = 0; return; } wd.hp = HP_MAX; wd.phase = 0; wd.teleT = 0; wd.recT = 0; wd.awake = false; wd.warned = false; }
   function attackWarden() {
     if (save.warden) { toast('The Warden remains dormant.', 2); return; }
     if (atkCd > 0) { toast('Strike not ready.', 1.2); return; }
-    atkCd = PLAYER_ATK_CD; swingT = 0.25; player.play('Punch_Right');
+    atkCd = PLAYER_ATK_CD; swingT = 0.32; player.play('Punch_Right');
     state.facing = Math.atan2(WARDEN.x - state.px, WARDEN.z - state.pz);
     wd.hp = Math.max(0, wd.hp - 1); warden.hit();
     if (wd.hp <= 0) {
@@ -380,7 +404,7 @@ async function main() {
     toast(`Hit! Warden ${wd.hp}/${HP_MAX}`, 1.6);
   }
   function tickWarden(dt: number) {
-    atkCd = Math.max(0, atkCd - dt); swingT = Math.max(0, swingT - dt);
+    atkCd = Math.max(0, atkCd - dt); if (!swingFreeze) swingT = Math.max(0, swingT - dt);
     if (save.warden) { wd.phase = 3; return; }
     if (talking || cine || creating || dawnCine || lift || onIsland) return;
     const dist = wardenDist();
@@ -440,7 +464,7 @@ async function main() {
     if (save.started && n < 4) { let bd = 1e9, t = { name: '', x: 0, z: 0 }; for (const d of SEALS) if (!save.seals[d.id]) { const dd = Math.hypot(d.x - state.px, d.z - state.pz); if (dd < bd) { bd = dd; t = { name: `${d.name} · ${d.at}`, x: d.x, z: d.z }; } } return t; }
     if (save.done && !save.beacon) {
       if (onIsland) { const w = toWorld(BEACON_L.x, BEACON_L.z); return { name: `Hollow Beacon · mirrors ${aligned()}/4`, x: w.x, z: w.z }; }
-      if (!save.wind) return { name: 'Wind Shrine · Windward Blessing', x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z };
+      if (!save.wind) return { name: 'Wind Shrine · its blessing opens the Updraft', x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z };
       return { name: 'Updraft · Hollow Beacon', x: UPDRAFT.x, z: UPDRAFT.z };
     }
     if (onIsland) { const w = toWorld(RETURN_L.x, RETURN_L.z); return { name: 'Ride down · western edge', x: w.x, z: w.z }; }
@@ -449,7 +473,7 @@ async function main() {
   function updateHud(dt: number) {
     hudT -= dt; if (hudT > 0) return; hudT = 0.15;
     const n = sealCount(save);
-    qline.textContent = !save.started ? 'Speak with the Wayfinder' : !save.done ? (n < 4 ? `The Four Seals · ${n}/4` : 'All four seals held — return to the Wayfinder') : !save.beacon ? (onIsland ? `The Unspent Morning · mirrors ${aligned()}/4` : 'The Unspent Morning · ride the Updraft') : 'Morning-Bearer · the vale keeps its dawn';
+    qline.textContent = !save.started ? 'Speak with the Wayfinder' : !save.done ? (n < 4 ? `The Four Seals · ${n}/4` : 'All four seals held — return to the Wayfinder') : !save.beacon ? (onIsland ? `The Unspent Morning · mirrors ${aligned()}/4` : save.wind ? 'The Unspent Morning · ride the Updraft' : 'The Unspent Morning · needs the Wind Shrine blessing') : 'Morning-Bearer · the vale keeps its dawn';
     qstats.textContent = `Lv ${levelOf(save.xp)} · ${save.xp} XP · ${SEALS.map((d) => (save.seals[d.id] ? '◆' : '◇')).join('')}`;
     const tgt = objective();
     const dx = tgt.x - state.px, dz = tgt.z - state.pz, dist = Math.hypot(dx, dz);
@@ -461,7 +485,7 @@ async function main() {
     { const ws = { x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z }; const ddx = ws.x - state.px, ddz = ws.z - state.pz, dd = Math.hypot(ddx, ddz);
       const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
       wArrow.style.transform = `rotate(${(Math.atan2(-wy, wx) * 180 / Math.PI).toFixed(0)}deg)`; wArrow.style.visibility = save.wind ? 'hidden' : 'visible';
-      wText.textContent = save.wind ? 'Wind Shrine awake · Windward Blessing +15%' : `Wind Shrine (optional) · ${save.runes.map((v) => RUNE_GLYPHS[v]).join(' ')} · ${dd < 18 ? 'here' : Math.round(dd) + ' m'}`; }
+      wText.textContent = save.wind ? 'Wind Shrine awake · Windward Blessing +15%' : `Wind Shrine (${save.done ? 'blessing opens the Updraft' : 'optional'}) · ${save.runes.map((v) => RUNE_GLYPHS[v]).join(' ')} · ${dd < 18 ? 'here' : Math.round(dd) + ' m'}`; }
     { const ddx = WARDEN.x - state.px, ddz = WARDEN.z - state.pz, dd = Math.hypot(ddx, ddz); const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
       wdArrow.style.transform = `rotate(${(Math.atan2(-wy, wx) * 180 / Math.PI).toFixed(0)}deg)`; wdArrow.style.visibility = save.warden ? 'hidden' : 'visible';
       wdText.textContent = save.warden ? "Warden dormant · Warden's Crest" : `Vale Warden (optional) · ${dd < 12 ? 'here' : Math.round(dd) + ' m'}`;
@@ -499,7 +523,7 @@ async function main() {
   };
   // New character = fresh progress (with a confirm when there is progress to lose).
   const ncBox = document.getElementById('ncconfirm')!;
-  const hasProgress = () => { const sv = loadSave(); return sv.started || sv.xp > 0 || sv.wind || sv.warden || sv.beacon || sv.mirrors.some((v) => v !== 0) || Object.keys(sv.seals).length > 0 || sv.runes.some((v) => v !== 0); };
+  const hasProgress = () => { const sv = loadSave(); return sv.started || sv.xp > 0 || sv.wind || sv.warden || sv.beacon || sv.echo || sv.charted.some(Boolean) || sv.mirrors.some((v) => v !== 0) || Object.keys(sv.seals).length > 0 || sv.runes.some((v) => v !== 0); };
   document.getElementById('newchar')!.onclick = () => { if (hasProgress()) ncBox.hidden = !ncBox.hidden; else { document.getElementById('menu')!.hidden = true; openCreate(); } };
   document.getElementById('ncno')!.onclick = () => { ncBox.hidden = true; };
   document.getElementById('ncyes')!.onclick = () => { clearSave(); try { sessionStorage.setItem('vale3d-newchar', '1'); } catch { /* */ } location.reload(); };
@@ -553,7 +577,7 @@ async function main() {
     }
     let gy: number;
     if (lift) {
-      lift.t += dt; const u = Math.min(1, lift.t / lift.dur), e = u * u * (3 - 2 * u);
+      if (!(lift.hold !== undefined && lift.t >= lift.hold)) lift.t += dt; const u = Math.min(1, lift.t / lift.dur), e = u * u * (3 - 2 * u);
       liftPoint(e, bz); const ahead = liftPoint(Math.min(1, e + 0.02), new THREE.Vector3());
       if (Math.hypot(ahead.x - bz.x, ahead.z - bz.z) > 0.05) { const want = Math.atan2(ahead.x - bz.x, ahead.z - bz.z); let d = want - state.facing; d = Math.atan2(Math.sin(d), Math.cos(d)); state.facing += d * Math.min(1, dt * 3); let dy = state.facing + Math.PI - state.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); state.yaw += dy * Math.min(1, dt * 1.6); }
       state.pitch += (0.3 - state.pitch) * Math.min(1, dt * 2);
@@ -563,12 +587,13 @@ async function main() {
     else gy = Math.max(heightAt(state.px, state.pz), WATER_Y - 0.7);
     player.root.position.set(state.px, gy, state.pz);
     player.root.rotation.y = state.facing;
+    player.pose.fly += ((lift ? 1 : 0) - player.pose.fly) * Math.min(1, dt * 3); player.pose.swing = swingT > 0 ? 1 - swingT / 0.32 : 0;
     player.setSpeed(state.speed, dt);
     // Wayfinder looks at Ilka when near.
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 9) { const want = Math.atan2(state.px - WAYFINDER.x, state.pz - WAYFINDER.z); let d = want - wayfinder.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); wayfinder.root.rotation.y += d * Math.min(1, dt * 3); }
     wayfinder.setSpeed(0, dt);
-    tickWarden(dt);
+    tickWarden(dt); tickEcho(dt);
     updateHud(dt);
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
     // Interaction focus: swing the camera behind the player toward the target (keeps runes/seals in frame on portrait phones).
@@ -579,6 +604,13 @@ async function main() {
     const back = new THREE.Vector3(Math.sin(state.yaw) * cp, sp, Math.cos(state.yaw) * cp);
     const right = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
     camPos.copy(camTarget).addScaledVector(back, state.dist).addScaledVector(right, 0.65);
+    if (onIsland) {
+      // Rim trees: pull the camera in front of any trunk/canopy between it and the player.
+      const a = toLocal(camTarget.x, camTarget.z, camTarget.y).clone(), b = toLocal(camPos.x, camPos.z, camPos.y).clone();
+      const dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz; let tMin = 1;
+      if (len2 > 0.01) for (const tr of island.trees) { const r = 2.0; const u = ((tr.x - a.x) * dx + (tr.z - a.z) * dz) / len2; if (u <= 0 || u >= 1.2) continue; const px = a.x + dx * u - tr.x, pz = a.z + dz * u - tr.z; const d = Math.hypot(px, pz), rr = Math.min(2.4, r); if (d < rr) tMin = Math.min(tMin, u - Math.sqrt(rr * rr - d * d) / Math.sqrt(len2)); }
+      if (tMin < 1) camPos.lerpVectors(camTarget, camPos, Math.max(0.3, tMin - 0.05));
+    }
     const floor = (onIsland || lift ? (islandY(camPos.x, camPos.z) ?? -1e9) : heightAt(camPos.x, camPos.z)) + 0.6; if (camPos.y < floor) camPos.y = floor;
     if (snapCam) { camera.position.copy(camPos); snapCam = false; } else camera.position.lerp(camPos, Math.min(1, dt * 8));
     tmp.copy(camTarget).addScaledVector(right, 0.65); tmp.y += 0.15;
@@ -618,7 +650,7 @@ async function main() {
     dawnSky.mesh.position.copy(camera.position); dawnSky.set(Math.max(0, dawnK), t);
     const aloft = onIsland || !!lift; grassField.mesh.visible = !aloft; grassFar.mesh.visible = HIGH && !aloft;
     if (onIsland) { const L = toLocal(state.px, state.pz); island.treesNear(L.x, L.z); } else island.treesNear(1e4, 1e4);
-    updraft.update(t, lastDt); hollow.update(t, lastDt); updraft.setActive(save.done);
+    updraft.update(t, lastDt); hollow.update(t, lastDt); grove.update(t, lastDt); updraft.setActive(save.done);
     treeField.update(state.px, state.pz);
     if (Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y) > (HIGH ? 9 : 6)) { grassField.recenter(state.px, state.pz); grassFar.recenter(state.px, state.pz); }
     for (const gf of [grassField, grassFar]) { gf.uniforms.uTime.value = t; gf.uniforms.uPlayer.value.set(state.px, gy, state.pz); }
@@ -705,24 +737,31 @@ async function main() {
       if (name === 'shrine' || name === 'shrine-awake') { state.px = TABLET.x + 2.2; state.pz = TABLET.z + 13; state.facing = Math.PI; state.yaw = 0.16; state.pitch = 0.06; state.dist = 12; }
       if (name === 'warden' || name === 'warden-windup') { const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz), off = name === 'warden' ? 7 : 3; state.px = WARDEN.x + dx / d * off + (name === 'warden' ? 1.5 : 0); state.pz = WARDEN.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + (name === 'warden' ? 0.35 : 0.3); state.pitch = name === 'warden' ? 0.12 : 0.02; state.dist = name === 'warden' ? 7 : 8.5; wd.freeze = name === 'warden' ? 0 : 0.7; wd.awake = true; wd.warned = true; }
       if (name === 'warden-defeated') { save.warden = true; save.xp = 40; wd.phase = 3; const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz); state.px = WARDEN.x + dx / d * 5 + 1.2; state.pz = WARDEN.z + dz / d * 5; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.4; state.pitch = 0.15; state.dist = 6.5; }
-      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
+      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false] }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
       if (name === 'sunspire' || name === 'dome' || name === 'veilfall') { const l = LANDMARKS.find((x) => x.id === name)!; const rot = name === 'sunspire' ? 0.55 : name === 'veilfall' ? -0.3 : 0, dx0 = SPAWN.x - l.x, dz0 = SPAWN.z - l.z, dx = dx0 * Math.cos(rot) + dz0 * Math.sin(rot), dz = -dx0 * Math.sin(rot) + dz0 * Math.cos(rot), d = Math.hypot(dx, dz), off = name === 'dome' ? 36 : name === 'veilfall' ? 40 : 40; state.px = l.x + dx / d * off; state.pz = l.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.1; state.pitch = name === 'dome' ? 0.02 : name === 'veilfall' ? -0.3 : -0.05; state.dist = 6.5; }
       if (name === 'run') { keys.KeyW = true; }
-      const endgame = (beacon: boolean, mirrors: number[]) => { save = { v: 1, started: true, done: true, xp: beacon ? 315 : 255, seals: { dawn: true, sun: true, tide: true, forge: true }, runes: [1, 0, 2], wind: true, warden: true, mirrors: [...mirrors], beacon }; for (const o of seals) o.claim(); island.light(true, true); updraft.setActive(true, true); island.solve(beacon); hollow.solve(beacon); mirrors.forEach((v, i) => hollow.setMirror(i, v)); };
+      const endgame = (beacon: boolean, mirrors: number[]) => { save = { v: 1, started: true, done: true, xp: beacon ? 335 : 255, seals: { dawn: true, sun: true, tide: true, forge: true }, runes: [1, 0, 2], wind: true, warden: true, mirrors: [...mirrors], beacon, echo: beacon, charted: Array(7).fill(true) }; for (const o of seals) o.claim(); island.light(true, true); updraft.setActive(true, true); island.solve(beacon); hollow.solve(beacon); mirrors.forEach((v, i) => hollow.setMirror(i, v)); };
       if (name === 'beacon-puzzle' || name === 'ending-card') {
         endgame(false, name === 'ending-card' ? MIRRORS.map((m) => m.solve) : [3, 0, 1, 1]); onIsland = true; island.group.updateMatrixWorld(true);
         const P = toWorld(BEACON_L.x + 3.5, BEACON_L.z + 8.2), B = toWorld(BEACON_L.x, BEACON_L.z);
         state.px = P.x; state.pz = P.z; state.facing = Math.atan2(B.x - P.x, B.z - P.z); state.yaw = state.facing + Math.PI + 0.2; state.pitch = 0.42; state.dist = 7.5;
       }
       if (name === 'dawn') { endgame(true, MIRRORS.map((m) => m.solve)); const dx = ISLAND_POS.x - SPAWN.x, dz = ISLAND_POS.z - SPAWN.z; state.px = SPAWN.x - 4; state.pz = SPAWN.z - 6; state.facing = Math.atan2(dx, dz) - 0.2; state.yaw = Math.atan2(-dx, -dz) + 0.06; state.pitch = innerHeight > innerWidth ? -0.2 : -0.1; state.dist = innerHeight > innerWidth ? 7.4 : 6.4; }
-      if (name === 'journal' || name === 'map') { save = { v: 1, started: true, done: false, xp: 85, seals: { dawn: true, tide: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = SHRINE.x + 22; state.pz = SHRINE.z + 10; state.facing = 2.4; state.yaw = 2.4 + Math.PI; }
+      if (name === 'flight') { endgame(false, [0, 0, 0, 0]); state.px = UPDRAFT.x; state.pz = UPDRAFT.z + 2; snapCam = true; player.root.position.set(state.px, heightAt(state.px, state.pz), state.pz); beginLift(false); lift!.hold = 2.3; state.dist = 6; }
+      if (name === 'echo-grove') { save = { v: 1, started: true, done: false, xp: 50, seals: { dawn: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false] }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = ECHO.x - 3; state.pz = ECHO.z + 15; state.facing = Math.PI; state.yaw = 0.15; state.pitch = 0.12; state.dist = 7; }
+      if (name === 'warden-hit') { const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz); state.px = WARDEN.x + dx / d * 2.6; state.pz = WARDEN.z + dz / d * 2.6; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.9; state.pitch = 0.08; state.dist = 5.2; wd.freeze = 0; wd.awake = true; wd.warned = true; }
+      if (name === 'journal-charting') { save = { v: 1, started: true, done: true, xp: 215, seals: { dawn: true, sun: true, tide: true, forge: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: true, charted: [true, true, false, true, false, true, true] }; for (const o of seals) o.claim(); }
+      if (name === 'journal' || name === 'map') { save = { v: 1, started: true, done: false, xp: 85, seals: { dawn: true, tide: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false] }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = SHRINE.x + 22; state.pz = SHRINE.z + 10; state.facing = 2.4; state.yaw = 2.4 + Math.PI; }
       camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30);
-      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false }; interact(); }
+      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false] }; interact(); }
       if (name === 'warden-windup') { wd.sx = state.px + 0.6; wd.sz = state.pz; warden.placeZone(wd.sx, wd.sz); wd.phase = 1; wd.teleT = W_TELE * 0.3; toast('⚠ Warden winds up — move!', 60, true); }
       if (name === 'shrine-awake') { save.runes = [1, 0, 2]; save.wind = true; for (let i = 0; i < 3; i++) shrine.setRune(i, save.runes[i], false); shrine.awaken(true); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); }
       if (name === 'beam') { interact(); for (let i = 0; i < 50; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); if (cine) cine.hold = cine.dur * 0.6; for (let i = 0; i < 130; i++) update(1 / 30, clock.elapsedTime + 5 + i / 30); }
       if (name === 'ending-card') { for (let i = 0; i < 330 && endEl.hidden; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); }
       if (name === 'journal' || name === 'map') openSheet(name);
+      if (name === 'journal-charting') openSheet('journal');
+      if (name === 'echo-grove') { useEcho(); for (let i = 0; i < 70; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); while (talking) advance(); for (let i = 0; i < 40; i++) update(1 / 30, clock.elapsedTime + 6 + i / 30); toastEl.classList.remove('on'); }
+      if (name === 'warden-hit') { wd.freeze = -1; attackWarden(); for (let i = 0; i < 4; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); wd.freeze = 0; wd.phase = 0; swingFreeze = true; warden.hit(true); toast('Hit! Warden 2/3', 60); }
       if (name === 'seal') { save.started = true; interact(); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); hudT = 0; updateHud(0); }
     },
     key(code: string, down: boolean) { keys[code] = down; },
@@ -736,6 +775,7 @@ async function main() {
     beacon: () => { island.group.updateMatrixWorld(true); const w = (lx: number, lz: number) => { const v = toWorld(lx, lz); return { x: v.x, z: v.z }; };
       return { updraft: UPDRAFT, onIsland, lift: !!lift, mirrors: [...save.mirrors], solve: MIRRORS.map((m) => m.solve), beacon: save.beacon, dawn: dawnK, cine: !!dawnCine, ending: !endEl.hidden, endingText: endEl.innerText,
         mirrorW: MIRRORS.map((m) => w(BEACON_L.x + m.dx + (BEACON_L.x + m.dx > BEACON_L.x ? 0 : 0), BEACON_L.z + m.dz)), clueW: w(CLUE_L.x, CLUE_L.z), returnW: w(RETURN_L.x, RETURN_L.z), beamColor: '#' + sun.color.getHexString() }; },
+    echo: () => ({ x: ECHO.x, z: ECHO.z, done: save.echo, active: echoT >= 0, charted: [...save.charted], marks: MARR_MARKS.map((m) => ({ name: m.name, x: m.x, z: m.z })) }),
     sheets: () => ({ journal: !jEl.hidden, map: !mapEl.hidden, paused, journalText: jEl.innerText }),
     warden: () => ({ x: WARDEN.x, z: WARDEN.z, hp: wd.hp, phase: wd.phase, awake: wd.awake, playerHp, atkCd, recovery: recoveryPoint(), melee: W_MELEE }),
     quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
@@ -787,6 +827,35 @@ function makeCharacter(g: GLTF, s: number, colors: Record<string, string>, hide:
     m.material = Array.isArray(m.material) ? mats : mats[0];
   });
   const wrap = new THREE.Group(); wrap.add(root);
+  // Procedural overlays on top of the clips: airborne pose (arms out, legs trailing) and an attack swing.
+  const bone = (n: string) => root.getObjectByName(n) ?? root.getObjectByName(n.replace('.', '')) ?? null;
+  const PB = { hips: bone('Hips'), uaL: bone('UpperArm.L'), uaR: bone('UpperArm.R'), laL: bone('LowerArm.L'), laR: bone('LowerArm.R'), ulL: bone('UpperLeg.L'), ulR: bone('UpperLeg.R'), llL: bone('LowerLeg.L'), llR: bone('LowerLeg.R'), chest: bone('Chest') };
+  const qa = new THREE.Quaternion(), qp = new THREE.Quaternion(), qw = new THREE.Quaternion(), axv = new THREE.Vector3();
+  const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
+  /** Rotate a bone about an axis given in character space (+X left, +Y up, +Z forward). */
+  const rotC = (b: THREE.Object3D | null, axis: THREE.Vector3, ang: number) => {
+    if (!b || !b.parent || Math.abs(ang) < 1e-4) return;
+    wrap.getWorldQuaternion(qw); b.parent.getWorldQuaternion(qp);
+    axv.copy(axis).applyQuaternion(qw).applyQuaternion(qp.invert()).normalize(); qa.setFromAxisAngle(axv, ang); b.quaternion.premultiply(qa);
+  };
+  const pose = { fly: 0, swing: 0 }; let poseT = 0;
+  function applyPose(dt: number) {
+    poseT += dt; const f = pose.fly, s = pose.swing;
+    if (f > 0.01) {
+      const flap = Math.sin(poseT * 2.2) * 0.12;
+      rotC(PB.hips, X, 0.5 * f);
+      rotC(PB.uaL, Z, (1.25 + flap) * f); rotC(PB.uaR, Z, -(1.25 + flap) * f); rotC(PB.laL, Z, 0.2 * f); rotC(PB.laR, Z, -0.2 * f);
+      rotC(PB.ulL, X, (0.35 + Math.sin(poseT * 1.7) * 0.06) * f); rotC(PB.ulR, X, (0.45 - Math.sin(poseT * 1.7) * 0.06) * f);
+      rotC(PB.llL, X, 0.55 * f); rotC(PB.llR, X, 0.4 * f);
+    }
+    if (s > 0 && s < 1) {
+      // Wind up high, then slash down and across.
+      const up = s < 0.35 ? s / 0.35 : 1 - (s - 0.35) / 0.65, strike = s < 0.35 ? 0 : Math.sin(Math.PI * (s - 0.35) / 0.65);
+      rotC(PB.chest, Y, 0.35 * up - 0.45 * strike);
+      rotC(PB.uaR, X, -2.3 * up - 1.0 * strike); rotC(PB.uaR, Z, -0.35 * strike);
+      rotC(PB.hips, X, 0.18 * strike);
+    }
+  }
   const mixer = new THREE.AnimationMixer(root);
   const clip = (n: string) => g.animations.find((a) => a.name.endsWith('|' + n) || a.name === n);
   const idle = mixer.clipAction(clip('Idle')!), walk = mixer.clipAction(clip('Walk')!), run = mixer.clipAction(clip('Run')!);
@@ -803,8 +872,9 @@ function makeCharacter(g: GLTF, s: number, colors: Record<string, string>, hide:
       const wWalk = smoothstep(0.05, 1.6, v) * (1 - smoothstep(2.4, 4.6, v)), wRun = smoothstep(2.4, 4.6, v), wIdle = Math.max(0, 1 - wWalk - wRun);
       idle.setEffectiveWeight(wIdle * (waving ? 0.2 : 1)); walk.setEffectiveWeight(wWalk); run.setEffectiveWeight(wRun);
       walk.timeScale = THREE.MathUtils.clamp(v / 1.9, 0.6, 1.6); run.timeScale = THREE.MathUtils.clamp(v / 5.6, 0.75, 1.25);
-      mixer.update(dt);
+      mixer.update(dt); applyPose(dt);
     },
+    pose,
   };
 }
 
@@ -823,13 +893,16 @@ function makeCreek(normals: THREE.Texture) {
     w.rotation.x = -Math.PI / 2; w.position.y = WATER_Y;
     const wm = w.material as THREE.ShaderMaterial; const u = wm.uniforms; u.size.value = 3.2;
     // Deeper teal body colour; Fresnel-weighted sky reflection (stock Water reads as grey under a hazy sky).
-    wm.fragmentShader = wm.fragmentShader.replace(/vec3 albedo = mix\([^;]*;/, 'vec3 albedo = mix( waterColor * ( 0.55 + 0.35 * diffuseLight.r ) + scatter * 0.5, reflectionSample * vec3( 0.72, 0.86, 0.88 ) + specularLight, clamp( reflectance * 1.4 + 0.12, 0.0, 0.7 ) );');
-    return { mesh: w as THREE.Object3D, update: (t: number) => { u.time.value = t * 0.6; } };
+    // Dawn: the reflection and body colour lean toward the sunrise sky (the mirror pass can't see the far sky shell).
+    u.uDawn = { value: 0 };
+    wm.fragmentShader = 'uniform float uDawn;\n' + wm.fragmentShader.replace(/vec3 albedo = mix\([^;]*;/, 'vec3 albedo = mix( mix( waterColor, vec3( 0.22, 0.13, 0.14 ), uDawn * 0.6 ) * ( 0.55 + 0.35 * diffuseLight.r ) + scatter * 0.5, reflectionSample * mix( vec3( 0.72, 0.86, 0.88 ), vec3( 1.18, 0.76, 0.62 ), uDawn ) + specularLight, clamp( reflectance * 1.4 + 0.12 + uDawn * 0.12, 0.0, 0.78 ) );');
+    return { mesh: w as THREE.Object3D, update: (t: number) => { u.time.value = t * 0.6; }, setDawn: (k: number) => { u.uDawn.value = k; } };
   }
   normals.repeat.set(1, 1);
   const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#21424a', roughness: 0.06, metalness: 0.0, normalMap: normals, normalScale: new THREE.Vector2(0.35, 0.35), transparent: true, opacity: 0.88, envMapIntensity: 1.3 }));
   m.rotation.x = -Math.PI / 2; m.position.y = WATER_Y;
-  return { mesh: m as THREE.Object3D, update: (t: number) => { normals.offset.set(t * 0.01, -t * 0.05); } };
+  const wmat = m.material as THREE.MeshStandardMaterial, c0 = new THREE.Color('#21424a'), c1 = new THREE.Color('#5a3a3c');
+  return { mesh: m as THREE.Object3D, update: (t: number) => { normals.offset.set(t * 0.01, -t * 0.05); }, setDawn: (k: number) => { wmat.color.copy(c0).lerp(c1, k); wmat.emissive.setRGB(0.16 * k, 0.07 * k, 0.04 * k); } };
 }
 
 function prep(g: GLTF, cast = true): THREE.Object3D {
@@ -841,7 +914,7 @@ function okSpot(x: number, z: number, clearPath = 2.2, clearCreek = 2): boolean 
   if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < 6 || Math.hypot(x - SPAWN.x, z - SPAWN.z - 6) < 6 || Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 3 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 20) return false;
   for (const l of LANDMARKS) if (Math.hypot(x - l.x, z - l.z) < l.r * (l.id === 'veilfall' ? 1.7 : 1.25)) return false;
   for (const d of SEALS) if (Math.hypot(x - d.x, z - d.z) < 7) return false;
-  if (Math.hypot(x - WARDEN.x, z - WARDEN.z) < 14 || Math.hypot(x - UPDRAFT.x, z - UPDRAFT.z) < 9) return false;
+  if (Math.hypot(x - WARDEN.x, z - WARDEN.z) < 14 || Math.hypot(x - UPDRAFT.x, z - UPDRAFT.z) < 9 || Math.hypot(x - ECHO.x, z - ECHO.z) < 16) return false;
   void clearPath; return true;
 }
 function place(src: THREE.Object3D, x: number, z: number, s: number, ry: number, sink = 0.05) {

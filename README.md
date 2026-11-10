@@ -115,3 +115,10 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - **Save:** `mirrors` and `beacon` are saved in `vale3d-save` and cleared by Reset and New character. Max XP is 315 (seals 100 + Chapter 80 + shrine 35 + Warden 40 + beacon 60). The Page's 335 also counts the Echo Grove (+20), which is not ported.
 - **Journal** (☰ Menu or J) shows live state for the seals and their clues, the shrine, the Warden and the beacon, plus lore lines from the Page. **Map** (☰ Menu or M) is a parchment top-down map drawn from the terrain, with landmarks, seals, the Updraft and isle, the player arrow and the current objective. Gameplay pauses while either is open; Esc, J or M closes it.
 - **Screenshot presets:** `?shot=beacon-puzzle`, `dawn`, `ending-card`, `journal`, `map`.
+
+## Echo Grove, map charting & feel pass (Milestone 9)
+- **Echo Grove** (optional, map 440,300): silent until any seal is claimed; then "listen" lights the five crystal pines and plays *Memory of the Break* (Page text). +20 XP once, persisted (`echo` in the save), re-listen replays the memory without XP. **Max XP is now 335** (seals 100 + chapter 80 + shrine 35 + Warden 40 + echo 20 + beacon 60).
+- **Marr's Unfinished Map**: 7 landmarks (Pale Keep, Azure Keep, Sunspire, Iron Dome, Veilfall, Wind Shrine, Echo Grove) chart themselves when you come within ~32 m; shown in the Journal (n/7, Page text) and on the Map (uncharted = dashed "?" ring). Persisted (`charted[]`), cleared by reset.
+- **Updraft gate** stays on the Wind Shrine blessing (Page rule); the locked prompt, toast, quest line, objective and Journal now all say *needs the Wind Shrine blessing* and point at the Wind Tablet.
+- Fixes: Lite gold beam/updraft shaders now output sRGB (gold, not orange); creek water tints toward the dawn sky after the ending; the camera is pulled in instead of clipping through rim trees on the island; Updraft flight uses an airborne pose (arms out, legs trailing); Warden hit flash + spark; procedural right-arm attack swing.
+- QA (`tools/qa-run.cjs`) covers Echo (silent before seals, +20 once, recall no XP, persist, reset) and 7/7 charting.

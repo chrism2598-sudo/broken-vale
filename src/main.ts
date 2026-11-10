@@ -28,6 +28,7 @@ import { KEEPER_LINES, KEEPER_XP, KEEPER_HP, makeKeeper, type Keeper, type Keepe
 import { cutTerrain, cutGrass, STAIR, STAIR_DIR, CAVE_LINES, CAVE_XP, BRAZIERS, RIVER_ORDER, makeStairEntrance, makeCaveInterior, type CaveInterior } from './cave';
 import { ECHO, ECHO_RANGE, ECHO_XP, ECHO_SILENT, echoMemoryLines, MARR_MARKS, CHART_R, CHART_DONE, makeEchoGrove } from './echo';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { GameAudio, type Region, type Surface } from './audio';
 import { ENNA_LINES, ENNA_NAME, LAMP_XP, LAMP_TOAST, FINAL_TITLE, FINAL_KICKER, FINAL_LINES, FINAL_REWARD, finalStats, CREDITS, sefaLines, dovLines, ressLines, nextUncharted } from './finale';
 import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep } from './world';
 
@@ -257,11 +258,16 @@ async function main() {
   // ---------- dialogue, interaction, quest ----------
   const dlgEl = document.getElementById('dlg')!, dspk = document.getElementById('dspk')!, dtxt = document.getElementById('dtxt')!, dnext = document.getElementById('dnext') as HTMLButtonElement;
   const actBtn = document.getElementById('action') as HTMLButtonElement, toastEl = document.getElementById('toast')!;
+  // M18 · sound (procedural music per region + sfx); unlocked by the first gesture.
+  const audio = new GameAudio();
+  for (const ev of ['pointerdown', 'keydown'] as const) addEventListener(ev, () => { if (audio.enabled && (!audio.ctx || audio.ctx.state !== 'running')) audio.unlock(); }, { passive: true });
+  document.addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest('button'); if (b && b.id !== 'dnext' && b.id !== 'action') audio.ui(); });
   let talking = false, dq: string[] = [], toastT = 0, lastDt = 1 / 60, onDlgClose: (() => void) | null = null;
   function openDialog(speaker: string, lines: string[], onClose: (() => void) | null = null) { onDlgClose = onClose; dq = [...lines]; dspk.textContent = speaker; talking = true; dlgEl.hidden = false; document.body.classList.add('talking'); for (const k of Object.keys(keys)) keys[k] = false; advance(); }
-  function advance() { const l = dq.shift(); if (l === undefined) { talking = false; dlgEl.hidden = true; document.body.classList.remove('talking'); const cb = onDlgClose; onDlgClose = null; cb?.(); return; } dtxt.textContent = l; dnext.textContent = dq.length ? 'Next ▸' : 'Close'; }
+  function advance() { audio.ui(); const l = dq.shift(); if (l === undefined) { talking = false; dlgEl.hidden = true; document.body.classList.remove('talking'); const cb = onDlgClose; onDlgClose = null; cb?.(); return; } dtxt.textContent = l; dnext.textContent = dq.length ? 'Next ▸' : 'Close'; }
   dnext.onclick = advance;
-  function toast(msg: string, secs = 3.2, danger = false) { toastEl.textContent = msg; toastEl.classList.add('on'); toastEl.classList.toggle('danger', danger); toastT = secs; }
+  function toast(msg: string, secs = 3.2, danger = false) {
+    if (/\+\d+ XP/.test(msg)) audio.chime(); else if (/^Hit/.test(msg)) audio.hit(); else if (danger) { if (msg.startsWith('⚠')) audio.warn(); else audio.hurt(); } toastEl.textContent = msg; toastEl.classList.add('on'); toastEl.classList.toggle('danger', danger); toastT = secs; }
   const persist = () => writeSave(save);
   function talkWayfinder() {
     wayfinder.play('Wave');
@@ -357,7 +363,7 @@ async function main() {
     inCave = false; inCoast = true; setScene(c.scene);
     state.px = c.arrive.x; state.pz = c.arrive.z; state.facing = -Math.PI / 2; state.yaw = Math.PI / 2 - 0.12; state.pitch = 0.14; state.dist = 7; snapCam = true;
     if (save.coast < 1) { save.coast = 1; persist(); }
-    hudT = 0; fading = false; c.audio(true);
+    hudT = 0; fading = false; c.audio(audio.enabled);
     if (!instant) { setFade(false); toast(COAST_LINES.arrive, 3.5); }
   }
   async function leaveCoast() {
@@ -454,7 +460,7 @@ async function main() {
   }
   async function leaveSea() {
     if (!inSea || fading) return; fading = true; state.speed = 0; setFade(true); await sleepMs(520);
-    const c = await ensureCoast(); if (save.coast >= 2 && save.lamp !== 1) c.reveal(true); c.setTop(false); syncLamp(c); inSea = false; inCoast = true; setScene(c.scene); c.audio(true);
+    const c = await ensureCoast(); if (save.coast >= 2 && save.lamp !== 1) c.reveal(true); c.setTop(false); syncLamp(c); inSea = false; inCoast = true; setScene(c.scene); c.audio(audio.enabled);
     state.px = c.caveMouth.x + 1.2; state.pz = c.caveMouth.z; state.facing = Math.PI / 2; state.yaw = -Math.PI / 2 + 0.2; state.pitch = 0.16; state.dist = 6.5; snapCam = true;
     hudT = 0; fading = false; setFade(false);
   }
@@ -503,7 +509,7 @@ async function main() {
   }
   function keeperStrike() {
     if (!keep) return; if (atkCd > 0) { toast('Strike not ready.', 1.0); return; }
-    atkCd = PLAYER_ATK_CD; swingT = 0.32; player.play('Punch_Right'); state.facing = Math.atan2(keep.center.x - state.px, keep.center.z - state.pz);
+    atkCd = PLAYER_ATK_CD; swingT = 0.32; player.play('Punch_Right'); audio.swing(); state.facing = Math.atan2(keep.center.x - state.px, keep.center.z - state.pz);
     const r = keep.strike();
     if (r === 'armoured') toast(KEEPER_LINES.armoured, 2.4);
     else if (r === 'hit') { toast(`Hit the tide-core! Keeper ${keep.hp}/${KEEPER_HP}`, 1.6); shake = 0.12; }
@@ -724,7 +730,7 @@ async function main() {
   function attackWarden() {
     if (save.warden) { toast('The Warden remains dormant.', 2); return; }
     if (atkCd > 0) { toast('Strike not ready.', 1.2); return; }
-    atkCd = PLAYER_ATK_CD; swingT = 0.32; player.play('Punch_Right');
+    atkCd = PLAYER_ATK_CD; swingT = 0.32; player.play('Punch_Right'); audio.swing();
     state.facing = Math.atan2(WARDEN.x - state.px, WARDEN.z - state.pz);
     wd.hp = Math.max(0, wd.hp - 1); warden.hit();
     if (wd.hp <= 0) {
@@ -1052,12 +1058,32 @@ async function main() {
   }
 
   const turnTo = (o: THREE.Object3D, dx: number, dz: number, dt: number) => { let d = Math.atan2(dx, dz) - o.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); o.rotation.y += d * Math.min(1, dt * 3); };
+  const turnHome = (o: THREE.Object3D, dt: number) => { const h = o.userData.home as number | undefined; if (h === undefined) { o.userData.home = o.rotation.y; return; } let d = h - o.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); o.rotation.y += d * Math.min(1, dt * 0.8); };
   function tickNpcs(dt: number) {
     const inVale = !inCave && !inCoast && !inSea && !inKeep && !onIsland;
-    if (inVale) for (const n of valeNpcs) { if (!n.c.root.visible) continue; const dx = state.px - n.p.x, dz = state.pz - n.p.z, d = Math.hypot(dx, dz); if (d > 45) continue; if (d < 8) turnTo(n.c.root, dx, dz, dt); n.c.setSpeed(0, dt); }
-    if (inCoast) for (const c of [ennaC, ressC]) { if (!c.root.visible) continue; const dx = state.px - c.root.position.x, dz = state.pz - c.root.position.z, d = Math.hypot(dx, dz); if (d > 60) continue; if (d < 9) turnTo(c.root, dx, dz, dt); c.setSpeed(0, dt); }
+    if (inVale) for (const n of valeNpcs) { if (!n.c.root.visible) continue; const dx = state.px - n.p.x, dz = state.pz - n.p.z, d = Math.hypot(dx, dz); if (d > 45) continue; if (d < 8) turnTo(n.c.root, dx, dz, dt); else turnHome(n.c.root, dt); n.c.setSpeed(0, dt); }
+    if (inCoast) for (const c of [ennaC, ressC]) { if (!c.root.visible) continue; const dx = state.px - c.root.position.x, dz = state.pz - c.root.position.z, d = Math.hypot(dx, dz); if (d > 60) continue; if (d < 9) turnTo(c.root, dx, dz, dt); else turnHome(c.root, dt); c.setSpeed(0, dt); }
+  }
+  let stepAcc = 0.5;
+  function surfaceNow(): Surface {
+    if (inKeep) return 'water'; if (inCave || inSea) return 'stone';
+    if (inCoast && coast) return coast.onTop || coast.groundY(state.px, state.pz) > coast.landY(state.px, state.pz) + 0.1 ? 'stone' : 'sand';
+    if (onIsland) return 'grass'; if (Math.abs(state.px - creekX(state.pz)) < creekHalf(state.pz)) return 'water';
+    return pathMask(state.px, state.pz) > 0.5 ? 'gravel' : 'grass';
+  }
+  function regionNow(): Region {
+    if (lampCine || dawnCine || !endEl.hidden) return 'ending';
+    if (inKeep) return keep && keep.active && save.sea < 5 ? 'keeper' : 'cave';
+    if (inSea || inCave) return 'cave'; if (inCoast) return 'coast';
+    if (wd.awake && !save.warden) return 'keeper';
+    return 'meadow';
+  }
+  function tickSound() {
+    audio.setRegion(regionNow());
+    if (!talking && !lift && !cine && !dawnCine && !lampCine && !fading && !paused && state.speed > 0.5) { stepAcc += state.speed * lastDt; const stride = state.speed > 3 ? 1.35 : 0.78; if (stepAcc >= stride) { stepAcc -= stride; audio.step(surfaceNow(), state.speed > 3); } } else stepAcc = 0.5;
   }
   function tick(t: number, gy: number) {
+    tickSound();
     // Sun shadow frustum follows the player (fitted).
     sun.position.copy(camTarget).addScaledVector(sunDir, 120);
     sun.target.position.copy(camTarget).addScaledVector(fwdV.set(-Math.sin(state.yaw), 0, -Math.cos(state.yaw)), SH * 0.55);
@@ -1198,6 +1224,35 @@ async function main() {
   });
 
   // ---------- QA / screenshot hooks ----------
+  // ---------- M18 · title screen (Continue / New Game / Settings) and Settings sheet ----------
+  const titleEl = document.getElementById('title')!, setEl = document.getElementById('settings')!;
+  const chapterLabel = () => save.lamp >= 2 ? 'The End · free roam' : save.beacon ? 'Chapter II · Enna’s Trail' : save.started ? 'Chapter I · The Four Seals' : 'At the meadow crossing';
+  function showTitle() {
+    titleEl.hidden = false; paused = true; document.body.classList.add('titled'); for (const k of Object.keys(keys)) keys[k] = false;
+    document.getElementById('tsave')!.textContent = `${profile.name} ${SURNAME} · Level ${levelOf(save.xp)} · ${chapterLabel()}`;
+    document.getElementById('tconfirm')!.hidden = true;
+  }
+  function hideTitle() { titleEl.hidden = true; paused = false; document.body.classList.remove('titled'); clock.getDelta(); }
+  document.getElementById('tcont')!.onclick = () => { audio.unlock(); hideTitle(); toast(`Welcome back, ${profile.name}`, 2.4); };
+  document.getElementById('tnew')!.onclick = () => {
+    audio.unlock();
+    if (!save.started && save.xp === 0) { hideTitle(); openCreate(); return; }
+    document.getElementById('tcmsg')!.textContent = `Start a new game? ${profile.name}’s save (Level ${levelOf(save.xp)}, ${chapterLabel()}) will be erased.`; document.getElementById('tconfirm')!.hidden = false;
+  };
+  document.getElementById('tno')!.onclick = () => { document.getElementById('tconfirm')!.hidden = true; };
+  document.getElementById('tyes')!.onclick = () => { clearSave(); try { sessionStorage.setItem('vale3d-newchar', '1'); } catch { /* */ } location.reload(); };
+  const sndLabel = () => { const t = `Sound: ${audio.enabled ? 'On' : 'Off'}`; for (const id of ['ssound', 'sndbtn']) { const b = document.getElementById(id); if (b) b.textContent = t; } };
+  const syncSettings = () => { sndLabel(); (document.getElementById('svol') as HTMLInputElement).value = String(Math.round(audio.musicVol * 100)); document.getElementById('squal')!.textContent = qBtn.textContent; document.getElementById('smotion')!.textContent = document.getElementById('motion')?.textContent ?? ''; };
+  audio.onChange = (on) => { sndLabel(); if (inCoast) coast?.audio(on); };
+  const toggleSound = () => audio.setEnabled(!audio.enabled);
+  document.getElementById('ssound')!.onclick = toggleSound; document.getElementById('sndbtn')!.onclick = toggleSound;
+  (document.getElementById('svol') as HTMLInputElement).oninput = (e) => audio.setMusicVol(+(e.target as HTMLInputElement).value / 100);
+  document.getElementById('squal')!.onclick = () => qBtn.click();
+  document.getElementById('smotion')!.onclick = () => { document.getElementById('motion')?.click(); syncSettings(); };
+  const openSettings = () => { syncSettings(); setEl.hidden = false; if (titleEl.hidden) { paused = true; state.speed = 0; } };
+  document.getElementById('tset')!.onclick = openSettings; document.getElementById('setbtn')!.onclick = () => { setMenu(false); openSettings(); };
+  document.getElementById('sclose')!.onclick = () => { setEl.hidden = true; if (titleEl.hidden) { paused = false; clock.getDelta(); } };
+  sndLabel();
   const api = {
     get ready() { return !fading && !caveLoading; }, errors, quality,
     get fps() { return fps; },
@@ -1336,6 +1391,8 @@ async function main() {
     cave: () => ({ stage: save.cave, inCave, fading, mouth: stair.mouth, stair: STAIR, lit: [...litOrder], door: !!cave?.doorOpen, entry: cave?.entry, exit: cave?.exit, braziers: cave?.braziers, carving: cave?.carving, doorAt: cave?.door, order: RIVER_ORDER, names: BRAZIERS.map((b) => b.name) }),
     sheets: () => ({ journal: !jEl.hidden, map: !mapEl.hidden, paused, journalText: jEl.innerText }),
     warden: () => ({ x: WARDEN.x, z: WARDEN.z, hp: wd.hp, phase: wd.phase, awake: wd.awake, playerHp, atkCd, recovery: recoveryPoint(), melee: W_MELEE }),
+    audio() { return audio.state; },
+    title() { return { open: !titleEl.hidden, confirm: !document.getElementById('tconfirm')!.hidden, settings: !setEl.hidden, save: document.getElementById('tsave')!.textContent, paused }; },
     lamp() { const c = coast; return { stage: save.lamp, onTop: !!c?.onTop, cine: !!lampCine, ending: !endEl.hidden, endMode, endingText: endEl.innerText, credits: !credEl.hidden, rift: rift.visible, ennaVale: ennaV.root.visible, ennaCoast: ennaC.root.visible, low: c?.isLow() ?? null, phase: c?.tidePhase ?? null, revealed: !!c?.revealed, ennaFoot: c?.ennaFoot, towerDoor: c?.towerDoor, topHatch: c?.topHatch, lanternW: c?.lanternW, ress: save.lamp >= 2 ? c?.ressEnd : c?.ress, sefa: SEFA, dov: DOV, ennaV: ENNA_V, xp: save.xp }; },
     quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
     // Head height above the hips (world Y); stays > 0 in every state now that pose overlays never accumulate.
@@ -1346,9 +1403,11 @@ async function main() {
   document.getElementById('loading')!.remove();
   const shot = params.get('shot');
   if (shot?.startsWith('create-')) openCreate(shot === 'create-male' ? 'male' : 'female', shot === 'create-male' ? 'Aren' : 'Ilka');
+  else if (shot === 'title' || shot === 'title-settings' || shot === 'title-confirm') { showTitle(); if (shot === 'title-settings') openSettings(); if (shot === 'title-confirm') { save.started = true; document.getElementById('tnew')!.click(); } }
   else if (shot) await api.preset(shot);
   else if (!hasProfile()) openCreate();
   else if ((() => { try { const f = sessionStorage.getItem('vale3d-newchar'); sessionStorage.removeItem('vale3d-newchar'); return !!f; } catch { return false; } })()) openCreate();
+  else if (!params.has('qa')) showTitle();
 }
 
 // ---------- helpers ----------

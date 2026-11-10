@@ -2,7 +2,7 @@
 const puppeteer=require(process.env.PUPPETEER_CORE);const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:600000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const p=await b.newPage();await p.setViewport({width:800,height:500});const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
-await p.goto('http://localhost:8090/?q=lite',{waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});
+await p.goto('http://localhost:8090/?q=lite&qa=1',{waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});
 await p.click('#begin');await sleep(1500);
 // Pose watchdog: sample Ilka's head-above-hips through every state of the run (meadow, flight, fights, coast causeway, sea cave, Keeper).
 const poseW={n:0,min:9,bad:0,where:null};let poseOn=true;(async()=>{while(poseOn){try{const r=await p.evaluate(()=>window.__vale&&window.__vale.ready?{d:window.__vale.pose(),c:window.__vale.coast().inCoast,s:window.__vale.sea().inSea,k:window.__vale.keeper().inKeep,f:window.__vale.beacon().lift}:null);if(r&&r.d!=null){poseW.n++;if(r.d<poseW.min){poseW.min=r.d;poseW.where=r;}if(r.d<0.2)poseW.bad++;}}catch(e){}await sleep(300);}})();

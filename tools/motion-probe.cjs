@@ -23,7 +23,7 @@ function metrics(R){ // [t,dt,px,pz,hx,hz,cx,cy,cz,dist,sx,sy,speed,heading,yaw,
 (async()=>{const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:900000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
 const p=await b.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));
 await p.setViewport({width:W,height:H,isMobile:true,hasTouch:true,deviceScaleFactor:1});
-await p.goto('http://localhost:8090/?q=lite',{waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});
+await p.goto('http://localhost:8090/?q=lite&qa=1',{waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});
 await p.tap('#begin').catch(()=>p.click('#begin'));await sleep(1500);
 const cdp=await p.target().createCDPSession();await cdp.send('Emulation.setCPUThrottlingRate',{rate:5});
 const go=()=>p.evaluate(()=>{const v=window.__vale;const q=v.quest();v.warp(q.wayfinder.x+14,q.wayfinder.z+6);});

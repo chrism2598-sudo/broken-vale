@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<title>The Broken Vale — Vertical Slice</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#9fb6c8;font-family:Georgia,'Times New Roman',serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#app{position:fixed;inset:0}
+canvas{display:block;width:100%;height:100%}
+.hud{position:fixed;left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));color:#f4ead2;text-shadow:0 1px 3px rgba(0,0,0,.6);pointer-events:none}
+.hud h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.04em}
+.hud p{margin:2px 0 0;font-size:13px;opacity:.9}
+.btn{position:fixed;right:max(14px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));background:rgba(12,30,34,.55);color:#f4ead2;border:1px solid rgba(214,186,120,.7);border-radius:10px;padding:8px 12px;font:13px Georgia,serif;backdrop-filter:blur(6px)}
+#joy{position:fixed;left:max(22px,env(safe-area-inset-left));bottom:max(22px,env(safe-area-inset-bottom));width:120px;height:120px;border-radius:50%;background:rgba(10,28,32,.28);border:1px solid rgba(240,230,200,.35);touch-action:none}
+#knob{position:absolute;left:38px;top:38px;width:44px;height:44px;border-radius:50%;background:rgba(244,234,210,.75)}
+#loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#f4ead2;font-size:18px;background:linear-gradient(#58748a,#9fb6c8)}
+#talk{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translateX(-50%);max-width:min(560px,86vw);background:rgba(12,30,34,.62);color:#f4ead2;border:1px solid rgba(214,186,120,.6);border-radius:12px;padding:10px 14px;font-size:14px;display:none;pointer-events:none}
+#newchar{top:calc(max(12px,env(safe-area-inset-top)) + 46px)}
+#create{position:fixed;z-index:20;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));max-height:48%;overflow:auto;box-sizing:border-box;padding:16px 16px 14px;border-radius:16px;background:rgba(10,30,34,.9);color:#f4ead2;border:1px solid rgba(214,186,120,.85);box-shadow:0 10px 40px rgba(0,0,0,.35);backdrop-filter:blur(8px)}
+#create[hidden]{display:none}
+#create h2{margin:0 0 4px;font-size:22px;font-weight:600;letter-spacing:.03em;color:#e9d6a2}
+#create .sub{margin:0 0 12px;font-size:14px;opacity:.85}
+#create label{display:block;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#d5b977;margin:0 0 6px}
+#cname{flex:1;min-width:0;width:100%;box-sizing:border-box;min-height:52px;font:20px Georgia,serif;color:#f4ead2;background:rgba(4,18,21,.75);border:1px solid rgba(214,186,120,.7);border-radius:12px;padding:10px 14px;outline:none}
+/* [First] Marr: editable first name with the fixed family name beside it */
+.namerow{display:flex;align-items:center;gap:10px}
+#csurname{font:20px Georgia,serif;color:#e9d6a2;padding:0 4px;white-space:nowrap}
+#cname:focus{border-color:#e9d6a2;box-shadow:0 0 0 3px rgba(214,186,120,.25)}
+.sexrow{display:flex;gap:10px;margin:14px 0}
+.sexrow button,#begin{flex:1;min-height:56px;border-radius:12px;font:18px Georgia,serif;cursor:pointer}
+.sexrow button{background:rgba(30,72,78,.55);color:#f4ead2;border:1px solid rgba(214,186,120,.55)}
+.sexrow button[aria-pressed="true"]{background:#d5b977;color:#1d1a12;border-color:#f0dca4;box-shadow:inset 0 0 0 2px rgba(255,245,210,.6)}
+#begin{width:100%;background:linear-gradient(#e2c98a,#c9a95e);color:#1d1a12;border:1px solid #f0dca4;font-weight:600;letter-spacing:.04em}
+body.creating #joy,body.creating #newchar,body.creating #pname,body.creating .hud p{display:none}
+@media (min-width:760px) and (min-aspect-ratio:1/1){#create{left:max(28px,env(safe-area-inset-left));right:auto;top:50%;bottom:auto;transform:translateY(-50%);width:360px;max-height:86%}}
+#fps{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));z-index:15;min-width:44px;min-height:32px;padding:6px 10px;border-radius:9px;background:rgba(10,30,34,.55);color:#e9d6a2;border:1px solid rgba(214,186,120,.55);font:12px ui-monospace,Menlo,monospace;opacity:.75}
+#fps.on{opacity:1}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="hud"><h1>The Broken Vale<span id="pname"></span></h1><p id="hint">Drag to look · WASD / stick to move · Shift walks</p></div>
+<button class="btn" id="quality">Quality: …</button>
+<button class="btn" id="newchar">New character</button>
+<form id="create" hidden autocomplete="off">
+  <h2>Who walks the Vale?</h2>
+  <p class="sub" id="csub">Seventeen, Enna’s daughter. Choose a first name — Marr is your family’s.</p>
+  <label for="cname">First name</label>
+  <div class="namerow"><input id="cname" maxlength="16" value="Ilka" spellcheck="false" enterkeyhint="go" aria-describedby="csurname" /><span id="csurname" aria-label="Surname (fixed)">Marr</span></div>
+  <div class="sexrow" role="group" aria-label="Body">
+    <button type="button" data-sex="female" aria-pressed="true">Female</button>
+    <button type="button" data-sex="male" aria-pressed="false">Male</button>
+  </div>
+  <button type="submit" id="begin">Begin</button>
+</form>
+<div id="joy"><div id="knob"></div></div>
+<div id="talk"></div>
+<button id="fps" aria-label="Toggle FPS readout">FPS</button>
+<div id="loading">Loading the Vale…</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+const puppeteer=require(process.env.PUPPETEER_CORE || 'puppeteer-core') /* npm i -D puppeteer-core, or set PUPPETEER_CORE */;
+(async()=>{
+ const b=await puppeteer.launch({executablePath:process.env.CHROME||'/usr/bin/google-chrome',headless:'new',args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+ const p=await b.newPage();await p.setViewport({width:480,height:360});
+ const errs=[];p.on('pageerror',e=>errs.push(e.message));
+ await p.goto('http://localhost:8090/?q=lite',{timeout:120000});
+ await p.evaluate(()=>localStorage.removeItem('vale3d-hero')); await p.reload();
+ await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:300000});
+ const r={};
+ r.openOnFirstVisit=await p.evaluate(()=>window.__vale.creating && !document.getElementById('create').hidden);
+ await p.$eval('#cname',e=>e.value=''); await p.type('#cname','<b>Zé  Ånna!!');
+ await p.click('[data-sex="male"]');
+ r.sub=await p.$eval('#csub',e=>e.textContent);
+ await p.click('#begin');
+ r.after=await p.evaluate(()=>({creating:window.__vale.creating,profile:window.__vale.profile,stored:localStorage.getItem('vale3d-hero'),pname:document.getElementById('pname').textContent,line:window.__vale.talkLine()}));
+ await p.reload(); await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:300000});
+ r.reloadSkipsCreate=await p.evaluate(()=>!window.__vale.creating && window.__vale.profile.sex==='male');
+ await p.click('#newchar'); r.newCharOpens=await p.evaluate(()=>window.__vale.creating && document.getElementById('cname').value);
+ await p.$eval('#cname',e=>e.value='   '); await p.click('[data-sex="female"]'); await p.click('#begin');
+ r.emptyFallback=await p.evaluate(()=>window.__vale.profile);
+ r.errs=errs; console.log(JSON.stringify(r,null,1)); await b.close();
+})().catch(e=>{console.log('ERR',e.message);process.exit(1)});

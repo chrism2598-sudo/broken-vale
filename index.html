@@ -50,6 +50,14 @@ body.creating #joy,body.creating #pname,body.creating .hud p{display:none}
 #wdarrow{display:inline-block;color:#e8955a;font-size:13px}
 #combat{position:fixed;z-index:14;left:50%;transform:translateX(-50%);top:calc(max(12px,env(safe-area-inset-top)) + 4px);padding:6px 14px;border-radius:12px;background:rgba(10,30,34,.82);border:1px solid rgba(214,186,120,.8);color:#f4ead2;font-size:18px;white-space:nowrap}
 #combat[hidden]{display:none}
+#bossbar{position:fixed;z-index:14;left:50%;transform:translateX(-50%);bottom:calc(max(14px,env(safe-area-inset-bottom)) + 150px);width:min(64vw,420px);padding:6px 12px 7px;border-radius:12px;background:rgba(6,22,26,.84);border:1px solid rgba(120,220,235,.7);color:#e8fbff;text-align:center;pointer-events:none}
+#bossbar[hidden]{display:none}
+#bossbar .bn{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9fe8f4}
+#bossbar .bw{height:10px;margin:5px 0 4px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden}
+#kfill{display:block;height:100%;width:100%;background:linear-gradient(90deg,#3fd0ff,#bff8ff);transition:width .3s}
+#kst{font-size:13px;color:#f4ead2}
+#bossbar.alert{border-color:#ff8a4a;box-shadow:0 0 18px rgba(255,120,60,.55)}
+#bossbar.open{border-color:#bff8ff;box-shadow:0 0 18px rgba(120,240,255,.6)}
 #combat .lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#d5b977}
 #combat #hp{color:#ff7a6a;letter-spacing:2px}
 #combat #whp{color:#e8955a;letter-spacing:2px}
@@ -129,6 +137,7 @@ body.talking #joy,body.talking #action,body.creating #quest,body.creating #menub
 <div id="quest" aria-live="polite"><div id="qline"></div><div id="qstats"></div><div id="compass"><span id="carrow">➤</span><span id="ctext"></span></div><div id="wind"><span id="warrow">➤</span><span id="wtext"></span></div><div id="wdl"><span id="wdarrow">➤</span><span id="wdtext"></span></div></div>
 <div id="toast" aria-live="polite"></div>
 <div id="fade" aria-hidden="true"></div>
+<div id="bossbar" hidden><div class="bn">The Drowned Keeper <span id="kph"></span></div><div class="bw"><i id="kfill"></i></div><div id="kst"></div></div>
 <div id="combat" hidden aria-live="polite"><span class="lbl">HP</span> <span id="hp"></span><span class="sep">·</span><span class="lbl">Warden</span> <span id="whp"></span></div>
 <div id="chapter" hidden role="dialog" aria-labelledby="chtitle"><div class="chin"><div class="chk">Chapter I complete</div><h2 id="chtitle">The Four Seals</h2><p id="chtease"></p><p class="chxp" id="chxp"></p><button id="chok">Continue</button></div></div>
 <div id="ending" hidden role="dialog" aria-labelledby="endtitle"><div class="chin endin"><div class="chk">The Unspent Morning</div><h2 id="endtitle"></h2><div id="endlines"></div><p class="chxp" id="endxp"></p><button id="endok">Continue</button></div></div>

@@ -49,12 +49,12 @@ const SHG = `float seaH(vec2 p){ float h=.12*sin(p.x*.45+p.y*.3)+.08*sin(p.y*.9-
   ${POOLS.map((p) => `{ float d=length(p-vec2(${p.x.toFixed(2)},${p.z.toFixed(2)})); h-=1.25*max(0.,1.-(d/3.1)*(d/3.1)); }`).join('')}
   float w=max(0.,(-(p.x-(${CX.toFixed(1)}))-13.5)/3.); h-=1.6*min(1.,w); return h; }`;
 
-function rockBlob(r: number, rnd: () => number, sx = 1, sy = 1, sz = 1, detail = 2) {
+export function rockBlob(r: number, rnd: () => number, sx = 1, sy = 1, sz = 1, detail = 2) {
   const g = mergeVertices(new THREE.IcosahedronGeometry(r, detail).deleteAttribute('normal').deleteAttribute('uv')); const p = g.attributes.position as THREE.BufferAttribute; const o = rnd() * 10;
   for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const k = 1 + 0.18 * Math.sin(x * 1.3 + o) * Math.sin(y * 1.7 - o) + 0.07 * Math.sin(z * 3.1 + y * 2.3); p.setXYZ(i, x * k * sx, y * k * sy, z * k * sz); }
   g.computeVertexNormals(); return g;
 }
-const gradTex = (stops: [number, string][], w = 4, h = 128, radial = false) => { const c = document.createElement('canvas'); c.width = radial ? 128 : w; c.height = h; const x = c.getContext('2d')!;
+export const gradTex = (stops: [number, string][], w = 4, h = 128, radial = false) => { const c = document.createElement('canvas'); c.width = radial ? 128 : w; c.height = h; const x = c.getContext('2d')!;
   const gr = radial ? x.createRadialGradient(64, 64, 0, 64, 64, 64) : x.createLinearGradient(0, 0, 0, h); for (const [o, col] of stops) gr.addColorStop(o, col); x.fillStyle = gr; x.fillRect(0, 0, c.width, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
 
 export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex; blocks: GroundTex }, waterNormals: THREE.Texture, env: THREE.Texture | null) {
@@ -77,7 +77,11 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
     const m = new THREE.Mesh(d, rock); m.receiveShadow = true; g.add(m); }
   // Floor with three pools and the seal pool.
   { const f = new THREE.PlaneGeometry(RX + RXW + 4, 2 * RZ + 4, high ? 156 : 100, high ? 90 : 56); f.rotateX(-Math.PI / 2); f.translate(CX - (RXW - RX) / 2, 0, 0); const p = f.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) p.setY(i, sh(p.getX(i), p.getZ(i))); f.computeVertexNormals(); const m = new THREE.Mesh(f, floorM); m.receiveShadow = true; g.add(m); }
+    const fc = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i), y = sh(x, z); p.setY(i, y);
+      const wet = Math.max(0, Math.min(1, (0.05 - y) / 0.9)), mot = 0.5 + 0.5 * Math.sin(x * 1.3 + Math.sin(z * 0.7) * 2) * Math.sin(z * 1.1 - x * 0.4), ridge = Math.max(0, Math.min(1, (y - 0.18) / 0.12));
+      const k = (0.82 + 0.3 * mot) * (1 - 0.5 * wet) + 0.18 * ridge; fc[i * 3] = k * (1 - 0.12 * wet); fc[i * 3 + 1] = k; fc[i * 3 + 2] = k * (1 + 0.1 * wet); }
+    f.setAttribute('color', new THREE.BufferAttribute(fc, 3)); floorM.vertexColors = true; f.computeVertexNormals(); const m = new THREE.Mesh(f, floorM); m.receiveShadow = true; g.add(m); }
   // Boulders, pool rims, shell pedestals, stalactites.
   const solids: { x: number; z: number; r: number }[] = [];
   { const parts: THREE.BufferGeometry[] = [];
@@ -116,15 +120,20 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
     const m = new THREE.Mesh(sg, shellMats[i]); m.position.set(pl.x, SHELL_Y + 0.02, pl.z); m.rotation.set(-0.5, i * 1.3, 0); m.castShadow = true; g.add(m);
     const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: '#7fe8ff', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); h.scale.setScalar(2.6); h.position.set(pl.x, SHELL_Y + 0.5, pl.z); h.layers.set(1); g.add(h); halos.push(h); });
   // The round seal (Chapter II arena door) set into the west wall, with seven glyph rings.
-  const ringsTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d')!; x.fillStyle = '#000'; x.fillRect(0, 0, 512, 512); x.strokeStyle = '#fff'; x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
-    const glyphs = '◎⁘≈◇△☽✶'; for (let r = 0; r < 7; r++) { const R = 46 + r * 30; x.lineWidth = 3; x.beginPath(); x.arc(256, 256, R, 0, Math.PI * 2); x.stroke(); x.font = `${16 + r}px serif`; const n = 6 + r * 3; for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2 + r * 0.4; x.fillText(glyphs[(k + r) % 7], 256 + Math.cos(a) * (R + 14), 256 + Math.sin(a) * (R + 14)); } }
-    x.font = '64px serif'; x.fillText('≈', 256, 258); const t2 = new THREE.CanvasTexture(c); return t2; })();
-  const sealMat = triplanar(t.blocks, 2.4, '#b5ad9e', { sat: 0.4 }); sealMat.emissive = new THREE.Color('#4fd8ff'); sealMat.emissiveMap = ringsTex; sealMat.emissiveIntensity = 0.04;
+  const ringsTex = (from: number, to: number, centre: boolean) => { const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d')!; x.strokeStyle = '#fff'; x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const glyphs = '◎⁘≈◇△☽✶'; for (let r = from; r < to; r++) { const R = 34 + r * 30; x.lineWidth = 3; x.beginPath(); x.arc(256, 256, R, 0, Math.PI * 2); x.stroke(); x.font = `${15 + r}px serif`; const n = 6 + r * 3; for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2 + r * 0.4; x.fillText(glyphs[(k + r) % 7], 256 + Math.cos(a) * (R + 14), 256 + Math.sin(a) * (R + 14)); } }
+    if (centre) { x.font = '64px serif'; x.fillText('≈', 256, 258); } const t2 = new THREE.CanvasTexture(c); t2.colorSpace = THREE.SRGBColorSpace; return t2; };
+  const sealMat = triplanar(t.blocks, 2.4, '#b5ad9e', { sat: 0.4 });
+  // Glyph rings are separate circle overlays on the seal's face (circle UVs map the canvas exactly): salt-white base, inner three (shells), outer four (the second key).
+  const ringBase = new THREE.MeshBasicMaterial({ map: ringsTex(0, 7, true), color: '#d8d2c4', transparent: true, opacity: 0.32, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  const ringIn = new THREE.MeshBasicMaterial({ map: ringsTex(0, 3, true), color: '#5fe0ff', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
+  const ringOut = new THREE.MeshBasicMaterial({ map: ringsTex(3, 7, false), color: '#9ff0ff', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
   const sealY = 4.1;
-  { const disc = new THREE.Mesh(new THREE.CylinderGeometry(4.3, 4.3, 0.9, 64), sealMat); disc.rotation.z = Math.PI / 2; disc.rotation.x = Math.PI / 2; disc.position.set(DOOR.x - 0.2, sealY, DOOR.z);
-    // CylinderGeometry caps face ±Y; after rotation.z = π/2 they face ±X. Fix UVs so the glyph texture lands on the +X cap.
-    disc.castShadow = disc.receiveShadow = true; g.add(disc);
-    const fr = new THREE.Mesh(new THREE.TorusGeometry(4.55, 0.55, 10, 48), wetRock); fr.rotation.y = Math.PI / 2; fr.position.copy(disc.position).add(new THREE.Vector3(0.25, 0, 0)); fr.castShadow = true; g.add(fr);
+  const sealG = new THREE.Group(); sealG.position.set(DOOR.x - 0.2, sealY, DOOR.z); g.add(sealG);
+  { const disc = new THREE.Mesh(new THREE.CylinderGeometry(4.3, 4.3, 0.9, 64), sealMat); disc.rotation.z = Math.PI / 2;
+    disc.castShadow = disc.receiveShadow = true; sealG.add(disc);
+    for (const m of [ringBase, ringIn, ringOut]) { const o = new THREE.Mesh(new THREE.CircleGeometry(4.2, 64), m); o.rotation.y = Math.PI / 2; o.position.x = 0.47; o.renderOrder = 2; sealG.add(o); }
+    const fr = new THREE.Mesh(new THREE.TorusGeometry(4.55, 0.55, 10, 48), wetRock); fr.rotation.y = Math.PI / 2; fr.position.copy(sealG.position).add(new THREE.Vector3(0.25, 0, 0)); fr.castShadow = true; g.add(fr);
     const mass = new THREE.Mesh(rockBlob(7.5, rnd, 0.7, 1.15, 1.2, 3), rock); mass.position.set(DOOR.x - 4.2, 4, DOOR.z); g.add(mass);
     // ledge across the seal pool to the door
     const ledge = new THREE.Mesh(rockBlob(1.6, rnd, 2.2, 0.35, 1.0, 2), wetRock); ledge.position.set(DOOR.x + 3.0, -0.2, 1.4); ledge.receiveShadow = true; g.add(ledge); }
@@ -166,7 +175,7 @@ void main(){ float depth=uLev-seaH(vL); if(depth<0.) discard;
 }` }));
   water.position.set(0, 0, 0); water.renderOrder = 2; water.userData.noAO = true; g.add(water);
   // ---------- state ----------
-  let tideT = 5, lev = -0.5; const lit = [false, false, false]; let litK = [0, 0, 0], solvedK = 0, solved = false;
+  let tideT = 5, lev = -0.5; const lit = [false, false, false]; let litK = [0, 0, 0], solvedK = 0, solved = false, opened = false, openK = 0;
   const level = (tt: number) => -0.55 + 0.55 * Math.cos((2 * Math.PI * tt) / SEA_PERIOD);
   const ellipse = (x: number, z: number, sh2 = 0) => ((x - CX) / (rxOf(x - CX) - 2.2 - sh2)) ** 2 + (z / (RZ - 2.0 - sh2)) ** 2;
   const W = (x: number, z: number) => new THREE.Vector3(x + SEA_O.x, 0, z + SEA_O.z);
@@ -179,6 +188,9 @@ void main(){ float depth=uLev-seaH(vL); if(depth<0.) discard;
     light(i: number): 'covered' | 'already' | 'lit' | 'solved' { if (solved) return 'already'; if (lev >= SHELL_Y) return 'covered'; if (lit[i]) return 'already'; lit[i] = true; if (lit.every(Boolean)) { solved = true; return 'solved'; } return 'lit'; },
     setSolved(on: boolean, instant = false) { solved = on; for (let i = 0; i < 3; i++) lit[i] = on; if (instant) { solvedK = on ? 1 : 0; litK = lit.map((l) => (l ? 1 : 0)); } },
     setPacket(on: boolean) { packet.visible = on; },
+    /** The second key: all seven rings wake and the seal rolls aside (into the south wall) to the drowned chamber. */
+    setOpen(on: boolean, instant = false) { opened = on; if (instant) openK = on ? 1 : 0; }, get opened() { return opened; }, get openK() { return openK; },
+    sealPos: L(DOOR.x - 0.2, DOOR.z),
     groundY(wx: number, wz: number) { const x = wx - SEA_O.x, z = wz - SEA_O.z; return Math.max(sh(x, z), Math.hypot(x - (DOOR.x + 3), z - 1.4) < 3.05 ? 0.25 : -9); },
     constrain(wx: number, wz: number): [number, number] {
       let x = wx - SEA_O.x, z = wz - SEA_O.z; const e = Math.sqrt(ellipse(x, z)); if (e > 1) { x = CX + (x - CX) / e; z /= e; }
@@ -198,7 +210,9 @@ void main(){ float depth=uLev-seaH(vL); if(depth<0.) discard;
       let ev: 'reset' | null = null;
       if (!solved && lit.some(Boolean) && lev > SHELL_Y + 0.02) { for (let i = 0; i < 3; i++) lit[i] = false; ev = 'reset'; }
       for (let i = 0; i < 3; i++) { litK[i] += ((lit[i] ? 1 : 0) - litK[i]) * Math.min(1, dt * (lit[i] ? 3 : 1.5)); shellMats[i].emissiveIntensity = 0.04 + litK[i] * 2.4 + (solved ? 0.25 * Math.sin(time * 1.3 + i) : 0); (halos[i].material as THREE.SpriteMaterial).opacity = litK[i] * (0.75 + 0.15 * Math.sin(time * 2 + i)); }
-      solvedK += ((solved ? 1 : 0) - solvedK) * Math.min(1, dt * 0.8); sealMat.emissiveIntensity = 0.04 + solvedK * (0.85 + 0.25 * Math.sin(time * 0.6));
+      solvedK += ((solved ? 1 : 0) - solvedK) * Math.min(1, dt * 0.8); openK = opened ? Math.min(1, openK + dt / 3.2) : 0;
+      const pulse = 0.85 + 0.15 * Math.sin(time * 0.6); ringIn.opacity = solvedK * pulse; ringOut.opacity = Math.min(1, openK * 3) * pulse;
+      const roll = Math.max(0, Math.min(1, (openK - 0.3) / 0.7)); const e2 = roll * roll * (3 - 2 * roll); sealG.position.z = DOOR.z - e2 * 8.6; sealG.rotation.x = e2 * 2.0; // rolls aside like a millstone
       (sealPulse.material as THREE.SpriteMaterial).opacity = solvedK * 0.25 * (0.5 + 0.5 * Math.sin(time * 0.45)); uLit.value.x = (litK[0] + litK[1] + litK[2]) / 3 * 0.6;
       lichenMats[0].color.setRGB(0.12, 0.62 + 0.25 * Math.sin(time * 0.9), 0.52 + 0.2 * Math.sin(time * 0.9)); lichenMats[1].color.setRGB(0.18, 0.42 + 0.2 * Math.sin(time * 0.7 + 2), 0.85);
       shaftMat.uniforms.uOp.value = 0.14 + 0.03 * Math.sin(time * 0.5);

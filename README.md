@@ -165,3 +165,17 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - **Save, Journal and Map:** the new save field is `sea` (0–3). The Journal trail covers entering, the shells, the page and the Drowned Keeper. The map's coast inset charts the pools and the seal. Hints and the quest line follow the tide phase and the shell count. XP max is 450.
 - **Perf:** nothing in the cave rebuilds per frame. It uses a hemisphere light, one directional light (shadows on High only) and one point light. Lichen is instanced and the rest of the light is emissive or additive. `tools/perf-sea.cjs` measures frame cost under Lite + 5× CPU throttle at phone size against the meadow. The motion architecture (fixed tick + interpolation, Smooth 30 fps default on phones, time-sliced grass) is unchanged.
 - **QA:** `tools/qa-run.cjs` now plays through the cave: covered shell at high water, partial set reset, all three in one ebb, seal, page +45 once, back out, and reload persistence.
+
+## Chapter II finale: the Drowned Keeper (Milestone 13)
+- **The second key:** at the round seal (after Enna's page), raise the Tide-Glass to the three lit rings. The Lowtide Lamp's beam (Enna relit it far overhead) comes down the roof-crack, the four dark rings wake and the seal rolls aside like a millstone. It's one short beat with no fetch.
+- **The drowned chamber:** its own scene, built once on first entry. It's a flooded dome with four raised custodian stones, an entrance ledge (safe, and the fight waits while you stand there), glow-lichen, and fight-driven water with scrolling normals.
+- **The Keeper:** a coiled nacre sea-guardian with a ringed neck wearing custodian collars, a hooded head with a lantern-lure, and a tide-glass heart behind two chest-plates. It's built from primitives and animated only with transforms and uniforms.
+- **The fight (6 heart hits, 3 phases, about 1–2 min):**
+  - **Tide-spouts:** an orange ring appears under Ilka and the Keeper rears. Move before the windup ends (1.35 s, then 1.15 s, then 1.0 s).
+  - **Tide sweep:** the Keeper turns its coil, the water rises and the stones glow. Stand on a raised stone.
+  - **Low water:** the Keeper slumps sideways. Get close and raise the Tide-Glass; the plates open for 4.6 s. Strike the heart with Action.
+  - **Phases:** each phase change shuts the plates and the Keeper rises angrier (more spouts, shorter telegraphs).
+  - **HUD:** the boss health bar shows the state, and so do Ilka's hearts.
+- **Defeat:** the surge throws Ilka onto the ledge with full HP. XP and progress are kept, and the Keeper resets.
+- **Victory:** +60 XP once (XP max 510), then Enna's knotted note on why the Keeper was never the enemy ("You did not open the door alone… Meet me at the Lamp"), then the **Chapter II complete** card. The Keeper sleeps afterwards with no farming. Save `sea` 4 = seal open, 5 = Keeper at rest. The Journal, map inset (seal open / Keeper ✦), quest line and hints are updated.
+- **Fixes:** the seal glyph rings are now circle-UV overlays (base, inner three, outer four) instead of an emissive map on the cylinder. The sea-cave floor gets vertex-colour wet/salt mottling, which gives the Lite floor shape.

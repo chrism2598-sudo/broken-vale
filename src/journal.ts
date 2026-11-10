@@ -55,7 +55,10 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
         trail.items.push({ t: q >= 1 ? 'Entered the Listening Pools, the tide-cave beyond the mouth.' : 'Go through the sea cave mouth.', done: q >= 1 });
         if (q >= 1) trail.items.push({ t: q >= 2 ? 'Woke all three lamp-shells in one ebb · three rings of the round seal burn.' : 'Wake the three lamp-shells with the Tide-Glass — all in one ebb, before the water returns.', done: q >= 2 });
         if (q >= 2) trail.items.push({ t: q >= 3 ? `Found Enna’s packet by the round seal (+45 XP).` : 'Look by the round seal — something pale in a crack above the water.', done: q >= 3 });
-        if (q >= 3) trail.items.push({ t: '“The custodians never sealed the second seam. They drowned it, and left a keeper in the water. … Do not open the door alone.” — E. M.', lore: true }, { t: 'Chapter II · The Drowned Keeper — the round seal waits for its second key.' });
+        if (q >= 3) trail.items.push({ t: '“The custodians never sealed the second seam. They drowned it, and left a keeper in the water. … Do not open the door alone.” — E. M.', lore: true });
+        if (q >= 3) trail.items.push({ t: q >= 4 ? 'The Lowtide Lamp burns again overhead — its beam, gathered in the Tide-Glass, was the seal’s second key. The round seal rolled aside.' : 'Find the round seal’s second key.', done: q >= 4 });
+        if (q >= 4) trail.items.push({ t: q >= 5 ? 'The Drowned Keeper rests, its long watch relieved (+60 XP).' : 'Face the Drowned Keeper in the flooded chamber: dodge the spouts, climb a stone when it calls the tide, strike its heart at low water.', done: q >= 5 });
+        if (q >= 5) trail.items.push({ t: '“You did not open the door alone. The Keeper was never the enemy … Meet me at the Lamp when the tide turns.” — Enna', lore: true }, { t: 'Chapter II complete · The Second Seam.' });
       }
     }
   }
@@ -154,10 +157,11 @@ export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m
     x.fillStyle = '#2e1e0e'; x.fillRect(sxC(10) - 2, szC(-30) - 7, 4, 9);
     if ((m.save.sea | 0) >= 1) { // the Listening Pools, charted inside the stack: three pools and the round seal
       x.strokeStyle = '#1f4f60'; x.lineWidth = 1; for (const [dx, dz] of [[-3, -2], [-6, 2.5], [-9, -1.5]]) { x.beginPath(); x.arc(sxC(-45 + dx), szC(20 + dz), 1.8, 0, Math.PI * 2); x.stroke(); }
-      x.fillStyle = (m.save.sea | 0) >= 2 ? '#2f8fbf' : '#3a2814'; x.beginPath(); x.arc(sxC(-57), szC(20), 2.6, 0, Math.PI * 2); x.fill(); }
+      x.fillStyle = (m.save.sea | 0) >= 2 ? '#2f8fbf' : '#3a2814'; x.beginPath(); x.arc(sxC(-57), szC(20), 2.6, 0, Math.PI * 2); x.fill(); 
+      if ((m.save.sea | 0) >= 4) { x.strokeStyle = '#2f8fbf'; x.lineWidth = 1.4; x.beginPath(); x.arc(sxC(-64), szC(20), 4.2, 0, Math.PI * 2); x.stroke(); if ((m.save.sea | 0) >= 5) { x.fillStyle = '#1f4f60'; x.font = `${fs - 2}px serif`; x.textAlign = 'center'; x.fillText('✦', sxC(-64), szC(20) + 4); } } }
     x.restore();
     label('Tidewrack Coast · west', X0 + 4, Y0 + 9, 'left', '#3a2814', fs - 1);
-    label((m.save.sea | 0) >= 1 ? 'Listening Pools' + ((m.save.sea | 0) >= 2 ? ' · seal ◉' : '') : m.save.coast >= 3 ? 'Sea cave ✦' : 'Sea cave', sxC(-45), szC(20) + 13, 'center', '#1f4f60', fs - 2);
+    label((m.save.sea | 0) >= 1 ? 'Listening Pools' + ((m.save.sea | 0) >= 5 ? ' · Keeper ✦' : (m.save.sea | 0) >= 4 ? ' · seal open' : (m.save.sea | 0) >= 2 ? ' · seal ◉' : '') : m.save.coast >= 3 ? 'Sea cave ✦' : 'Sea cave', sxC(-45), szC(20) + 13, 'center', '#1f4f60', fs - 2);
     label('Lamp', sxC(10), szC(-30) - 12, 'center', '#3a2814', fs - 2); }
   // Seals.
   for (const d of SEALS) { const X = sx(d.x), Y = sz(d.z), got = !!m.save.seals[d.id]; x.save(); x.translate(X, Y); x.rotate(Math.PI / 4); x.fillStyle = got ? d.color : 'rgba(0,0,0,0)'; x.strokeStyle = '#3a2814'; x.lineWidth = 1.4; x.fillRect(-4.5, -4.5, 9, 9); x.strokeRect(-4.5, -4.5, 9, 9); x.restore(); label(d.short, X + 9, Y, 'left', got ? '#3a2814' : '#6b4a26', fs - 1); }

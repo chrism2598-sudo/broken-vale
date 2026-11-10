@@ -36,7 +36,7 @@ export const KEEPER_LINES = {
   ],
   again: ['The Keeper sleeps in the shallows, collars dark, breathing slow as a tide. Enna’s note is in your journal: “Meet me at the Lamp.”'],
   recovery: ['The surge throws you up onto the entrance ledge, coughing seawater.', 'Your XP and progress are safe. The Keeper sinks back to its post — it will rise again, full strength, when you step down.'],
-  card: { k: 'Chapter II complete', title: 'The Second Seam', tease: 'The Drowned Keeper rests at last. Enna lit the Lowtide Lamp and is waiting there — the seam below the sea is quiet, and the sky above still needs tying shut.' },
+  card: { k: 'The Drowned Keeper rests', title: 'The Second Seam', tease: 'The seam below the sea is quiet at last. Enna lit the Lowtide Lamp and is waiting at its foot — one thing is left: the sky above still needs tying shut.' },
 };
 
 /** Plated sea-ancient hide: overlapping scales (height → normal), crevice-dark albedo with algae and nacre flecks, wet tops / rough crevices. Built once. */

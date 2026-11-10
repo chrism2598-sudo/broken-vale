@@ -58,7 +58,11 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
         if (q >= 3) trail.items.push({ t: '“The custodians never sealed the second seam. They drowned it, and left a keeper in the water. … Do not open the door alone.” — E. M.', lore: true });
         if (q >= 3) trail.items.push({ t: q >= 4 ? 'The Lowtide Lamp burns again overhead — its beam, gathered in the Tide-Glass, was the seal’s second key. The round seal rolled aside.' : 'Find the round seal’s second key.', done: q >= 4 });
         if (q >= 4) trail.items.push({ t: q >= 5 ? 'The Drowned Keeper rests, its long watch relieved (+60 XP).' : 'Face the Drowned Keeper in the flooded chamber: dodge the spouts, climb a stone when it calls the tide, strike its heart at low water.', done: q >= 5 });
-        if (q >= 5) trail.items.push({ t: '“You did not open the door alone. The Keeper was never the enemy … Meet me at the Lamp when the tide turns.” — Enna', lore: true }, { t: 'Chapter II complete · The Second Seam.' });
+        if (q >= 5) trail.items.push({ t: '“You did not open the door alone. The Keeper was never the enemy … Meet me at the Lamp when the tide turns.” — Enna', lore: true }, { t: 'The Second Seam is quiet.' });
+        if (q >= 5) { const l = s.lamp | 0;
+          trail.items.push({ t: l >= 1 ? 'Found Enna alive at the foot of the Lowtide Lamp.' : 'Meet Enna at the Lowtide Lamp on the Tidewrack Coast.', done: l >= 1 });
+          if (l >= 1) trail.items.push({ t: l >= 2 ? 'Set the Tide-Glass in the Lamp at the turn of the tide · the sky seam is tied shut (+70 XP · Seam-Binder).' : 'Climb the Lamp with Enna; at low water, set the Tide-Glass in the lantern.', done: l >= 2 });
+          if (l >= 2) trail.items.push({ t: 'Chapter II complete · The End — The Broken Vale, mended. Enna waits by the Wayfinder at the meadow crossing.', done: true }); }
       }
     }
   }

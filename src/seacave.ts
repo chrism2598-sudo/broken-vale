@@ -36,7 +36,7 @@ export const SEA_LINES = {
     '“When the shells woke I heard it turn over, the way a tide turns. I am going round by the old lamp-roads to find this seal’s other key. Do not open the door alone.” — E. M.',
   ],
   pageAgain: ['Enna’s page, dry now in your journal. “Do not open the door alone.”'],
-  card: { k: 'Chapter II · the sealed chamber', title: 'The Drowned Keeper', tease: 'Behind the round seal, something vast keeps the second seam under water. Enna has gone for the seal’s other key. The door opens in the next chapter.' },
+  card: { k: 'Chapter II · the sealed chamber', title: 'The Drowned Keeper', tease: 'Behind the round seal, something vast keeps the second seam under water. Enna has gone for the seal’s other key. Find her, and the key.' },
 };
 
 const sh = (x: number, z: number) => { // floor height (local), shared with GLSL below

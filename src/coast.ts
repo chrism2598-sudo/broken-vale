@@ -25,9 +25,9 @@ export const COAST_LINES = {
     'The sea cave breathes cold air that smells of rain, not salt.',
     'Deep inside, under the waterline, a thin seam of light runs through the rock like a second horizon. The Tide-Glass hums against it.',
     'Scratched into the arch in Enna’s hand: “The custodians tied one sky shut. The sea has been holding the other open. I have gone down to see how. — E. M.”',
-    reward ? `+${COAST_XP} XP · Chapter II: The Second Seam — to be continued.` : 'The seam glows on below the water. Chapter II continues…',
+    reward ? `+${COAST_XP} XP · Chapter II: The Second Seam.` : 'The seam glows on below the water. The Listening Pools wait inside.',
   ],
-  card: { k: 'Chapter II · to be continued', title: 'The Second Seam', tease: 'Beneath the Tidewrack Coast the second seam answers the Tide-Glass. Enna went down. The tide will turn again.' },
+  card: { k: 'Chapter II · the sea cave', title: 'The Second Seam', tease: 'Beneath the Tidewrack Coast the second seam answers the Tide-Glass. Enna went down. The tide will turn again.' },
 };
 
 // ---------- shared shape: coast height field (local metres; sea to the west, -x) ----------
@@ -209,6 +209,51 @@ vec3 WG; vec2 TP;`)
     const step = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.3, 16), darkBlock); step.position.set(SHRINE.x, sy + 0.05, SHRINE.z); step.receiveShadow = true; g.add(step); }
   const LAMPSTONE = { x: LX - 3.2, z: LZ - 1.8 };
   { const s = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, 0.9), darkBlock); s.position.set(LAMPSTONE.x, coastH(LAMPSTONE.x, LAMPSTONE.z) + 0.5, LAMPSTONE.z); s.rotation.y = 0.3; s.rotation.z = 0.08; s.castShadow = true; g.add(s); }
+  // ---------- M16 · the lantern room atop the Lamp, its beam, and the sky seam it ties shut ----------
+  const TOPY = LY + 10.75; // lantern-room floor, just under the broken crown
+  const lantern = new THREE.Group(); lantern.position.set(LX, TOPY, LZ); g.add(lantern);
+  const bronze = new THREE.MeshStandardMaterial({ color: '#8a6a3a', metalness: 0.75, roughness: 0.42 });
+  { const floor = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.3, 0.36, 24), darkBlock); floor.position.y = -0.18; floor.castShadow = floor.receiveShadow = true; lantern.add(floor);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.72, 0.55, 12), bronze); base.position.y = 0.27; base.castShadow = true; lantern.add(base);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.1, 5), bronze); post.position.set(Math.cos(a) * 0.5, 1.1, Math.sin(a) * 0.5); lantern.add(post); }
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.74, 0.55, 12), bronze); cap.position.y = 1.92; cap.castShadow = true; lantern.add(cap);
+    const hatch = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.05, 12), new THREE.MeshBasicMaterial({ color: '#0a0806' })); hatch.position.set(1.5, 0.01, -1.2); lantern.add(hatch); }
+  const flameMat = new THREE.MeshStandardMaterial({ color: '#2a2418', emissive: new THREE.Color('#ffc46a'), emissiveIntensity: 0, roughness: 0.3 });
+  const flame = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.95, 16), flameMat); flame.position.y = 1.05; lantern.add(flame);
+  const glassMat = new THREE.MeshStandardMaterial({ color: '#9adfe0', emissive: new THREE.Color('#7fe8ff'), emissiveIntensity: 0, metalness: 0.2, roughness: 0.1 });
+  const glassIn = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), glassMat); glassIn.position.y = 1.75; glassIn.visible = false; lantern.add(glassIn);
+  const haloM = new THREE.SpriteMaterial({ map: (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,220,150,1)'); gr.addColorStop(0.35, 'rgba(255,170,80,.35)'); gr.addColorStop(1, 'rgba(255,140,60,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })(), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  const halo = new THREE.Sprite(haloM); halo.scale.setScalar(7); halo.position.y = 1.1; halo.renderOrder = 4; halo.userData.noAO = true; lantern.add(halo);
+  const lampLight = high ? new THREE.PointLight('#ffbf70', 0, 45, 1.6) : null; if (lampLight) { lampLight.position.y = 1.2; lantern.add(lampLight); }
+  // The sky seam: a jagged violet tear high over the sea to the north-west (the same Break as the rift above the vale).
+  const SEAM = new THREE.Vector3(LX - 230, 175, LZ - 110);
+  const seamMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+    uniforms: { uTime: { value: 0 }, uClose: { value: 0 }, uGone: { value: 0 } },
+    vertexShader: 'attribute float aU;attribute float aV;varying float vU;varying float vV;void main(){vU=aU;vV=aV;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader: `uniform float uTime,uClose,uGone;varying float vU;varying float vV;
+      void main(){float d=abs(vU-.5)*2.;float core=exp(-vV*vV*7.)*(1.-smoothstep(.82,1.,d));
+        float flick=.8+.2*sin(uTime*2.3+vU*40.);float open=smoothstep(uClose-.05,uClose+.02,d);
+        float flash=uClose>0.001&&uClose<.999?exp(-pow((d-uClose)*9.,2.))*1.6:0.;
+        vec3 vio=vec3(.62,.38,1.)*flick,gold=vec3(1.,.78,.4);
+        vec3 col=(vio*open+gold*flash)*core*(1.-uGone)+gold*core*.5*(1.-open)*(1.-uClose*uClose)*(1.-uGone);
+        gl_FragColor=vec4(col,1.);}` });
+  { const N = 48, Wd = 260, pos: number[] = [], au: number[] = [], av: number[] = [], idx: number[] = []; const side = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.5), up = new THREE.Vector3(0, 1, 0);
+    for (let i = 0; i <= N; i++) { const u = i / N, jag = Math.sin(u * 23.0) * 7 + Math.sin(u * 61.0 + 1.3) * 3.5 + Math.sin(u * 9.0) * 14, w = (3 + 10 * Math.sin(Math.PI * u)) * (0.75 + 0.25 * Math.sin(u * 37));
+      const c = SEAM.clone().addScaledVector(side, (u - 0.5) * Wd).addScaledVector(up, jag);
+      for (const v of [-1, 1]) { const q = c.clone().addScaledVector(up, v * w); pos.push(q.x, q.y, q.z); au.push(u); av.push(v); } if (i < N) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); sg.setAttribute('aU', new THREE.Float32BufferAttribute(au, 1)); sg.setAttribute('aV', new THREE.Float32BufferAttribute(av, 1)); sg.setIndex(idx);
+    const sm = new THREE.Mesh(sg, seamMat); sm.frustumCulled = false; sm.renderOrder = 3; sm.userData.noAO = true; g.add(sm); }
+  const beamMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+    uniforms: { uTime: { value: 0 }, uFade: { value: 0 }, uReach: { value: 0 } },
+    vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader: `uniform float uTime,uFade,uReach;varying vec2 vUv;
+      void main(){float e=sin(vUv.x*3.14159);e*=e;float reach=1.-smoothstep(uReach-.04,uReach,vUv.y);
+        float flow=.7+.3*sin(vUv.y*90.-uTime*6.);float tip=exp(-pow((vUv.y-uReach)*30.,2.))*step(.01,uReach)*(1.-step(.999,uReach));
+        gl_FragColor=vec4(vec3(1.,.8,.45)*(e*flow*reach*.32+tip*e*1.6)*uFade,1.);}` });
+  { const top = new THREE.Vector3(LX, TOPY + 1.6, LZ), dir = SEAM.clone().sub(top), len = dir.length(); dir.normalize();
+    const bg = new THREE.CylinderGeometry(2.6, 0.3, len, 16, 1, true); bg.translate(0, len / 2, 0); const bm = new THREE.Mesh(bg, beamMat); bm.position.copy(top); bm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir); bm.frustumCulled = false; bm.renderOrder = 3; bm.userData.noAO = true; bm.name = 'lampBeam'; g.add(bm); }
+  let lit = 0, litWant = 0, onTop = false;
+  const NPC: Record<string, { x: number; z: number; r: number }> = {};
   // ---------- the causeway (custodian stones) ----------
   const path: [number, number][] = []; { const x0 = shoreX(14) - 0.5; const P0 = new THREE.Vector2(x0, 14), P1 = new THREE.Vector2(CAVE.x + 0.5, CAVE.z); for (let i = 0; i <= 22; i++) { const u = i / 22; path.push([P0.x + (P1.x - P0.x) * u + Math.sin(u * 6.28) * 1.2, P0.y + (P1.y - P0.y) * u + Math.sin(u * 3.14) * 3.5]); } }
   const TOP = -0.32; const stoneMat = triplanar(t.blocks, 2.0, '#b4a996', { sat: 0.5 });
@@ -337,16 +382,31 @@ void main(){ vec2 L=vW.xz-uO; float depth=uTide-coastH(L); float dist=distance(v
     scene, sun,
     arrive: W(TUN.x - 2.2, TUN.z), tunnel: W(TUN.x - 0.6, TUN.z), shrine: W(SHRINE.x, SHRINE.z), lamp: W(LAMPSTONE.x, LAMPSTONE.z), caveMouth: W(CAVE.x + 0.3, CAVE.z), pathStart: W(path[0][0] + 1.5, path[0][1]),
     lighthouse: W(LX, LZ),
+    // M16 · the Lamp's top, NPC spots and finale controls
+    ennaFoot: W(LX - 7.8, LZ - 0.6), ennaTop: W(LX + 0.95, LZ + 1.05), towerDoor: W(LX - 3.7, LZ + 0.7), topArrive: W(LX - 1.3, LZ + 1.1), topHatch: W(LX + 1.5, LZ - 1.2), lanternW: W(LX, LZ), topY: TOPY,
+    ress: W(TUN.x - 5.0, TUN.z + 3.0), ressEnd: W(LX - 6.8, LZ + 4.8),
+    seamWorld: new THREE.Vector3(COAST_O.x + SEAM.x, SEAM.y, COAST_O.z + SEAM.z), lanternWorld: new THREE.Vector3(COAST_O.x + LX, TOPY + 1.2, COAST_O.z + LZ),
+    landY(wx: number, wz: number) { return coastH(wx - COAST_O.x, wz - COAST_O.z); },
+    get onTop() { return onTop; }, setTop(on: boolean) { onTop = on; },
+    setNpc(id: string, p: { x: number; z: number } | null, r = 0.7) { if (p) NPC[id] = { x: p.x - COAST_O.x, z: p.z - COAST_O.z, r }; else delete NPC[id]; },
+    /** The lamp burns (Enna lit it before the round seal opened). */
+    setLit(on: boolean, instant = false) { litWant = on ? 1 : 0; if (instant) lit = litWant; },
+    /** Let the sea run again (the Lamp has to drink a turning tide). */
+    release() { held = false; riseWant = 0; holdK = 0; },
+    setGlassIn(on: boolean) { glassIn.visible = on; },
+    /** Finale: beam reach 0..1 and seam close 0..1 (+gone). */
+    setFinale(reach: number, close: number, gone: number) { beamMat.uniforms.uReach.value = reach; beamMat.uniforms.uFade.value = reach > 0 ? 1 - 0.6 * gone : 0; seamMat.uniforms.uClose.value = close; seamMat.uniforms.uGone.value = gone; },
     tide() { return level(); }, get tidePhase() { const l = level(); const d = -Math.sin(tideT * Math.PI * 2 / TIDE_PERIOD); return held ? 'held low' : l < -0.6 ? 'low' : d < 0 ? 'ebbing' : l > 0.05 ? 'high' : 'flooding'; },
     get revealed() { return held; },
     isLow() { return level() < -0.6; },
     get rise() { return rise; },
     reveal(instant = false) { held = true; riseWant = 1; if (instant) { holdK = 1; rise = 1; } },
     /** Ground height at a world point (stones count once raised). */
-    groundY(wx: number, wz: number) { const x = wx - COAST_O.x, z = wz - COAST_O.z; let h = coastH(x, z); if (rise > 0.9 && segD(x, z) < 1.0) h = Math.max(h, TOP); if (rise > 0.9 && onShelf(x, z)) h = Math.max(h, -0.05); return h; },
+    groundY(wx: number, wz: number) { if (onTop) return TOPY; const x = wx - COAST_O.x, z = wz - COAST_O.z; let h = coastH(x, z); if (rise > 0.9 && segD(x, z) < 1.0) h = Math.max(h, TOP); if (rise > 0.9 && onShelf(x, z)) h = Math.max(h, -0.05); return h; },
     constrain(ox: number, oz: number, wx: number, wz: number): [number, number] {
       const x = wx - COAST_O.x, z = wz - COAST_O.z;
-      const ok = (x2: number, z2: number) => { if (SOL.some((s) => Math.hypot(x2 - s.x, z2 - s.z) < s.r)) return false; if (rise > 0.9 && (segD(x2, z2) < 0.95 || onShelf(x2, z2))) return true; const h = coastH(x2, z2); return h < 5.4 && x2 - shoreX(z2) > -0.8 && x2 < TUN.x - 0.3 && Math.abs(z2) < 47; };
+      if (onTop) { let dx = x - LX, dz = z - LZ, r = Math.hypot(dx, dz); if (r > 2.0) { dx *= 2.0 / r; dz *= 2.0 / r; r = 2.0; } if (r < 0.85) { const k = 0.85 / Math.max(r, 1e-3); dx *= k; dz *= k; } return [COAST_O.x + LX + dx, COAST_O.z + LZ + dz]; }
+      const ok = (x2: number, z2: number) => { if (SOL.some((s) => Math.hypot(x2 - s.x, z2 - s.z) < s.r) || Object.values(NPC).some((s) => Math.hypot(x2 - s.x, z2 - s.z) < s.r)) return false; if (rise > 0.9 && (segD(x2, z2) < 0.95 || onShelf(x2, z2))) return true; const h = coastH(x2, z2); return h < 5.4 && x2 - shoreX(z2) > -0.8 && x2 < TUN.x - 0.3 && Math.abs(z2) < 47; };
       if (ok(x, z)) return [wx, wz]; if (ok(x, oz - COAST_O.z)) return [wx, oz]; if (ok(ox - COAST_O.x, z)) return [ox, wz]; return [ox, oz];
     },
     camFloor(wx: number, wz: number) { return Math.max(coastH(wx - COAST_O.x, wz - COAST_O.z), level() + 0.35); },
@@ -358,6 +418,8 @@ void main(){ vec2 L=vW.xz-uO; float depth=uTide-coastH(L); float dist=distance(v
       uWetTop.value = Math.max(uTide.value, uWetTop.value - dt * 0.012); // the damp band lags the ebb
       const s = 2; sea.position.set(Math.round(cam.position.x / s) * s, 0, Math.round(cam.position.z / s) * s); sky.position.copy(cam.position);
       stones.visible = rise > 0.004; for (const st of stones.children) { st.position.y = TOP - (1 - rise) * (2.4 + (st.userData.k % 3) * 0.2); rings[st.userData.ring].w = stones.visible ? Math.min(1, Math.max(0, (st.position.y - uTide.value + 0.25) / 0.3)) : 0; } // fully sunk (and hidden) until revealed: no edges through high water
+      lit += (litWant - lit) * Math.min(1, dt * 1.5); const fl = 0.85 + 0.15 * Math.sin(time * 9) * Math.sin(time * 3.7); flameMat.emissiveIntensity = lit * 3.2 * fl; haloM.opacity = lit * 0.75 * fl; if (lampLight) lampLight.intensity = lit * 60 * fl;
+      glassMat.emissiveIntensity = glassIn.visible ? 1.5 + Math.sin(time * 4) * 0.4 : 0; seamMat.uniforms.uTime.value = time; beamMat.uniforms.uTime.value = time;
       shrineMat.emissiveIntensity = 0.05 + glow * (0.6 + 0.2 * Math.sin(time * 3)) + (held ? 0.25 : 0);
       sun.target.position.copy(focus); { const tx = 90 / sun.shadow.mapSize.x, tp = sun.target.position; const u = SNU.crossVectors(COAST_SUN, SNY).normalize(), v = SNV.crossVectors(u, COAST_SUN).normalize(); tp.addScaledVector(u, Math.round(tp.dot(u) / tx) * tx - tp.dot(u)).addScaledVector(v, Math.round(tp.dot(v) / tx) * tx - tp.dot(v)); } sun.position.copy(sun.target.position).addScaledVector(COAST_SUN, 150); // texel-snapped: no shadow crawl while running
       for (const gl of gulls) { const a = gl.ph + time * gl.s; gl.o.position.set(gl.c[0] + Math.cos(a) * gl.r, gl.h + Math.sin(time * 0.7 + gl.ph) * 1.2, gl.c[1] + Math.sin(a) * gl.r); gl.o.rotation.y = -a + (gl.s > 0 ? 0 : Math.PI); gl.o.rotation.z = gl.s > 0 ? -0.25 : 0.25; const f = Math.sin(time * 5 + gl.ph) * (Math.sin(time * 0.3 + gl.ph) > 0.3 ? 0.08 : 0.55); gl.wl.rotation.z = f; gl.wr.rotation.z = -f; }

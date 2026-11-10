@@ -36,3 +36,5 @@ Each Poly Pizza model page above was checked on 2026-11-09 and shows "Public Dom
 - M15: causeway stones (lathed noise-displaced rock, wet band, weed strips) — procedural, original to this project (CC0).
 - G1: rock_face_03 by Poly Haven (polyhaven.com/a/rock_face_03), CC0 — coast sea stacks, boulders, cliff slopes.
 - G2: hero skin wrap, fabric weave, hair sheen, leaf alpha coverage and grass root blend — procedural, original to this project (CC0).
+- M16: the Lowtide Lamp finale — lantern room, bronze lantern, beam and sky-seam shaders, final card and credits — procedural, original to this project (CC0).
+- M17: Enna Marr, Sefa Lune, Dov Hask and Ress reuse the CC0 Quaternius rigs listed above ("Hooded Adventurer" for Enna and Sefa, "Hoodie Character" for Ress, "King" with the crown hidden for Dov), recoloured.

@@ -11,7 +11,7 @@ export type BuildTex = { brick: GroundTex; roof: GroundTex; sand: GroundTex; met
  * World-space triplanar PBR (diffuse + ARM roughness/AO, tangent-free normal perturbation) on a standard
  * material, so any primitive (lathes, boxes, domes) gets correctly scaled texture without UV work.
  */
-function triplanar(set: GroundTex, scale: number, tint: string, o: { metal?: number; rough?: number; emissive?: string; sat?: number; gain?: number; ground?: number } = {}): THREE.MeshStandardMaterial {
+export function triplanar(set: GroundTex, scale: number, tint: string, o: { metal?: number; rough?: number; emissive?: string; sat?: number; gain?: number; ground?: number } = {}): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ color: tint, roughness: o.rough ?? 1, metalness: o.metal ?? 0, emissive: o.emissive ?? '#000000' });
   for (const t of [set.diff, set.nor, set.arm]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; }
   set.diff.colorSpace = THREE.SRGBColorSpace;

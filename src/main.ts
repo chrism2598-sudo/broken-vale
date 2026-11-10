@@ -13,6 +13,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { makeTerrain, type GroundTex } from './terrain';
 import { makeGrass } from './grass';
 import { makeLandmarks } from './landmarks';
+import { makeWarden, WARDEN, W_WAKE, W_SLEEP, W_MELEE, W_STRIKE_R, W_TELE, W_RECOVER, PLAYER_ATK_CD, HP_MAX, WARDEN_XP, RECOVERY_LINES, recoveryPoint } from './warden';
 import { makeWindShrine, RUNES, TABLET, TABLET_LINES, SOLVED_LINES, RUNE_GLYPHS, RUNE_LABELS, SHRINE_XP, WIND_BLESS, runesMatch } from './shrine';
 import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP, CHAPTER_TEASER } from './quest';
 import { addRimFill } from './shading';
@@ -125,6 +126,7 @@ async function main() {
   let save = loadSave();
   const plinthMat = new THREE.MeshStandardMaterial({ color: '#cfc3a8', roughness: 0.9 }); addRimFill(plinthMat, { fill: 0.2, rim: 0.2 });
   const shrine = makeWindShrine(rock, { runes: save.runes, solved: save.wind }); scene.add(shrine.group);
+  const warden = makeWarden({ rock, metal: metalT }); scene.add(warden.group); SOLIDS.push({ x: WARDEN.x, z: WARDEN.z, r: 1.5 });
   for (const r of RUNES) SOLIDS.push({ x: r.x, z: r.z, r: 0.9 }); SOLIDS.push({ x: TABLET.x, z: TABLET.z, r: 1.2 });
   const seals = SEALS.map((d) => { const o = new SealObject(d, plinthMat, !!save.seals[d.id]); scene.add(o.group); SOLIDS.push({ x: d.x, z: d.z, r: 1.3 }); return o; });
   const rift = makeRift();
@@ -213,7 +215,7 @@ async function main() {
   function openDialog(speaker: string, lines: string[], onClose: (() => void) | null = null) { onDlgClose = onClose; dq = [...lines]; dspk.textContent = speaker; talking = true; dlgEl.hidden = false; document.body.classList.add('talking'); for (const k of Object.keys(keys)) keys[k] = false; advance(); }
   function advance() { const l = dq.shift(); if (l === undefined) { talking = false; dlgEl.hidden = true; document.body.classList.remove('talking'); const cb = onDlgClose; onDlgClose = null; cb?.(); return; } dtxt.textContent = l; dnext.textContent = dq.length ? 'Next ▸' : 'Close'; }
   dnext.onclick = advance;
-  function toast(msg: string, secs = 3.2) { toastEl.textContent = msg; toastEl.classList.add('on'); toastT = secs; }
+  function toast(msg: string, secs = 3.2, danger = false) { toastEl.textContent = msg; toastEl.classList.add('on'); toastEl.classList.toggle('danger', danger); toastT = secs; }
   const persist = () => writeSave(save);
   function talkWayfinder() {
     wayfinder.play('Wave');
@@ -253,14 +255,60 @@ async function main() {
     if (n === 4 && !save.done) finaleDelay = 1.4;
   }
   let finaleDelay = -1;
-  type Inter = { label: string; act: () => void };
+  type Inter = { label: string; act: () => void; x?: number; z?: number; combat?: boolean };
+  let camFocus: { x: number; z: number; t: number } | null = null;
   function nearestInteract(): Inter | null {
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 3.8) return { label: !save.started ? 'Talk · begin quest' : save.done ? 'Talk' : `Talk · seals ${sealCount(save)}/4`, act: talkWayfinder };
-    for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return { label: `Claim ${o.def.name}`, act: () => claimSeal(o) };
-    if (Math.hypot(state.px - TABLET.x, state.pz - TABLET.z) < 2.8) return { label: 'Read Wind Tablet', act: () => openDialog('Wind Shrine', TABLET_LINES) };
-    for (let i = 0; i < RUNES.length; i++) if (Math.hypot(state.px - RUNES[i].x, state.pz - RUNES[i].z) < 2.6) { const v = save.runes[i]; return { label: save.wind ? `${RUNES[i].name} · ${RUNE_GLYPHS[v]}` : `Turn ${RUNES[i].name} · ${RUNE_GLYPHS[v]} ${RUNE_LABELS[v]}`, act: () => turnRune(i) }; }
+    for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return { label: `Claim ${o.def.name}`, act: () => claimSeal(o), x: o.def.x, z: o.def.z };
+    if (Math.hypot(state.px - TABLET.x, state.pz - TABLET.z) < 2.8) return { label: 'Read Wind Tablet', act: () => openDialog('Wind Shrine', TABLET_LINES), x: TABLET.x, z: TABLET.z };
+    if (!save.warden && wardenDist() < W_MELEE) return { label: atkCd > 0 ? `Wait ${atkCd.toFixed(1)}s` : `Attack Warden · ${wd.hp}/${HP_MAX}`, act: attackWarden, x: WARDEN.x, z: WARDEN.z, combat: true };
+    for (let i = 0; i < RUNES.length; i++) if (Math.hypot(state.px - RUNES[i].x, state.pz - RUNES[i].z) < 2.6) { const v = save.runes[i]; return { label: save.wind ? `${RUNES[i].name} · ${RUNE_GLYPHS[v]}` : `Turn ${RUNES[i].name} · ${RUNE_GLYPHS[v]} ${RUNE_LABELS[v]}`, act: () => turnRune(i), x: RUNES[i].x, z: RUNES[i].z }; }
     return null;
+  }
+  // ---------- Vale Warden (optional) ----------
+  const wd = { hp: HP_MAX, phase: save.warden ? 3 : 0, teleT: 0, recT: 0, sx: WARDEN.x, sz: WARDEN.z, awake: false, warned: false, freeze: -1 };
+  let playerHp = HP_MAX, atkCd = 0, shake = 0, swingT = 0;
+  const wardenDist = () => Math.hypot(state.px - WARDEN.x, state.pz - WARDEN.z);
+  function resetWarden() { if (save.warden) { wd.phase = 3; wd.hp = 0; return; } wd.hp = HP_MAX; wd.phase = 0; wd.teleT = 0; wd.recT = 0; wd.awake = false; wd.warned = false; }
+  function attackWarden() {
+    if (save.warden) { toast('The Warden remains dormant.', 2); return; }
+    if (atkCd > 0) { toast('Strike not ready.', 1.2); return; }
+    atkCd = PLAYER_ATK_CD; swingT = 0.25; player.play('Punch_Right');
+    state.facing = Math.atan2(WARDEN.x - state.px, WARDEN.z - state.pz);
+    wd.hp = Math.max(0, wd.hp - 1); warden.hit();
+    if (wd.hp <= 0) {
+      wd.phase = 3; const lv = levelOf(save.xp);
+      if (!save.warden) { save.warden = true; save.xp += WARDEN_XP; persist(); toast(`Vale Warden falls dormant · +${WARDEN_XP} XP · Warden's Crest${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 5); }
+      return;
+    }
+    toast(`Hit! Warden ${wd.hp}/${HP_MAX}`, 1.6);
+  }
+  function tickWarden(dt: number) {
+    atkCd = Math.max(0, atkCd - dt); swingT = Math.max(0, swingT - dt);
+    if (save.warden) { wd.phase = 3; return; }
+    if (talking || cine || creating) return;
+    const dist = wardenDist();
+    if (dist < W_WAKE) { if (!wd.warned) { wd.warned = true; toast('Warden stirs — step out of the ring', 3.2); } wd.awake = true; }
+    else if (dist > W_SLEEP) { wd.awake = false; if (wd.phase === 1 || wd.phase === 2) { wd.phase = 0; wd.teleT = 0; wd.recT = 0; } if (playerHp < HP_MAX && dist > W_SLEEP + 15) playerHp = HP_MAX; }
+    if (!wd.awake || wd.freeze >= 0) return;
+    if (wd.phase === 0) { wd.sx = state.px; wd.sz = state.pz; warden.placeZone(wd.sx, wd.sz); wd.phase = 1; wd.teleT = W_TELE; toast('⚠ Warden winds up — move!', 1.3, true); return; }
+    if (wd.phase === 1) {
+      wd.teleT -= dt; if (wd.teleT > 0) return;
+      warden.impact(wd.sx, wd.sz); shake = 0.35;
+      if (Math.hypot(state.px - wd.sx, state.pz - wd.sz) < W_STRIKE_R) {
+        playerHp -= 1; player.play('HitRecieve');
+        if (playerHp <= 0) {
+          const rp = recoveryPoint(); state.px = rp.x; state.pz = rp.z; state.speed = 0; snapCam = true;
+          state.facing = Math.atan2(WARDEN.x - rp.x, WARDEN.z - rp.z); state.yaw = state.facing + Math.PI;
+          playerHp = HP_MAX; atkCd = 0; resetWarden();
+          toast('Wayfinder pulls you to safety.', 4); openDialog('Wayfinder', RECOVERY_LINES); return;
+        }
+        toast(`Warden strike! HP ${playerHp}/${HP_MAX}`, 2, true);
+      }
+      wd.phase = 2; wd.recT = W_RECOVER; return;
+    }
+    if (wd.phase === 2) { wd.recT -= dt; if (wd.recT <= 0) { wd.phase = 0; wd.recT = 0; } }
   }
   function turnRune(i: number) {
     if (save.wind) { toast('The Wind Shrine already sings.', 2.5); return; }
@@ -272,7 +320,7 @@ async function main() {
       openDialog('Wind Shrine', SOLVED_LINES);
     } else { persist(); shrine.setRune(i, v, true); toast(`${RUNES[i].name} → ${RUNE_GLYPHS[v]} ${RUNE_LABELS[v]} · not yet`, 2.2); }
   }
-  function interact() { if (creating || cine || !chapterEl.hidden) return; if (talking) { advance(); return; } nearestInteract()?.act(); }
+  function interact() { if (creating || cine || !chapterEl.hidden) return; if (talking) { advance(); return; } const it = nearestInteract(); if (!it) return; if (it.x !== undefined && it.z !== undefined) camFocus = { x: it.x, z: it.z, t: 1.4 }; it.act(); }
   function talk() { interact(); }
   actBtn.onclick = (e) => { e.stopPropagation(); interact(); };
   addEventListener('keydown', (e) => { if (creating || (e.target as HTMLElement).tagName === 'INPUT') return; if (talking && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.preventDefault(); if (e.code === 'Escape') { dq = []; } advance(); } });
@@ -288,6 +336,7 @@ async function main() {
     setTimeout(() => { resetBtn.textContent = 'Reset progress'; resetBtn.classList.remove('warn'); }, 3500);
   };
   // HUD: quest tracker + compass.
+  const wdArrow = document.getElementById('wdarrow')!, wdText = document.getElementById('wdtext')!, combatEl = document.getElementById('combat')!, hpEl = document.getElementById('hp')!, whpEl = document.getElementById('whp')!;
   const wArrow = document.getElementById('warrow')!, wText = document.getElementById('wtext')!;
   const qline = document.getElementById('qline')!, qstats = document.getElementById('qstats')!, carrow = document.getElementById('carrow')!, ctext = document.getElementById('ctext')!;
   let hudT = 0;
@@ -308,8 +357,13 @@ async function main() {
       const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
       wArrow.style.transform = `rotate(${(Math.atan2(-wy, wx) * 180 / Math.PI).toFixed(0)}deg)`; wArrow.style.visibility = save.wind ? 'hidden' : 'visible';
       wText.textContent = save.wind ? 'Wind Shrine awake · Windward Blessing +15%' : `Wind Shrine (optional) · ${save.runes.map((v) => RUNE_GLYPHS[v]).join(' ')} · ${dd < 18 ? 'here' : Math.round(dd) + ' m'}`; }
+    { const ddx = WARDEN.x - state.px, ddz = WARDEN.z - state.pz, dd = Math.hypot(ddx, ddz); const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
+      wdArrow.style.transform = `rotate(${(Math.atan2(-wy, wx) * 180 / Math.PI).toFixed(0)}deg)`; wdArrow.style.visibility = save.warden ? 'hidden' : 'visible';
+      wdText.textContent = save.warden ? "Warden dormant · Warden's Crest" : `Vale Warden (optional) · ${dd < 12 ? 'here' : Math.round(dd) + ' m'}`;
+      const show = !save.warden && (wd.awake || playerHp < HP_MAX);
+      combatEl.hidden = !show; if (show) { hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(HP_MAX - playerHp); whpEl.textContent = '■'.repeat(wd.hp) + '□'.repeat(HP_MAX - wd.hp); combatEl.classList.toggle('alert', wd.phase === 1); } }
     const it = talking || cine ? null : nearestInteract();
-    actBtn.hidden = !it; if (it) actBtn.textContent = it.label;
+    actBtn.hidden = !it; if (it) actBtn.textContent = it.label; actBtn.classList.toggle('combat', !!it?.combat); actBtn.style.setProperty('--cd', it?.combat ? (atkCd / PLAYER_ATK_CD).toFixed(2) : '0');
     document.getElementById('hint')!.textContent = it ? `E / Action: ${it.label}` : 'Drag to look · WASD / stick to move · Shift walks';
   }
 
@@ -338,7 +392,12 @@ async function main() {
     creating = false; createEl.hidden = true; document.body.classList.remove('creating'); nameIn.blur();
     camera.clearViewOffset(); snapCam = true; state.facing = Math.PI; state.yaw = Math.PI; state.speed = 0;
   };
-  document.getElementById('newchar')!.onclick = () => openCreate();
+  // New character = fresh progress (with a confirm when there is progress to lose).
+  const ncBox = document.getElementById('ncconfirm')!;
+  const hasProgress = () => { const sv = loadSave(); return sv.started || sv.xp > 0 || sv.wind || sv.warden || Object.keys(sv.seals).length > 0 || sv.runes.some((v) => v !== 0); };
+  document.getElementById('newchar')!.onclick = () => { if (hasProgress()) ncBox.hidden = !ncBox.hidden; else { document.getElementById('menu')!.hidden = true; openCreate(); } };
+  document.getElementById('ncno')!.onclick = () => { ncBox.hidden = true; };
+  document.getElementById('ncyes')!.onclick = () => { clearSave(); try { sessionStorage.setItem('vale3d-newchar', '1'); } catch { /* */ } location.reload(); };
   function previewUpdate(dt: number, t: number) {
     const gy = heightAt(SPAWN.x, SPAWN.z); spin += dt * 0.45;
     player.root.position.set(SPAWN.x, gy, SPAWN.z); player.root.rotation.y = spin; player.setSpeed(0, dt);
@@ -392,8 +451,11 @@ async function main() {
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 9) { const want = Math.atan2(state.px - WAYFINDER.x, state.pz - WAYFINDER.z); let d = want - wayfinder.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); wayfinder.root.rotation.y += d * Math.min(1, dt * 3); }
     wayfinder.setSpeed(0, dt);
+    tickWarden(dt);
     updateHud(dt);
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
+    // Interaction focus: swing the camera behind the player toward the target (keeps runes/seals in frame on portrait phones).
+    if (camFocus) { camFocus.t -= dt; const want = Math.atan2(state.px - camFocus.x, state.pz - camFocus.z); if (Math.hypot(state.px - camFocus.x, state.pz - camFocus.z) > 0.6) { let d = want - state.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); state.yaw += d * Math.min(1, dt * 5); } if (camFocus.t <= 0) camFocus = null; }
     // Over-the-shoulder camera.
     camTarget.set(state.px, gy + 1.42, state.pz);
     const cp = Math.cos(state.pitch), sp = Math.sin(state.pitch);
@@ -416,6 +478,7 @@ async function main() {
       if (u >= 1) finishFinale();
     }
     camera.lookAt(tmp);
+    if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake * 0.5; camera.position.y += (Math.random() - 0.5) * shake * 0.4; }
     tick(t, gy);
   }
 
@@ -429,7 +492,9 @@ async function main() {
     for (const gf of [grassField, grassFar]) { gf.uniforms.uTime.value = t; gf.uniforms.uPlayer.value.set(state.px, gy, state.pz); }
     water.update(t);
     (rift.material as THREE.ShaderMaterial).uniforms.uTime.value = t; foliageUniforms.uTime.value = t;
-    island.update(t, lastDt); landmarks.update(t); shrine.update(t, lastDt); for (const o of seals) o.update(t, lastDt);
+    island.update(t, lastDt); landmarks.update(t); shrine.update(t, lastDt);
+    { const k = wd.phase === 1 ? (wd.freeze >= 0 ? wd.freeze : 1 - wd.teleT / W_TELE) : 0;
+      warden.update(t, lastDt, { phase: wd.phase, k, awake: wd.awake, face: wd.awake || wd.freeze >= 0 ? Math.atan2(state.px - WARDEN.x, state.pz - WARDEN.z) : null, zone: wd.phase === 1 }); } for (const o of seals) o.update(t, lastDt);
     wayfinder.root.updateMatrixWorld(true); handBone.getWorldPosition(handPos); staff.update(t, handPos, wayfinder.root.rotation.y);
     vignette.uniforms.uTime.value = t % 100;
   }
@@ -476,11 +541,14 @@ async function main() {
       if (name === 'dialog') { state.px = WAYFINDER.x + 0.6; state.pz = WAYFINDER.z + 2.4; state.facing = Math.PI; state.yaw = 0.55; state.pitch = 0.12; state.dist = 4.6; }
       if (name === 'seal') { const d = SEALS[0]; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4 + 0.15; state.pitch = 0.05; state.dist = 12; }
       if (name === 'shrine' || name === 'shrine-awake') { state.px = TABLET.x + 2.2; state.pz = TABLET.z + 13; state.facing = Math.PI; state.yaw = 0.16; state.pitch = 0.06; state.dist = 12; }
-      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true }, runes: [0, 0, 0], wind: false }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
+      if (name === 'warden' || name === 'warden-windup') { const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz), off = name === 'warden' ? 7 : 3; state.px = WARDEN.x + dx / d * off + (name === 'warden' ? 1.5 : 0); state.pz = WARDEN.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + (name === 'warden' ? 0.35 : 0.3); state.pitch = name === 'warden' ? 0.12 : 0.02; state.dist = name === 'warden' ? 7 : 8.5; wd.freeze = name === 'warden' ? 0 : 0.7; wd.awake = true; wd.warned = true; }
+      if (name === 'warden-defeated') { save.warden = true; save.xp = 40; wd.phase = 3; const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz); state.px = WARDEN.x + dx / d * 5 + 1.2; state.pz = WARDEN.z + dz / d * 5; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.4; state.pitch = 0.15; state.dist = 6.5; }
+      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true }, runes: [0, 0, 0], wind: false, warden: false }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
       if (name === 'sunspire' || name === 'dome' || name === 'veilfall') { const l = LANDMARKS.find((x) => x.id === name)!; const rot = name === 'sunspire' ? 0.55 : name === 'veilfall' ? -0.3 : 0, dx0 = SPAWN.x - l.x, dz0 = SPAWN.z - l.z, dx = dx0 * Math.cos(rot) + dz0 * Math.sin(rot), dz = -dx0 * Math.sin(rot) + dz0 * Math.cos(rot), d = Math.hypot(dx, dz), off = name === 'dome' ? 36 : name === 'veilfall' ? 40 : 40; state.px = l.x + dx / d * off; state.pz = l.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.1; state.pitch = name === 'dome' ? 0.02 : name === 'veilfall' ? -0.3 : -0.05; state.dist = 6.5; }
       if (name === 'run') { keys.KeyW = true; }
       camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30);
-      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false }; interact(); }
+      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false }; interact(); }
+      if (name === 'warden-windup') { wd.sx = state.px + 0.6; wd.sz = state.pz; warden.placeZone(wd.sx, wd.sz); wd.phase = 1; wd.teleT = W_TELE * 0.3; toast('⚠ Warden winds up — move!', 60, true); }
       if (name === 'shrine-awake') { save.runes = [1, 0, 2]; save.wind = true; for (let i = 0; i < 3; i++) shrine.setRune(i, save.runes[i], false); shrine.awaken(true); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); }
       if (name === 'beam') { interact(); for (let i = 0; i < 50; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); if (cine) cine.hold = cine.dur * 0.6; for (let i = 0; i < 130; i++) update(1 / 30, clock.elapsedTime + 5 + i / 30); }
       if (name === 'seal') { save.started = true; interact(); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); hudT = 0; updateHud(0); }
@@ -493,6 +561,7 @@ async function main() {
     interact() { interact(); },
     advance() { if (talking) advance(); },
     runes: RUNES.map((r) => ({ x: r.x, z: r.z })), tablet: TABLET, speedMul: () => (save.wind ? WIND_BLESS : 1),
+    warden: () => ({ x: WARDEN.x, z: WARDEN.z, hp: wd.hp, phase: wd.phase, awake: wd.awake, playerHp, atkCd, recovery: recoveryPoint(), melee: W_MELEE }),
     quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
     debug: { scene, camera, renderer, get player() { return player.root; }, wayfinder: wayfinder.root },
   };
@@ -502,6 +571,7 @@ async function main() {
   if (shot?.startsWith('create-')) openCreate(shot === 'create-male' ? 'male' : 'female', shot === 'create-male' ? 'Aren' : 'Ilka');
   else if (shot) api.preset(shot);
   else if (!hasProfile()) openCreate();
+  else if ((() => { try { const f = sessionStorage.getItem('vale3d-newchar'); sessionStorage.removeItem('vale3d-newchar'); return !!f; } catch { return false; } })()) openCreate();
 }
 
 // ---------- helpers ----------
@@ -542,16 +612,16 @@ function makeCharacter(g: GLTF, s: number, colors: Record<string, string>, hide:
   });
   const wrap = new THREE.Group(); wrap.add(root);
   const mixer = new THREE.AnimationMixer(root);
-  const clip = (n: string) => g.animations.find((a) => a.name.endsWith('|' + n) || a.name === n)!;
-  const idle = mixer.clipAction(clip('Idle')), walk = mixer.clipAction(clip('Walk')), run = mixer.clipAction(clip('Run'));
-  const wave = mixer.clipAction(clip('Wave')); wave.setLoop(THREE.LoopOnce, 1); wave.clampWhenFinished = false;
+  const clip = (n: string) => g.animations.find((a) => a.name.endsWith('|' + n) || a.name === n);
+  const idle = mixer.clipAction(clip('Idle')!), walk = mixer.clipAction(clip('Walk')!), run = mixer.clipAction(clip('Run')!);
+  const once = new Map<string, THREE.AnimationAction>();
   for (const a of [idle, walk, run]) { a.play(); a.setEffectiveWeight(0); }
   idle.setEffectiveWeight(1);
   let waving = 0;
   mixer.addEventListener('finished', () => { waving = 0; });
   return {
     root: wrap,
-    play(n: string) { if (n === 'Wave') { wave.reset().play(); wave.setEffectiveWeight(1); waving = 1; } },
+    play(n: string) { const c = clip(n); if (!c) return; let a = once.get(n); if (!a) { a = mixer.clipAction(c); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = false; once.set(n, a); } for (const o of once.values()) if (o !== a) o.stop(); a.reset().play(); a.setEffectiveWeight(1); waving = 1; },
     setSpeed(v: number, dt: number) {
       // Blend idle → walk (≈1.9 m/s) → run (≈5.6 m/s) by speed; time-scale to keep feet planted.
       const wWalk = smoothstep(0.05, 1.6, v) * (1 - smoothstep(2.4, 4.6, v)), wRun = smoothstep(2.4, 4.6, v), wIdle = Math.max(0, 1 - wWalk - wRun);
@@ -595,6 +665,7 @@ function okSpot(x: number, z: number, clearPath = 2.2, clearCreek = 2): boolean 
   if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < 6 || Math.hypot(x - SPAWN.x, z - SPAWN.z - 6) < 6 || Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 3 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 20) return false;
   for (const l of LANDMARKS) if (Math.hypot(x - l.x, z - l.z) < l.r * (l.id === 'veilfall' ? 1.7 : 1.25)) return false;
   for (const d of SEALS) if (Math.hypot(x - d.x, z - d.z) < 7) return false;
+  if (Math.hypot(x - WARDEN.x, z - WARDEN.z) < 14) return false;
   void clearPath; return true;
 }
 function place(src: THREE.Object3D, x: number, z: number, s: number, ry: number, sink = 0.05) {

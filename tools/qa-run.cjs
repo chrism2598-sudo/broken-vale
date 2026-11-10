@@ -31,9 +31,31 @@ log('shrine xp once',{gain:solved.xp-xp0,afterRepeat:again.xp-xp0,speedMul:await
 await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(800);
 if(await p.evaluate(()=>!document.getElementById('create').hidden&&getComputedStyle(document.getElementById('create')).display!=='none')){await p.click('#begin');await sleep(800);}
 wq=await Q();log('after reload (persisted)',{wind:wq.save.wind,runes:wq.save.runes,xp:wq.save.xp,done:wq.save.done,wtext:await p.$eval('#wtext',e=>e.textContent)});
+// Vale Warden: take hits → defeat → recovery keeps XP; then defeat the Warden (+40 once); reload persists
+const W=await p.evaluate(()=>window.__vale.warden());const xpW0=(await Q()).save.xp;
+const nearW=async(off)=>{const dx=0-W.x,dz=6-W.z,d=Math.hypot(dx,dz);await p.evaluate((x,z)=>window.__vale.warp(x,z),W.x+dx/d*off,W.z+dz/d*off);};
+await nearW(2.6);const hpLog=[];
+for(let i=0;i<200;i++){await sleep(500);const w=await p.evaluate(()=>window.__vale.warden());hpLog.push(w.playerHp);if((await Q()).talking)break;}
+let qd=await Q();const wAfter=await p.evaluate(()=>window.__vale.warden());const pos=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,z:v.z};});
+log('defeated by Warden → recovery',{hpSeq:[...new Set(hpLog)],dialog:qd.dlg,playerHp:wAfter.playerHp,wardenHp:wAfter.hp,xpKept:qd.save.xp===xpW0,xp:qd.save.xp,distFromRecovery:+Math.hypot(pos.x-W.recovery.x,pos.z-W.recovery.z).toFixed(1),distFromWarden:+Math.hypot(pos.x-W.x,pos.z-W.z).toFixed(1)});
+for(let i=0;i<4&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);}
+await nearW(2.6);await sleep(700);log('near warden label',(await Q()).near);
+const atk=[];for(let i=0;i<12&&!(await Q()).save.warden;i++){await p.keyboard.press('KeyE');await sleep(150);const w=await p.evaluate(()=>window.__vale.warden());atk.push({hp:w.hp,cd:+w.atkCd.toFixed(2),toast:await toastTxt()});await sleep(550);if((await Q()).talking){for(let j=0;j<4&&(await Q()).talking;j++){await p.keyboard.press('Space');await sleep(300);}await nearW(2.6);await sleep(500);}}
+qd=await Q();log('attacks',atk.slice(0,6));log('warden defeated',{warden:qd.save.warden,xpGain:qd.save.xp-xpW0,toast:await toastTxt()});
+await p.keyboard.press('KeyE');await sleep(400);await p.keyboard.press('KeyE');await sleep(400);log('no farming',{xpGain:(await Q()).save.xp-xpW0,near:(await Q()).near,phase:(await p.evaluate(()=>window.__vale.warden())).phase});
+await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(800);
+qd=await Q();log('after reload (warden persisted)',{warden:qd.save.warden,xp:qd.save.xp,phase:(await p.evaluate(()=>window.__vale.warden())).phase,wdtext:await p.$eval('#wdtext',e=>e.textContent)});
+// New character: confirm panel appears when there is progress; Cancel keeps it
+await p.click('#menubtn');await sleep(300);await p.click('#newchar');await sleep(300);log('new character confirm shown',await p.$eval('#ncconfirm',e=>!e.hidden));await p.click('#ncno');await sleep(200);log('cancel keeps progress',{hidden:await p.$eval('#ncconfirm',e=>e.hidden),xp:(await Q()).save.xp});await p.click('#menubtn');await sleep(200);
 // Menu → Reset progress (tap twice) → reload with a fresh save
 await p.click('#menubtn');await sleep(300);await p.click('#reset');await sleep(300);log('reset armed',await p.$eval('#reset',e=>e.textContent));
 await Promise.all([p.waitForNavigation({timeout:120000}),p.click('#reset')]);
 await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(1000);
-log('after reset',{save:(await Q()).save,wtext:await p.$eval('#wtext',e=>e.textContent),stored:await p.evaluate(()=>localStorage.getItem('vale3d-save')),profileKept:await p.evaluate(()=>!!localStorage.getItem('vale3d-hero'))});
+log('after reset',{wardenPhase:(await p.evaluate(()=>window.__vale.warden())).phase,save:(await Q()).save,wtext:await p.$eval('#wtext',e=>e.textContent),stored:await p.evaluate(()=>localStorage.getItem('vale3d-save')),profileKept:await p.evaluate(()=>!!localStorage.getItem('vale3d-hero'))});
+// New character → Start fresh: earn progress, confirm, page reloads into the creator with a cleared save
+q=await Q();await p.evaluate((x,z)=>window.__vale.warp(x,z+1.5),q.wayfinder.x,q.wayfinder.z);await sleep(1200);await p.keyboard.press('KeyE');await sleep(600);for(let i=0;i<4&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);}
+log('progress before new char',{started:(await Q()).save.started});
+await p.click('#menubtn');await sleep(300);await p.click('#newchar');await sleep(300);
+await Promise.all([p.waitForNavigation({timeout:120000}),p.click('#ncyes')]);await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(800);
+log('after new character',{creatorOpen:await p.evaluate(()=>!document.getElementById('create').hidden),save:(await Q()).save});
 log('errors',[...errs,...await p.evaluate(()=>window.__vale.errors)]);await b.close();})().catch(e=>{console.log('ERR',e.message);process.exit(1)});

@@ -97,17 +97,20 @@ export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundT
   const beacon = new THREE.Mesh(mergeGeometries(bGeos.map((x) => x.toNonIndexed())), bMat); beacon.castShadow = true; g.add(beacon);
   // Awakened beacon: a violet core beam wrapped in a gold sheath, plus a flare ring — hidden until the four seals burn.
   // Alpha-blended (not additive) so violet and gold stay saturated against a bright sky; the core darkens slightly toward its centre.
-  const beamMat = (c0: string, c1: string, k: number) => new THREE.ShaderMaterial({
+  // View-dependent profiles: the violet core is strongest where it faces the camera (centre of the beam), the gold sheath
+  // only at its silhouette edges — so the two never stack into a pink mix. Alpha-blended so colour survives a bright sky.
+  const beamMat = (c0: string, c1: string, k: number, rim: boolean) => new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.NormalBlending, side: THREE.DoubleSide, fog: false,
     uniforms: { uTime: { value: 0 }, uFade: { value: 0 }, uA: { value: new THREE.Color(c0) }, uB: { value: new THREE.Color(c1) } },
-    vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `uniform float uTime,uFade;uniform vec3 uA,uB;varying vec2 vUv;
-      void main(){float e=sin(vUv.x*3.14159);e*=e;float top=1.-smoothstep(.35,1.,vUv.y);float fl=.8+.2*sin(vUv.y*60.-uTime*4.+vUv.x*12.57);
-        vec3 c=mix(uA,uB,vUv.y)*mix(1.15,.8,e);
-        gl_FragColor=vec4(c,clamp(e*top*fl*uFade*${k.toFixed(2)},0.,1.));}`,
+    vertexShader: 'varying vec2 vUv;varying float vF;void main(){vUv=uv;vec4 mv=modelViewMatrix*vec4(position,1.);vec3 n=normalize(normalMatrix*normal);vF=abs(dot(n,normalize(-mv.xyz)));gl_Position=projectionMatrix*mv;}',
+    fragmentShader: `uniform float uTime,uFade;uniform vec3 uA,uB;varying vec2 vUv;varying float vF;
+      void main(){float prof=${rim ? 'smoothstep(.0,.35,vF)*(1.-smoothstep(.35,.75,vF))' : 'smoothstep(.25,1.,vF)'};
+        float top=1.-smoothstep(.35,1.,vUv.y);float fl=.82+.18*sin(vUv.y*60.-uTime*4.+vUv.x*12.57);
+        vec3 c=mix(uA,uB,vUv.y)${rim ? '' : '*mix(1.1,.78,vF)'};
+        gl_FragColor=vec4(c,clamp(prof*top*fl*uFade*${k.toFixed(2)},0.,1.));}`,
   });
-  const core = beamMat('#6f4dff', '#5a36e6', 0.85), sheath = beamMat('#f2c14e', '#d9a43a', 0.45);
-  const beamCore = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.0, 220, 20, 1, true), core); beamCore.position.set(-3, 9 + 110, 2);
+  const core = beamMat('#6a52ff', '#5a3fe8', 0.9, false), sheath = beamMat('#ffc23a', '#f0a91c', 0.95, true);
+  const beamCore = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.8, 220, 20, 1, true), core); beamCore.position.set(-3, 9 + 110, 2);
   const beamSheath = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 3.4, 220, 24, 1, true), sheath); beamSheath.position.copy(beamCore.position);
   const flare = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.18, 6, 48).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffe0a0', toneMapped: false, transparent: true, opacity: 0 }));
   flare.position.set(-3, 9.6, 2);

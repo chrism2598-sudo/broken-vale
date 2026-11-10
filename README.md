@@ -89,3 +89,11 @@ North-west of spawn, past the creek path. Read the **Wind Tablet** (E / Action),
 Wrong combinations just say "not yet" (0 XP). Solving wakes the orrery (spinning gilded rings, glowing heart-stone,
 wind ribbons) for a one-time **+35 XP** and the **Windward Blessing** (+15% move speed). Rune states and the blessing
 are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker has a Wind Shrine locator line.
+
+## Vale Warden (optional, Milestone 7)
+- Placed from the Canvas Page's relative coordinates (~55, 35), near the Iron Dome approach; HUD tracker line "Vale Warden (optional) · N m".
+- It wakes within 22 m. Each attack is telegraphed: it raises its arms overhead, a bright ground ring appears where you stand, and a "⚠ Warden winds up — move!" cue shows for ~1.25 s before the slam.
+- You have 3 HP (♥ panel). Attack it with Action/E (0.55 s cooldown, shown as a ring on the button and as "Strike not ready"). 3 hits defeat it: +40 XP and the Warden's Crest, given once (no farming).
+- At 0 HP the Wayfinder pulls you to safety 34 m away. Your HP is restored and you keep all XP; the Warden resets.
+- `warden` is saved in `vale3d-save` and cleared by Reset. Menu → New character asks for confirmation when you have progress, then starts fresh progress in the character creator.
+- Screenshots: `?shot=warden`, `?shot=warden-windup`, `?shot=warden-defeated`. QA: `tools/qa-run.cjs` covers hits, recovery, defeat, persistence, reset and New character.

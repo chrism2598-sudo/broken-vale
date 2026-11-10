@@ -191,3 +191,16 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - **Spout telegraph:** not tone-mapped and more opaque, so it reads orange-red on Lite instead of beige. The ring is also thicker.
 - **Lite heart glow:** dimmed to keep the core shaded rather than a flat white disc (Lite has no bloom).
 - **Portrait framing near the Keeper:** within 10.5 m, the camera eases back by 3.2 m and up by 0.06 rad. It's damped on the fixed tick and interpolated, so there's no jitter.
+
+## M15 — phone HUD cleanup + pose fix + causeway stones
+- **Ilka "folded in half" fix:** three's PropertyMixer only writes a bone when its blended clip value changes, so the procedural
+  pose overlays (flight lean, swing) that are premultiplied after `mixer.update` accumulated tick after tick on bones whose clip
+  value is constant (idle hips/arms) — e.g. after an Updraft flight the hips could end up rotated ~180°, persisting onto the coast.
+  `setSpeed` now restores each posed bone to its clean clip pose before the mixer runs and layers the overlay for one tick only.
+  `__vale.pose()` returns head height above hips; qa-run samples it through the whole run and asserts it never drops below 0.2 m.
+- **Causeway stones:** lathed, rounded, out-of-round weathered stones (domed top, softened rim, flared foot), darker wet tops, a
+  slick green band at the held low-water line and hanging weed strips (11 per stone High / 7 Lite). Own RNG stream, so the rest of
+  the coast layout is unchanged; sink/hide logic unchanged.
+- **Phone HUD:** portrait quest panel is a compact one-line objective + XP; tap it to expand the secondary lines. Keyboard hint
+  ("E / Action …") hidden on touch devices and narrow portrait.
+- **Lite coast haze:** fog density 0.005 → 0.0042 to match High (the horizon washed out on phones).

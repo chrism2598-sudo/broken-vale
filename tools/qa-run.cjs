@@ -4,6 +4,8 @@ const puppeteer=require(process.env.PUPPETEER_CORE);const sleep=ms=>new Promise(
 const p=await b.newPage();await p.setViewport({width:800,height:500});const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 await p.goto('http://localhost:8090/?q=lite',{waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});
 await p.click('#begin');await sleep(1500);
+// Pose watchdog: sample Ilka's head-above-hips through every state of the run (meadow, flight, fights, coast causeway, sea cave, Keeper).
+const poseW={n:0,min:9,bad:0,where:null};let poseOn=true;(async()=>{while(poseOn){try{const r=await p.evaluate(()=>window.__vale&&window.__vale.ready?{d:window.__vale.pose(),c:window.__vale.coast().inCoast,s:window.__vale.sea().inSea,k:window.__vale.keeper().inKeep,f:window.__vale.beacon().lift}:null);if(r&&r.d!=null){poseW.n++;if(r.d<poseW.min){poseW.min=r.d;poseW.where=r;}if(r.d<0.2)poseW.bad++;}}catch(e){}await sleep(300);}})();
 const Q=()=>p.evaluate(()=>window.__vale.quest());const log=(k,v)=>console.log(k,JSON.stringify(v));
 let q=await Q();await p.evaluate((x,z)=>window.__vale.warp(x,z+1.5),q.wayfinder.x,q.wayfinder.z);await sleep(1500);
 log('near wayfinder',(await Q()).near);await p.keyboard.press('KeyE');await sleep(800);q=await Q();log('dialog',{talking:q.talking,dlg:q.dlg,started:q.save.started});
@@ -199,4 +201,5 @@ log('progress before new char',{started:(await Q()).save.started});
 await p.click('#menubtn');await sleep(300);await p.click('#newchar');await sleep(300);
 await Promise.all([p.waitForNavigation({timeout:120000}),p.click('#ncyes')]);await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(800);
 log('after new character',{creatorOpen:await p.evaluate(()=>!document.getElementById('create').hidden),save:(await Q()).save});
+poseOn=false;log('pose: head above hips in every state',{samples:poseW.n,minHeadAboveHips:+poseW.min.toFixed(2),bad:poseW.bad,at:poseW.where,ok:poseW.n>100&&poseW.bad===0});
 log('errors',[...errs,...await p.evaluate(()=>window.__vale.errors)]);await b.close();})().catch(e=>{console.log('ERR',e.message);process.exit(1)});

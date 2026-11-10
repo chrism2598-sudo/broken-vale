@@ -35,6 +35,7 @@ type Quality = 'high' | 'lite';
 const params = new URLSearchParams(location.search);
 // Phones/tablets default to Lite (incl. iPadOS, which reports as Macintosh with touch).
 const isPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) || (matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 900);
+document.body.classList.toggle('touch', isPhone || matchMedia('(pointer: coarse)').matches); // keyboard hints are hidden on touch
 let quality: Quality = (params.get('q') as Quality) || (localStorage.getItem('vale3d-quality') as Quality) || (isPhone ? 'lite' : 'high');
 if (quality !== 'high' && quality !== 'lite') quality = 'high';
 const HIGH = quality === 'high';
@@ -692,6 +693,7 @@ async function main() {
     setTimeout(() => { resetBtn.textContent = 'Reset progress'; resetBtn.classList.remove('warn'); }, 3500);
   };
   // HUD: quest tracker + compass.
+  { const qEl = document.getElementById('quest')!; qEl.addEventListener('click', () => { if (innerWidth <= 520) qEl.classList.toggle('open'); }); } // portrait: tap the quest card for the full status
   const bossEl = document.getElementById('bossbar')!, kFill = document.getElementById('kfill')!, kSt = document.getElementById('kst')!, kPh = document.getElementById('kph')!;
   const wdArrow = document.getElementById('wdarrow')!, wdText = document.getElementById('wdtext')!, combatEl = document.getElementById('combat')!, hpEl = document.getElementById('hp')!, whpEl = document.getElementById('whp')!;
   const wArrow = document.getElementById('warrow')!, wText = document.getElementById('wtext')!;
@@ -1215,6 +1217,8 @@ async function main() {
     sheets: () => ({ journal: !jEl.hidden, map: !mapEl.hidden, paused, journalText: jEl.innerText }),
     warden: () => ({ x: WARDEN.x, z: WARDEN.z, hp: wd.hp, phase: wd.phase, awake: wd.awake, playerHp, atkCd, recovery: recoveryPoint(), melee: W_MELEE }),
     quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
+    // Head height above the hips (world Y); stays > 0 in every state now that pose overlays never accumulate.
+    pose: () => { const r = player.root, v = new THREE.Vector3(), h = r.getObjectByName('Head'), hp = r.getObjectByName('Hips'); if (!h || !hp) return null; h.getWorldPosition(v); const hy = v.y; hp.getWorldPosition(v); return hy - v.y; },
     debug: { get grass() { return [grassField, grassFar]; }, treeField, scene, camera, renderer, get composer() { return composer; }, get aq() { return { level: aqLevel, low: aqLow, warm: aqWarm, on: aqOn, fps, paused, fading, talking }; }, get player() { return player.root; }, wayfinder: wayfinder.root },
   };
   (window as unknown as { __vale: typeof api }).__vale = api;
@@ -1275,6 +1279,7 @@ function makeCharacter(g: GLTF, s: number, colors: Record<string, string>, hide:
     axv.copy(axis).applyQuaternion(qw).applyQuaternion(qp.invert()).normalize(); qa.setFromAxisAngle(axv, ang); b.quaternion.premultiply(qa);
   };
   const pose = { fly: 0, swing: 0 }; let poseT = 0;
+  const poseBones = Object.values(PB).filter((b): b is THREE.Object3D => !!b); const cleanQ = poseBones.map((b) => b.quaternion.clone());
   function applyPose(dt: number) {
     poseT += dt; const f = pose.fly, s = pose.swing;
     if (f > 0.01) {
@@ -1308,7 +1313,11 @@ function makeCharacter(g: GLTF, s: number, colors: Record<string, string>, hide:
       const wWalk = smoothstep(0.05, 1.6, v) * (1 - smoothstep(2.4, 4.6, v)), wRun = smoothstep(2.4, 4.6, v), wIdle = Math.max(0, 1 - wWalk - wRun);
       idle.setEffectiveWeight(wIdle * (waving ? 0.2 : 1)); walk.setEffectiveWeight(wWalk); run.setEffectiveWeight(wRun);
       walk.timeScale = THREE.MathUtils.clamp(v / 1.9, 0.6, 1.6); run.timeScale = THREE.MathUtils.clamp(v / 5.6, 0.75, 1.25);
-      mixer.update(dt); applyPose(dt);
+      // The mixer only writes a bone when its blended value CHANGES (three's PropertyMixer), so a procedural pose premultiplied on top
+      // would otherwise accumulate tick after tick on bones whose clip value is constant (idle hips/arms) — Ilka folded in half.
+      // Restore the clean clip pose before the mixer runs, keep a copy of it, then layer the pose for this tick only.
+      for (let i = 0; i < poseBones.length; i++) poseBones[i].quaternion.copy(cleanQ[i]);
+      mixer.update(dt); for (let i = 0; i < poseBones.length; i++) cleanQ[i].copy(poseBones[i].quaternion); applyPose(dt);
     },
     pose,
   };

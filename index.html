@@ -116,8 +116,9 @@ body.sheet #joy,body.sheet #action{display:none}
 @keyframes chin{from{opacity:0}to{opacity:1}}
 body.cine #quest,body.cine #menubtn,body.cine #joy,body.cine #action,body.cine #hint{opacity:0;pointer-events:none;transition:opacity .6s}
 body.talking #joy,body.talking #action,body.creating #quest,body.creating #menubtn,body.creating #action{display:none}
-@media (max-width:520px){#toast{top:27%;white-space:normal;max-width:86vw;text-align:center}#combat{left:max(14px,env(safe-area-inset-left));transform:none;top:calc(max(12px,env(safe-area-inset-top)) + 172px);font-size:16px}#quest{font-size:12px;max-width:58vw}#dtxt{font-size:16px}}
+@media (max-width:520px){#toast{top:27%;white-space:normal;max-width:86vw;text-align:center}#combat{left:max(14px,env(safe-area-inset-left));transform:none;top:calc(max(12px,env(safe-area-inset-top)) + 172px);font-size:16px}#quest{font-size:12px;max-width:58vw}#hint{display:none}.hud h1{font-size:17px}#quest{top:calc(max(12px,env(safe-area-inset-top)) + 30px);padding:5px 9px;max-width:64vw;font-size:11.5px;pointer-events:auto;background:rgba(10,30,34,.5)}#quest{display:flex;flex-direction:column}#quest #compass{order:-1}#quest #qline,#quest #wind,#quest #wdl{display:none}#quest.open #qline,#quest.open #wind,#quest.open #wdl{display:flex}#quest.open #qline{display:block;white-space:normal}#compass{margin-top:0;font-size:12px}#ctext{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:56vw}#qstats{font-size:11px;margin-top:1px}#qstats::after{content:' · ▾ more';opacity:.6}#quest.open #qstats::after{content:' · ▴ less'}#combat{top:calc(max(12px,env(safe-area-inset-top)) + 96px)}#dtxt{font-size:16px}}
 #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .5s ease;z-index:40}#fade.on{opacity:1}
+body.touch #hint{display:none}
 </style>
 </head>
 <body>

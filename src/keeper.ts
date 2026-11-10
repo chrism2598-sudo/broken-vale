@@ -139,7 +139,7 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
     root.add(M(mergeGeometries(sc), slate)); }
   // Barnacle clusters on the coil (one instanced mesh; volcano-shaped shells).
   { const bg = new THREE.LatheGeometry([new THREE.Vector2(0.12, 0), new THREE.Vector2(0.11, 0.05), new THREE.Vector2(0.075, 0.12), new THREE.Vector2(0.045, 0.14), new THREE.Vector2(0.03, 0.09)], 8);
-    const n = high ? 260 : 150; const im = new THREE.InstancedMesh(bg, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.78 }), n); const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), sv = new THREE.Vector3(), pv = new THREE.Vector3(), nv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
+    const n = high ? 260 : 90; /* M15: Lite trimmed (arena/meadow 0.58 after the M14 remodel) */ const im = new THREE.InstancedMesh(bg, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.78 }), n); const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), sv = new THREE.Vector3(), pv = new THREE.Vector3(), nv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
     let c = 0; while (c < n) { const a0 = rnd() * Math.PI * 2, b0 = -0.2 + rnd() * 2.2, m = 4 + Math.floor(rnd() * 7);
       for (let j = 0; j < m && c < n; j++) { const a = a0 + (rnd() - 0.5) * 0.22, b = b0 + (rnd() - 0.5) * 0.5; nv.set(Math.cos(b) * Math.cos(a), Math.sin(b), Math.cos(b) * Math.sin(a)); pv.set(Math.cos(a) * (CR + CT * Math.cos(b)), CT * Math.sin(b) + bump(a), Math.sin(a) * (CR + CT * Math.cos(b))).addScaledVector(nv, -0.02);
         q.setFromUnitVectors(up, nv); sv.setScalar(0.6 + rnd() * 1.1); mx.compose(pv, q, sv); im.setMatrixAt(c, mx); im.setColorAt(c, col.setHSL(0.11 + rnd() * 0.05, 0.12 + rnd() * 0.1, 0.55 + rnd() * 0.2)); c++; } }
@@ -166,7 +166,7 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
     const m = new THREE.Mesh(mergeGeometries(parts), kelpM); m.frustumCulled = false; return m; };
   for (const bi of [1, 3, 5]) { const yb = Y0 + bi * SEG, r = neckR(yb) + 0.05; const c = M(new THREE.TorusGeometry(r, 0.15, 8, 40), collarM); c.rotation.x = Math.PI / 2; c.scale.set(1, 1, 1.7); segs[bi].add(c);
     const an: { x: number; y: number; z: number; a: number }[] = []; for (let k = 0; k < (high ? 6 : 4); k++) { const a = rnd() * Math.PI * 2; if (Math.abs(Math.atan2(Math.sin(a - Math.PI / 2), Math.cos(a - Math.PI / 2))) < 0.6) continue; an.push({ x: Math.cos(a) * (r + 0.1), y: -0.15, z: Math.sin(a) * (r + 0.1), a }); } segs[bi].add(kelp(an)); }
-  { const an: { x: number; y: number; z: number; a: number }[] = []; for (let k = 0; k < (high ? 30 : 18); k++) { const a = rnd() * Math.PI * 2; an.push({ x: Math.cos(a) * (CR + CT * 0.9), y: 0.35 + bump(a), z: Math.sin(a) * (CR + CT * 0.9), a }); } root.add(kelp(an)); }
+  { const an: { x: number; y: number; z: number; a: number }[] = []; for (let k = 0; k < (high ? 30 : 12); k++) { const a = rnd() * Math.PI * 2; an.push({ x: Math.cos(a) * (CR + CT * 0.9), y: 0.35 + bump(a), z: Math.sin(a) * (CR + CT * 0.9), a }); } root.add(kelp(an)); }
   // Sculpted head: plated skull with brow ridge and tapering snout, hinged jaw with teeth, glowing eyes in sockets, crest scutes, lantern-lure.
   const head = new THREE.Group(); head.position.y = SEG; segs[NB - 1].add(head); let jaw: THREE.Group;
   { const sk = new THREE.SphereGeometry(1, high ? 36 : 26, high ? 22 : 16); const p = sk.attributes.position as THREE.BufferAttribute;

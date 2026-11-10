@@ -95,7 +95,7 @@ class Surf {
 export function makeCoast(high: boolean, t: { grass: GroundTex; pebble: GroundTex; rock: GroundTex; blocks: GroundTex }, waterNormals: THREE.Texture, env: THREE.Texture | null) {
   const scene = new THREE.Scene();
   const HORL = new THREE.Color().setRGB(0.86, 0.72, 0.64, THREE.LinearSRGBColorSpace);
-  scene.fog = new THREE.FogExp2(HORL.clone(), high ? 0.0042 : 0.005);
+  scene.fog = new THREE.FogExp2(HORL.clone(), 0.0042); // Lite used 0.005: the horizon washed out on phones
   if (env) { scene.environment = env; scene.environmentIntensity = 0.55; }
   const sun = new THREE.DirectionalLight('#ffd2a8', 3.0); sun.castShadow = true; sun.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
   Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 260 }); sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.04;
@@ -194,7 +194,30 @@ vec3 WG; vec2 TP;`)
   const path: [number, number][] = []; { const x0 = shoreX(14) - 0.5; const P0 = new THREE.Vector2(x0, 14), P1 = new THREE.Vector2(CAVE.x + 0.5, CAVE.z); for (let i = 0; i <= 22; i++) { const u = i / 22; path.push([P0.x + (P1.x - P0.x) * u + Math.sin(u * 6.28) * 1.2, P0.y + (P1.y - P0.y) * u + Math.sin(u * 3.14) * 3.5]); } }
   const TOP = -0.32; const stoneMat = triplanar(t.blocks, 2.0, '#b4a996', { sat: 0.5 });
   const stones = new THREE.Group(); g.add(stones);
-  for (let i = 1; i < path.length; i++) { const [x, z] = path[i], hb = coastH(x, z), hgt = TOP - hb + 0.4; const b = new THREE.BoxGeometry(1.55 + rnd() * 0.3, hgt, 1.25 + rnd() * 0.2); b.translate(0, -hgt / 2, 0); const m = new THREE.Mesh(b, stoneMat); m.position.set(x, TOP, z); m.rotation.y = Math.atan2(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]) + (rnd() - 0.5) * 0.25; m.castShadow = m.receiveShadow = true; m.userData.k = i; stones.add(m); }
+  // Weathered custodian stones: a lathed, rounded profile (domed walkable top, softened rim, flared foot) pushed out of round by
+  // per-stone periodic noise, darker wet tops with a slick dark-green band at the low-water line, and kelp/weed strips hanging there.
+  stoneMat.vertexColors = true; stoneMat.roughness = 0.62;
+  const weedMat = new THREE.MeshStandardMaterial({ color: '#4a5524', roughness: 0.5, side: THREE.DoubleSide });
+  const WATER = -0.95 - TOP; const srnd = rnd0(97); // own stream: keeps the rest of the coast layout unchanged // held low-water line in stone-local Y
+  for (let i = 1; i < path.length; i++) {
+    const [x, z] = path[i], hb = coastH(x, z), hgt = TOP - hb + 0.4;
+    const prof = [[1.12, -hgt], [1.06, -hgt * 0.55], [1.0, -0.34], [0.985, -0.16], [0.93, -0.06], [0.8, -0.005], [0.55, 0.03], [0.25, 0.045], [0, 0.05]].map(([r, y]) => new THREE.Vector2(r, y));
+    const b = new THREE.LatheGeometry(prof, 16); const pos = b.attributes.position as THREE.BufferAttribute;
+    const ph = [srnd() * 6.28, srnd() * 6.28, srnd() * 6.28], amp = [0.07 + srnd() * 0.05, 0.05 + srnd() * 0.04, 0.03];
+    const rx = 0.78 + rnd() * 0.12, rz = 0.62 + rnd() * 0.1, col = new Float32Array(pos.count * 3);
+    for (let v = 0; v < pos.count; v++) { const px = pos.getX(v), py = pos.getY(v), pz = pos.getZ(v), a = Math.atan2(pz, px);
+      const n = 1 + amp[0] * Math.sin(2 * a + ph[0]) + amp[1] * Math.sin(3 * a + ph[1] + py * 1.3) + amp[2] * Math.sin(5 * a + ph[2] - py * 2.1);
+      const tilt = py > -0.08 ? (px * 0.03 + Math.sin(a * 2 + ph[2]) * 0.012) : 0; // slightly uneven, never steep
+      pos.setXYZ(v, px * n * rx, py + tilt, pz * n * rz);
+      const wet = py > -0.04 ? 0.74 : 1, band = Math.max(0, 1 - Math.abs(py - WATER) / 0.28), below = py < WATER ? 0.82 : 1;
+      col[v * 3] = wet * below * (1 - 0.42 * band); col[v * 3 + 1] = wet * below * (1 - 0.3 * band); col[v * 3 + 2] = wet * below * (1 - 0.48 * band); }
+    b.setAttribute('color', new THREE.BufferAttribute(col, 3)); b.computeVertexNormals();
+    const m = new THREE.Mesh(b, stoneMat); m.position.set(x, TOP, z); m.rotation.y = Math.atan2(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]) + (rnd() - 0.5) * 0.35; m.castShadow = m.receiveShadow = true; m.userData.k = i; stones.add(m);
+    const wg: THREE.BufferGeometry[] = []; const nW = high ? 11 : 7;
+    for (let k = 0; k < nW; k++) { const a = (k / nW) * 6.28 + srnd() * 0.5, len = 0.22 + srnd() * 0.25; const w = new THREE.PlaneGeometry(0.1 + srnd() * 0.08, len, 1, 2); w.translate(0, -len / 2, 0);
+      w.rotateX(-0.35 - srnd() * 0.3); w.rotateY(-a + Math.PI / 2); const rr = 1.04 * (1 + amp[0] * Math.sin(2 * a + ph[0]));
+      w.translate(Math.cos(a) * rr * rx, WATER + 0.12 + srnd() * 0.1, Math.sin(a) * rr * rz); wg.push(w); }
+    const wm = new THREE.Mesh(mergeGeometries(wg), weedMat); wm.receiveShadow = true; m.add(wm); }
   // ---------- the arrival tunnel in the east cliff ----------
   const TUN = { x: 31.2, z: 2 };
   { const ty = coastH(TUN.x - 1, TUN.z); const fr: THREE.BufferGeometry[] = [];

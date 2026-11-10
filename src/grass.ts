@@ -13,7 +13,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
       const t = s / seg, ww = w * (1 - t * 0.92), y = h * t, f = lean * t * t;
       for (const side of [-1, 1]) {
         pos.push(ox + ca * ww * side + -sa * f, y, oz + sa * ww * side + ca * f);
-        const g = 0.35 + 0.65 * t; col.push(0.2 * g + 0.03, 0.3 * g + 0.06, 0.07 * g + 0.02); bend.push(t);
+        const g = 0.38 + 0.58 * t; col.push(0.20 * g + 0.05, 0.28 * g + 0.07, 0.09 * g + 0.03); bend.push(t);
       }
       if (s < seg) { const o = v + s * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
     }
@@ -41,8 +41,10 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
   vBend=bend;`)
       .replace('#include <beginnormal_vertex>', 'vec3 objectNormal=vec3(0.,1.,0.);');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vBend;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb*=mix(.55,1.18,vBend);')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance+=diffuseColor.rgb*vec3(.10,.16,.02)*vBend*vBend;');
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  { vec3 blade=diffuseColor.rgb*mix(.82,1.06,vBend); float L=dot(blade,vec3(.3,.59,.11)); blade=mix(vec3(L),blade,.85);
+    vec3 ground=vec3(.36,.32,.18); diffuseColor.rgb=mix(ground,blade,smoothstep(.0,.28,vBend)); }`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance+=diffuseColor.rgb*vec3(.05,.08,.02)*vBend*vBend;');
   };
   const mesh = new THREE.InstancedMesh(geo, mat, count);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);

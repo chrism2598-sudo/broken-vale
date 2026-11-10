@@ -16,9 +16,9 @@ import { makeLandmarks } from './landmarks';
 import { makeWarden, WARDEN, W_WAKE, W_SLEEP, W_MELEE, W_STRIKE_R, W_TELE, W_RECOVER, PLAYER_ATK_CD, HP_MAX, WARDEN_XP, RECOVERY_LINES, recoveryPoint } from './warden';
 import { makeWindShrine, RUNES, TABLET, TABLET_LINES, SOLVED_LINES, RUNE_GLYPHS, RUNE_LABELS, SHRINE_XP, WIND_BLESS, runesMatch } from './shrine';
 import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP, CHAPTER_TEASER } from './quest';
-import { addRimFill } from './shading';
+import { addRimFill, styleHeroMaterial, heroKindFor } from './shading';
 import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
-import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, type Kind, type TreeInst } from './nature';
+import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, configureFoliage, type Kind, type TreeInst } from './nature';
 import { makeFloatingIsland, makeLanternStaff, ISLAND_POS, islandTopY } from './island';
 import { UPDRAFT, MIRRORS, MORNING_DIRS, DIR_ARROWS, BEACON_XP, BEACON_L, CLUE_L, RETURN_L, LANDING_L, ISLAND_WALK_R, CLUE_LINES, UPDRAFT_DORMANT, UPDRAFT_NEEDS_WIND, ENDING_TITLE, ENDING_LINES, ENDING_REWARD, WAYFINDER_BEACON, mirrorsMatch, makeHollowPuzzle, makeUpdraft, makeDawnSky } from './beacon';
 import { buildJournal, drawValeMap, MAPBOX } from './journal';
@@ -71,7 +71,7 @@ const SH = HIGH ? 34 : 24;
 Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH, near: 1, far: 220 });
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035;
 scene.add(sun, sun.target);
-const hemi = new THREE.HemisphereLight('#cfe0ff', '#4b5a2e', 0.25);
+const hemi = new THREE.HemisphereLight('#cfe0ff', '#4b5a2e', 0.30);
 scene.add(hemi);
 
 // ---------- loading ----------
@@ -127,7 +127,7 @@ async function main() {
   // The creek mirror only needs nearby banks, trees and sky: cull beyond 150 m during the reflection render.
   { const ob = water.mesh.onBeforeRender.bind(water.mesh); water.mesh.onBeforeRender = (r, sc, cam, ...rest) => { const pc = cam as THREE.PerspectiveCamera; const f0 = pc.far; pc.far = 150; pc.updateProjectionMatrix(); ob(r, sc, cam, ...rest); pc.far = f0; pc.updateProjectionMatrix(); }; }
 
-  const treeKinds = bakeKinds(treesG), plantKinds = bakeKinds(plantsG);
+  configureFoliage({ a2c: !HIGH }); const treeKinds = bakeKinds(treesG), plantKinds = bakeKinds(plantsG);
   const treeField = scatter(treeKinds, plantKinds, rocksG, boulderG, shrubG, fernG);
   const island = makeFloatingIsland(renderer, grass, rock, treeKinds.slice(0, 5));
   scene.add(island.group);
@@ -154,12 +154,12 @@ async function main() {
   scene.add(rift);
 
   // Characters.
-  // Player heroes (both CC0 Quaternius, recoloured to the navy/teal cloak look); the creation screen picks one.
+  // Player heroes (both CC0 Quaternius, recoloured with leather, a brown travel-cloak and teal accents); the creation screen picks one.
   const heroes = {
-    // Hooded Adventurer: warm skin, chestnut hair (the model's 'White' is her hair), lighter navy cloak, clear teal accents.
-    female: makeCharacter(heroFG, 1.66 / 1.877, { Skin: '#d89a70', LightBrown: '#3fa7a8', DarkBrown: '#2c4579', Black: '#33405e', Brown: '#4a2a1c', White: '#7a4630', Gold: '#d9b35c', Metal: '#9fb4bf' }, ['Sword']),
-    // Hoodie Character (young, beardless): navy hoodie, teal trim, dark leggings under the shorts, brown boots.
-    male: makeCharacter(heroMG, 1.74 / 1.866, { Skin: '#d39a72', Purple: '#2c4579', LightBlue: '#2f8f93', 'Casual_Legs/Skin': '#2a3550', White: '#6b4a32', Hair: '#3b2a1f', Eyebrows: '#3b2a1f' }, []),
+    // Hooded Adventurer: warm skin, chestnut hair (the model's 'White' is her hair), brown travel-cloak, leather trousers, teal sash, natural chestnut hair.
+    female: makeCharacter(heroFG, 1.66 / 1.877, { Skin: '#e1a67a', LightBrown: '#2c8f8a', DarkBrown: '#3a2a22', Black: '#6a4530', Brown: '#4a2a1c', White: '#6b3e24', Gold: '#d9b35c', Metal: '#c5d0d4' }, ['Sword']),
+    // Hoodie Character (young, beardless): brown travel-hoodie, teal trim, leather leggings, brown boots.
+    male: makeCharacter(heroMG, 1.74 / 1.866, { Skin: '#dba47c', Purple: '#3a2a22', LightBlue: '#2c8f8a', 'Casual_Legs/Skin': '#6a4530', White: '#6b4a32', Hair: '#4a2e1c', Eyebrows: '#2a1a12' }, []),
   };
   for (const h of Object.values(heroes)) { h.root.visible = false; h.root.position.set(SPAWN.x, heightAt(SPAWN.x, SPAWN.z), SPAWN.z); scene.add(h.root); }
   let profile = loadProfile();
@@ -1261,8 +1261,7 @@ function makeCharacter(g: GLTF, s: number, colors: Record<string, string>, hide:
       const base = m.name.replace(/_\d+$/, '');
       const key = Object.keys(colors).find((k) => k === `${base}/${c.name}`) ?? Object.keys(colors).find((k) => c.name === k);
       if (key) c.color.set(colors[key]);
-      c.roughness = c.name === 'Eye' ? 0.2 : c.name === 'Gold' ? 0.35 : 0.78; c.metalness = c.name === 'Gold' ? 0.8 : 0; c.envMapIntensity = 0.9;
-      if (c.name !== 'Eye') addRimFill(c, { fill: 0.16, rim: 0.32 });
+      styleHeroMaterial(c, heroKindFor(m.name, c.name, key));
       return c;
     });
     m.material = Array.isArray(m.material) ? mats : mats[0];

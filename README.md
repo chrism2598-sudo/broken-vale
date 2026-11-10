@@ -212,3 +212,9 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
   shader; centres/radii are measured from the real geometry at the waterline. Stone collars fade with the stone's height above water.
 - **Wet sand:** a damp band above the waterline that lags the ebb (`uWetTop` recedes ~1.2 cm/s), darker and glossier than dry sand.
 - **Causeway stones:** wider algae band with streaky variation, glossier, more and longer weed strips (16 High / 10 Lite).
+
+## G2 — Ilka materials, meadow foliage and grass
+- **Ilka (and the male hero):** skin has a cheap wrap / subsurface-ish warmth on the terminator and rims (face and hands). Cloth is no longer a single flat navy: leather trousers and straps, a brown travel-cloak, and bright teal accents, with a procedural weave or grain and roughness variation. Hair is a natural chestnut with a strand-like anisotropic sheen. Stronger sky fill and rim keep her from falling into a silhouette against bright meadows. The clip/pose restore that stopped her folding is unchanged.
+- **Autumn canopies:** leaf alpha uses mip-boosted, fwidth-softened coverage (and MSAA alpha-to-coverage on Lite, which already antialiases) instead of a hard 0.45 cut, so mid-distance gold leaves no longer sparkle or jag. Distant impostor cards use the same test. Autumn contrast is slightly softened.
+- **Grass:** blade colour is a bit more olive; roots blend toward the dry meadow ground, and tip glow is quieter.
+- **Lighting:** vale hemisphere fill 0.25 → 0.30, just enough to support the character fill.

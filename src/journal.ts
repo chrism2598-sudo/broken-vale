@@ -44,7 +44,14 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
     if (c >= 1) trail.items.push({ t: c >= 2 ? 'Descended into the torch-lit ruin beneath Pale Keep.' : 'Descend the collapsed stair east of Pale Keep.', done: c >= 2 });
     if (c >= 2) trail.items.push({ t: c >= 3 ? 'Braziers lit as the river runs — Spring, Ford, Sea. The sealed door is open.' : 'Light the three braziers as the river runs: where it is born, where it is crossed, where it is lost.', done: c >= 3 });
     if (c >= 3) trail.items.push({ t: c >= 4 ? `Enna’s carved message found · Enna’s Tide-Glass (+${CAVE_XP} XP).` : 'Read what waits in the alcove behind the door.', done: c >= 4 });
-    if (c >= 4) trail.items.push({ t: '“The water-road runs west beneath the hills to the sea caves, where the second seam answers under the tide. I have gone to listen.” — E. M.', lore: true }, { t: 'Next: follow the water-road west to the sea (Chapter II continues).' });
+    if (c >= 4) {
+      trail.items.push({ t: '“The water-road runs west beneath the hills to the sea caves, where the second seam answers under the tide. I have gone to listen.” — E. M.', lore: true });
+      const k = s.coast;
+      trail.items.push({ t: k >= 1 ? 'Followed the water-road west to the Tidewrack Coast, below the Lowtide Lamp.' : 'Follow the west passage in the ruin — the water-road runs on to the sea.', done: k >= 1 });
+      if (k >= 1) trail.items.push({ t: k >= 2 ? 'Raised the Tide-Glass at low tide · the custodian causeway stands clear.' : 'At the tide-shrine by the Lowtide Lamp, raise the Tide-Glass when the tide is low.', done: k >= 2 });
+      if (k >= 2) trail.items.push({ t: k >= 3 ? 'Reached the sea cave mouth · the Second Seam (+30 XP).' : 'Cross the causeway to the sea cave mouth.', done: k >= 3 });
+      if (k >= 3) trail.items.push({ t: '“The custodians tied one sky shut. The sea has been holding the other open. I have gone down to see how.” — E. M.', lore: true }, { t: 'Chapter II · The Second Seam — to be continued.' });
+    }
   }
   const sections = s.beacon ? [trail, quest, chart, shrine, warden, echo, beacon, lore] : [quest, chart, shrine, warden, echo, beacon, lore];
   return {
@@ -129,6 +136,20 @@ export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m
       label('to the sea ←', sx(MAPBOX.x0) + 8, Y + 60 * k - 10, 'left', '#1f5f78', fs - 1, true); }
     x.fillStyle = '#2e1e0e'; for (let i = 0; i < 4; i++) x.fillRect(X - 6 + i * 1.5, Y - 5 + i * 3, 12 - i * 3, 2.2);
     label('Collapsed Stair', X + 9, Y - 6, 'left', '#2e1e0e', fs - 1); }
+  // Tidewrack Coast inset (beyond the western hills), once reached.
+  if (m.save.coast >= 1) { const bw = Math.min(150, W * 0.3), bh = bw * 0.72, X0 = 10, Y0 = H - bh - 10;
+    x.save(); x.fillStyle = 'rgba(238,224,190,.94)'; x.strokeStyle = '#4a3218'; x.lineWidth = 1.2; x.fillRect(X0, Y0, bw, bh); x.strokeRect(X0, Y0, bw, bh);
+    x.beginPath(); x.rect(X0, Y0, bw, bh); x.clip();
+    const sxC = (lx: number) => X0 + (lx + 80) / 125 * bw, szC = (lz: number) => Y0 + (lz + 55) / 110 * bh;
+    x.fillStyle = 'rgba(70,120,140,.35)'; x.beginPath(); x.moveTo(X0, Y0); for (let z = -55; z <= 55; z += 5) { const a = Math.abs(z); const sxz = -4 + 5 * Math.sin(z * 0.045 + 0.6) + 2 * Math.sin(z * 0.11) - 26 * Math.min(1, Math.max(0, (a - 40) / 22)); x.lineTo(sxC(sxz), szC(z)); } x.lineTo(X0, Y0 + bh); x.closePath(); x.fill();
+    x.strokeStyle = 'rgba(40,80,100,.6)'; x.setLineDash([2, 3]); x.beginPath(); for (let z = -55; z <= 55; z += 5) { const a = Math.abs(z); const sxz = -4 + 5 * Math.sin(z * 0.045 + 0.6) + 2 * Math.sin(z * 0.11) - 26 * Math.min(1, Math.max(0, (a - 40) / 22)); if (z === -55) x.moveTo(sxC(sxz - 3), szC(z)); else x.lineTo(sxC(sxz - 3), szC(z)); } x.stroke(); x.setLineDash([]);
+    x.fillStyle = '#5a4a3a'; for (const [lx, lz, r] of [[-27, -33, 3], [-58, -14, 4], [-31, 46, 3], [-45, 20, 6]] as const) { x.beginPath(); x.arc(sxC(lx), szC(lz), r, 0, Math.PI * 2); x.fill(); }
+    if (m.save.coast >= 2) { x.strokeStyle = '#3a2814'; x.lineWidth = 2; x.setLineDash([3, 2]); x.beginPath(); x.moveTo(sxC(-3), szC(14)); x.quadraticCurveTo(sxC(-20), szC(22), sxC(-37), szC(20)); x.stroke(); x.setLineDash([]); }
+    x.fillStyle = '#2e1e0e'; x.fillRect(sxC(10) - 2, szC(-30) - 7, 4, 9);
+    x.restore();
+    label('Tidewrack Coast · west', X0 + 4, Y0 + 9, 'left', '#3a2814', fs - 1);
+    label(m.save.coast >= 3 ? 'Sea cave ✦' : 'Sea cave', sxC(-45), szC(20) + 13, 'center', '#1f4f60', fs - 2);
+    label('Lamp', sxC(10), szC(-30) - 12, 'center', '#3a2814', fs - 2); }
   // Seals.
   for (const d of SEALS) { const X = sx(d.x), Y = sz(d.z), got = !!m.save.seals[d.id]; x.save(); x.translate(X, Y); x.rotate(Math.PI / 4); x.fillStyle = got ? d.color : 'rgba(0,0,0,0)'; x.strokeStyle = '#3a2814'; x.lineWidth = 1.4; x.fillRect(-4.5, -4.5, 9, 9); x.strokeRect(-4.5, -4.5, 9, 9); x.restore(); label(d.short, X + 9, Y, 'left', got ? '#3a2814' : '#6b4a26', fs - 1); }
   // Objective marker.

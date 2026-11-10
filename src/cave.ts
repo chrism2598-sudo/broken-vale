@@ -29,7 +29,7 @@ export const CAVE_LINES = {
     'Enna went down it the spring she left. The river there does not run to the vale. Take the light with you.',
   ],
   remind: ['The collapsed stair lies just east of Pale Keep’s walls, {name}. Mind the dark; mind the water.'],
-  found: ['You found her words. The water-road runs west under the hills to the sea caves.', 'When you are ready, {name}, the trail is yours to follow.'],
+  found: ['You found her words. The water-road runs west under the hills to the sea caves.', 'There is a passage in the ruin’s west wall, {name}. When you are ready, the trail is yours to follow.'],
   locked: 'The stair is choked with rubble and dark. Nothing calls you down — yet.',
   quiet: 'Water murmurs far below the rubble. The Wayfinder may know where it goes.',
   hint: ['Carved above the sealed door, worn but clear:', '“Light them as the river runs — where it is born, where it is crossed, where it is lost.”', 'Three braziers stand before the door. Each bears a worn sign: a Spring, a Ford, the Sea.'],
@@ -75,9 +75,8 @@ function carvingTex(name: string) {
   x.clearRect(0, 0, 1024, 640); x.textAlign = 'center';
   const lines = [`${name} —`, 'the morning came back.', 'The water-road runs west', 'beneath the hills to the sea.', 'I have gone to listen.', '— E. M.'];
   lines.forEach((l, i) => { const y = 90 + i * 92; x.font = `italic ${i === 0 ? 64 : 56}px serif`; x.fillStyle = 'rgba(28,18,10,0.9)'; x.fillText(l, 512, y); });
-  // Enna's surveyor mark: a river line running off to the left (west) with an arrow and a wave.
-  x.strokeStyle = 'rgba(18,12,8,0.9)'; x.lineWidth = 7; x.beginPath(); x.moveTo(900, 590); x.bezierCurveTo(760, 540, 640, 630, 470, 585); x.bezierCurveTo(330, 548, 230, 600, 120, 580); x.stroke();
-  x.beginPath(); x.moveTo(140, 556); x.lineTo(110, 580); x.lineTo(142, 604); x.stroke();
+  // Enna's surveyor mark: a compact wave-and-arrow pointing west (a long river stroke read as a stray dark line).
+  x.font = 'italic 60px serif'; x.fillStyle = 'rgba(28,18,10,0.85)'; x.fillText('← ≈', 170, 560);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
 
@@ -97,7 +96,19 @@ export function makeStairEntrance(t: { brick: GroundTex; rock: GroundTex }) {
   for (const sx of [-1, 1]) { const w = new THREE.BoxGeometry(0.3, 3.4, L * 2 + 0.2); w.translate(sx * (W + 0.1), -1.7, 0); steps.push(w); }
   { const w = new THREE.BoxGeometry(W * 2 + 0.4, 1.2, 0.3); w.translate(0, -0.6, L + 0.1); steps.push(w); }
   { const w = new THREE.BoxGeometry(W * 2 + 0.6, 0.4, L * 2 + 0.6); w.translate(0, -3.4, 0); steps.push(w); }
-  const stepMesh = new THREE.Mesh(mergeGeometries(steps.map((s) => s.index ? s.toNonIndexed() : s)), pitMat); stepMesh.receiveShadow = true; pit.add(stepMesh);
+  const stepGeo = mergeGeometries(steps.map((s) => s.index ? s.toNonIndexed() : s));
+  { // Baked contact shadow: darken where steps meet the side walls and each riser's foot, and with depth.
+    const p = stepGeo.attributes.position as THREE.BufferAttribute, col = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const wall = THREE.MathUtils.smoothstep(Math.abs(x), W - 0.55, W - 0.02); const depth = THREE.MathUtils.clamp(-y / 3, 0, 1);
+      const stepIdx = (z + L - 0.02) / 0.52, frac = stepIdx - Math.floor(stepIdx); const foot = Math.abs(x) < W - 0.05 ? (1 - THREE.MathUtils.smoothstep(frac, 0, 0.3)) * 0.35 : 0;
+      const k = Math.max(0.18, 1 - wall * 0.55 - depth * 0.45 - foot); col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k; }
+    stepGeo.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
+  const stepMesh = new THREE.Mesh(stepGeo, (() => { const m = triplanar(t.brick, 2.6, '#b9ad9c', { sat: 0.4, gain: 1.25 }); m.vertexColors = true; return m; })()); stepMesh.receiveShadow = true; stepMesh.castShadow = true; pit.add(stepMesh);
+  { // Shadow lid: invisible ground ring around the opening that still casts the sun's shadow down into the pit.
+    const sh = new THREE.Shape(); sh.moveTo(-W - 3, -L - 3); sh.lineTo(W + 3, -L - 3); sh.lineTo(W + 3, L + 3); sh.lineTo(-W - 3, L + 3); sh.closePath();
+    const hole = new THREE.Path(); hole.moveTo(-W, -L); hole.lineTo(-W, L); hole.lineTo(W, L); hole.lineTo(W, -L); hole.closePath(); sh.holes.push(hole);
+    const lid = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide }));
+    lid.rotation.x = -Math.PI / 2; lid.position.y = 0.02; lid.castShadow = true; lid.renderOrder = -5; g.add(lid); }
   { const v = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, 2.3), new THREE.MeshBasicMaterial({ color: '#020101' })); v.position.set(0, -2.35, L - 0.06); v.rotation.y = Math.PI; pit.add(v); } // black tunnel mouth
   // depth darkening inside the pit: a black volume gradient (additive darkness via a dark transparent box)
   const shade = new THREE.Mesh(new THREE.BoxGeometry(W * 2 - 0.02, 3.2, L * 2 - 0.02), new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.BackSide,
@@ -258,6 +269,14 @@ export function makeCaveInterior(high: boolean, t: { rock: GroundTex; blocks: Gr
   { const N = high ? 120 : 50, pos = new Float32Array(N * 3); for (let i = 0; i < N; i++) { pos[i * 3] = (rnd() - 0.5) * 12; pos[i * 3 + 1] = 0.3 + rnd() * 4; pos[i * 3 + 2] = (rnd() - 0.5) * 18; }
     const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     const pts = new THREE.Points(pg, new THREE.PointsMaterial({ color: '#ffd9a8', size: 0.03, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending })); pts.layers.set(1); g.add(pts); g.userData.motes = pts; }
+  // West passage: the water-road goes on toward the sea (rubble-choked until Enna's message is found).
+  const PW = { x: -8.3, z: 3.2 };
+  { const fr: THREE.BufferGeometry[] = []; for (const sz of [-1, 1]) { const b = new THREE.BoxGeometry(0.9, 2.8, 0.6); b.translate(PW.x, 1.4, PW.z + sz * 1.15); fr.push(b.toNonIndexed()); }
+    const l = new THREE.BoxGeometry(1.0, 0.5, 3.0); l.translate(PW.x, 3.0, PW.z); fr.push(l.toNonIndexed());
+    const m = new THREE.Mesh(mergeGeometries(fr), blocks); m.castShadow = m.receiveShadow = true; g.add(m);
+    const dk = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 2.8), new THREE.MeshBasicMaterial({ color: '#020101' })); dk.position.set(PW.x - 0.25, 1.4, PW.z); dk.rotation.y = Math.PI / 2; g.add(dk); }
+  const passRub: THREE.BufferGeometry[] = []; for (let i = 0; i < 8; i++) { const r = 0.35 + rnd() * 0.4; const rg = rockGeo(r, rnd, 0.8); rg.translate(PW.x + 0.2 + rnd() * 0.5, r * 0.6 + (i > 4 ? 0.7 : 0), PW.z + (rnd() - 0.5) * 1.8); passRub.push(rg); }
+  const passRubble = new THREE.Mesh(mergeGeometries(passRub), rock); passRubble.castShadow = true; g.add(passRubble);
   let doorK = 0, doorWant = 0, glassK = 0, glassWant = 0;
   const L = (x: number, z: number) => ({ x: CAVE_O.x + x, z: CAVE_O.z + z });
   const PSOL = [...PILLARS.map(([x, z], i) => ({ x, z, r: i === 1 ? 0.95 : 0.95 })), { x: 5.9, z: -2.0, r: 1.0 }, { x: 6.7, z: -1.3, r: 0.9 }, ...BRAZIERS.map((b) => ({ x: b.x, z: b.z, r: 0.7 })), { x: POOL.x, z: POOL.z, r: POOL.r + 0.2 }];
@@ -287,6 +306,8 @@ export function makeCaveInterior(high: boolean, t: { rock: GroundTex; blocks: Gr
     setDoor(open: boolean, instant = false) { doorWant = open ? 1 : 0; if (instant) doorK = doorWant; },
     setGlass(on: boolean, instant = false) { glassWant = on ? 1 : 0; if (instant) glassK = glassWant; },
     get doorOpen() { return doorK > 0.95; },
+    passage: L(PW.x + 1.3, PW.z),
+    setPassage(open: boolean) { passRubble.visible = !open; },
     update(time: number, dt: number) {
       for (const tc of torches) { const f = 0.82 + 0.18 * Math.sin(time * 13 + tc.ph) * Math.sin(time * 5.3 + tc.ph * 2); tc.l.intensity = 9 * f; tc.f.scale.set(0.42 * f, 0.8 * (0.9 + 0.2 * f), 1); }
       let lit = 0;

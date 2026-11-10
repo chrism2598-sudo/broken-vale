@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { fromMap, heightAt, LANDMARKS, SHRINE } from './world';
+import { triplanar } from './landmarks';
 
 /** Echo Grove (Page): five pale crystal trees east of the old crossing; a seal wakes them; +20 XP once. */
 export const ECHO = fromMap(440, 300);
@@ -51,8 +52,8 @@ export function makeEchoGrove(high: boolean, rock?: { diff: THREE.Texture; nor: 
   const hasLight = high;
   const g = new THREE.Group(); g.position.set(ECHO.x, heightAt(ECHO.x, ECHO.z), ECHO.z);
   let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  const stone = new THREE.MeshStandardMaterial(rock ? { map: rock.diff, normalMap: rock.nor, roughnessMap: rock.arm, color: '#8c857c', roughness: 1 } : { color: '#3b3632', roughness: 0.95, flatShading: true });
-  const root = new THREE.MeshStandardMaterial({ color: '#4a3a2c', roughness: 0.85 });
+  const stone: THREE.MeshStandardMaterial = rock ? triplanar(rock, 1.3, '#e2dcc6', { sat: 1.0, gain: 1.45 }) : new THREE.MeshStandardMaterial({ color: '#8a8478', roughness: 0.95, flatShading: true });
+  const root = new THREE.MeshStandardMaterial({ color: '#7a624a', roughness: 0.85 });
   const trees: { mat: THREE.MeshStandardMaterial; edge: { value: number }; core: THREE.MeshBasicMaterial; k: number; want: number }[] = [];
   const up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 5; i++) {
@@ -66,8 +67,8 @@ export function makeEchoGrove(high: boolean, rock?: { diff: THREE.Texture; nor: 
     const t = new THREE.Group(); t.position.set(x, y, z); t.rotation.y = rnd() * 6.28; const sc = 0.78 + rnd() * 0.5; t.scale.setScalar(sc); g.add(t);
     // dark stone base: 3-4 jittered rocks + roots gripping the ground
     for (let k = 0; k < 4; k++) {
-      const rg = new THREE.DodecahedronGeometry(k ? 0.45 + rnd() * 0.4 : 0.9 + rnd() * 0.3, 1); const pa = rg.attributes.position as THREE.BufferAttribute;
-      for (let v = 0; v < pa.count; v++) { const f = 0.82 + rnd() * 0.3; pa.setXYZ(v, pa.getX(v) * f, pa.getY(v) * f * 0.8, pa.getZ(v) * f); } rg.computeVertexNormals();
+      const rg = mergeVertices(new THREE.IcosahedronGeometry(k ? 0.45 + rnd() * 0.4 : 0.9 + rnd() * 0.3, 2).deleteAttribute('normal').deleteAttribute('uv')); const pa = rg.attributes.position as THREE.BufferAttribute; const ph = rnd() * 9;
+      for (let v = 0; v < pa.count; v++) { const x = pa.getX(v), y = pa.getY(v), z = pa.getZ(v), r = Math.hypot(x, y, z) || 1; const f = 0.86 + 0.12 * Math.sin(x / r * 3.1 + ph) * Math.cos(z / r * 2.7 - ph) + 0.06 * Math.sin(y / r * 5.3 + ph * 2); pa.setXYZ(v, x * f, Math.max(y * f * 0.72, -0.25), z * f); } rg.computeVertexNormals();
       const m = new THREE.Mesh(rg, stone); const ra = k * 1.7 + rnd(); m.position.set(Math.cos(ra) * (k ? 1.0 : 0), k ? 0.05 : 0.25, Math.sin(ra) * (k ? 1.0 : 0)); m.rotation.y = rnd() * 6; m.castShadow = m.receiveShadow = true; t.add(m);
     }
     for (let k = 0; k < 4; k++) {
@@ -88,7 +89,7 @@ export function makeEchoGrove(high: boolean, rock?: { diff: THREE.Texture; nor: 
       geo.applyMatrix4(mtx); parts.push(geo);
       if (k < 4) { const cg = shardGeo(r * 0.45, hgt * 0.8, rnd); cg.applyMatrix4(mtx); cores.push(cg); }
     }
-    const cm = new THREE.Mesh(mergeGeometries(parts), mat); cm.castShadow = true; t.add(cm);
+    const cm = new THREE.Mesh(mergeGeometries(parts), mat); cm.castShadow = false; t.add(cm); // light passes through: no hard shadow on the base
     const cc = new THREE.Mesh(mergeGeometries(cores), core); cc.renderOrder = 2; t.add(cc);
     trees.push({ mat, edge, core, k: 0, want: 0 });
   }

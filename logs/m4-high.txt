@@ -1,0 +1,4 @@
+spawn high load+settle s 45.8 {"fps":0,"tris":7953191,"framing":0.2393325401009042,"errors":[]} error: Failed to load resource: the server responded with a status of 404 (File not found)
+landmark high load+settle s 31.7 {"fps":0,"tris":4806697,"framing":0.2821072755453178,"errors":[]} 
+dialog high load+settle s 43.3 {"fps":0,"tris":7919073,"framing":0.38085263045342144,"errors":[]} 
+seal high load+settle s 30.2 {"fps":0,"tris":4922577,"framing":0.18305067489776405,"errors":[]} 

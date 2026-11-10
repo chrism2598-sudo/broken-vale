@@ -12,12 +12,14 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { makeTerrain, type GroundTex } from './terrain';
 import { makeGrass } from './grass';
+import { makeLandmarks } from './landmarks';
+import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP } from './quest';
 import { addRimFill } from './shading';
 import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
 import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, type Kind, type TreeInst } from './nature';
 import { makeFloatingIsland, makeLanternStaff, ISLAND_POS } from './island';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep } from './world';
+import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep } from './world';
 
 // ---------- quality ----------
 type Quality = 'high' | 'lite';
@@ -72,7 +74,8 @@ const errors: string[] = [];
 window.addEventListener('error', (e) => errors.push(String(e.message)));
 
 async function main() {
-  const [hdr, grass, path, rock, bed, waterNormals, heroFG, heroMG, wayG, treesG, plantsG, rocksG, boulderG, shrubG, fernG] = await Promise.all([
+  const [brick, roofT, sandT, metalT, hdr, grass, path, rock, bed, waterNormals, heroFG, heroMG, wayG, treesG, plantsG, rocksG, boulderG, shrubG, fernG] = await Promise.all([
+    loadSet('castle_brick_02_white'), loadSet('grey_roof_tiles'), loadSet('large_sandstone_blocks'), loadSet('rusty_metal_02'),
     new HDRLoader(manager).loadAsync('./hdr/sky_2k.hdr'),
     loadSet('leafy_grass'), loadSet('stony_dirt_path'), loadSet('mossy_rock'), loadSet('river_small_rocks'),
     loadTex('waternormals'),
@@ -88,7 +91,7 @@ async function main() {
   scene.backgroundRotation.y = scene.environmentRotation.y = 1.2;
 
   // Terrain.
-  const terrain = makeTerrain(520, HIGH ? 384 : 220, { grass, path, rock, bed });
+  const terrain = makeTerrain(760, HIGH ? 448 : 256, { grass, path, rock, bed });
   scene.add(terrain);
 
   // Grass.
@@ -106,6 +109,12 @@ async function main() {
   const island = makeFloatingIsland(renderer, grass, rock, treeKinds.slice(0, 5));
   scene.add(island.group);
   makeShrine(rock);
+  // Landmarks from the Page map (keeps, Sunspire, Iron Dome, Veilfall) and the four seals.
+  const landmarks = makeLandmarks({ brick, roof: roofT, sand: sandT, metal: metalT, rock }, SOLIDS);
+  scene.add(landmarks.group);
+  let save = loadSave();
+  const plinthMat = new THREE.MeshStandardMaterial({ color: '#cfc3a8', roughness: 0.9 }); addRimFill(plinthMat, { fill: 0.2, rim: 0.2 });
+  const seals = SEALS.map((d) => { const o = new SealObject(d, plinthMat, !!save.seals[d.id]); scene.add(o.group); SOLIDS.push({ x: d.x, z: d.z, r: 1.3 }); return o; });
   const rift = makeRift();
   scene.add(rift);
 
@@ -154,7 +163,7 @@ async function main() {
   // ---------- player / camera state ----------
   const state = { yaw: Math.PI, pitch: 0.2, dist: 7.4, speed: 0, facing: Math.PI, px: SPAWN.x, pz: SPAWN.z };
   const keys: Record<string, boolean> = {};
-  addEventListener('keydown', (e) => { if (creating || (e.target as HTMLElement).tagName === 'INPUT') return; keys[e.code] = true; if (e.code === 'KeyE') talk(); });
+  addEventListener('keydown', (e) => { if (creating || (e.target as HTMLElement).tagName === 'INPUT') return; keys[e.code] = true; if (e.code === 'KeyE') interact(); });
   addEventListener('keyup', (e) => { keys[e.code] = false; });
   // Joystick.
   const joy = document.getElementById('joy')!, knob = document.getElementById('knob')!;
@@ -180,14 +189,72 @@ async function main() {
   renderer.domElement.addEventListener('pointerup', endDrag); renderer.domElement.addEventListener('pointercancel', endDrag);
   renderer.domElement.addEventListener('wheel', (e) => { state.dist = THREE.MathUtils.clamp(state.dist + e.deltaY * 0.004, 3.5, 12); }, { passive: true });
 
-  const talkEl = document.getElementById('talk')!;
-  let talkT = 0;
-  function talk() {
-    if (Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z) > 4) return;
-    talkEl.textContent = say('Wayfinder', LINES.wayfinder.greet, profile);
-    talkEl.style.display = 'block'; talkT = 6; wayfinder.play('Wave');
+  // ---------- dialogue, interaction, quest ----------
+  const dlgEl = document.getElementById('dlg')!, dspk = document.getElementById('dspk')!, dtxt = document.getElementById('dtxt')!, dnext = document.getElementById('dnext') as HTMLButtonElement;
+  const actBtn = document.getElementById('action') as HTMLButtonElement, toastEl = document.getElementById('toast')!;
+  let talking = false, dq: string[] = [], toastT = 0, lastDt = 1 / 60;
+  function openDialog(speaker: string, lines: string[]) { dq = [...lines]; dspk.textContent = speaker; talking = true; dlgEl.hidden = false; document.body.classList.add('talking'); for (const k of Object.keys(keys)) keys[k] = false; advance(); }
+  function advance() { const l = dq.shift(); if (l === undefined) { talking = false; dlgEl.hidden = true; document.body.classList.remove('talking'); return; } dtxt.textContent = l; dnext.textContent = dq.length ? 'Next ▸' : 'Close'; }
+  dnext.onclick = advance;
+  function toast(msg: string, secs = 3.2) { toastEl.textContent = msg; toastEl.classList.add('on'); toastT = secs; }
+  const persist = () => writeSave(save);
+  function talkWayfinder() {
+    wayfinder.play('Wave');
+    const n = sealCount(save);
+    if (save.done) return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.after, profile));
+    if (!save.started) { save.started = true; persist(); toast('Quest: The Four Seals'); return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.start, profile)); }
+    if (n < 4) return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.progress, profile, { n }));
+    const lv = levelOf(save.xp); save.done = true; save.xp += QUEST_XP; persist();
+    toast(levelOf(save.xp) > lv ? `Seals restored · +${QUEST_XP} XP · Level ${levelOf(save.xp)}` : `Seals restored · +${QUEST_XP} XP`, 5);
+    openDialog('Wayfinder', fillLines(WAYFINDER_LINES.complete, profile));
   }
+  function claimSeal(o: SealObject) {
+    if (o.claimed) return;
+    const lv = levelOf(save.xp); o.claim(); save.seals[o.def.id] = true; save.xp += SEAL_XP; persist();
+    const n = sealCount(save);
+    toast(`${o.def.name} claimed · +${SEAL_XP} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}${n === 4 ? ' — return to the Wayfinder' : ` · ${n}/4`}`, 4);
+  }
+  type Inter = { label: string; act: () => void };
+  function nearestInteract(): Inter | null {
+    const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
+    if (dW < 3.8) return { label: !save.started ? 'Talk · begin quest' : save.done ? 'Talk' : `Talk · seals ${sealCount(save)}/4`, act: talkWayfinder };
+    for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return { label: `Claim ${o.def.name}`, act: () => claimSeal(o) };
+    return null;
+  }
+  function interact() { if (creating) return; if (talking) { advance(); return; } nearestInteract()?.act(); }
+  function talk() { interact(); }
+  actBtn.onclick = (e) => { e.stopPropagation(); interact(); };
+  addEventListener('keydown', (e) => { if (creating || (e.target as HTMLElement).tagName === 'INPUT') return; if (talking && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.preventDefault(); if (e.code === 'Escape') { dq = []; } advance(); } });
   renderer.domElement.addEventListener('dblclick', talk);
+  // Menu: quality, new character, FPS, reset (tap twice).
+  const menuBtn = document.getElementById('menubtn')!, menuEl = document.getElementById('menu')!, resetBtn = document.getElementById('reset')!;
+  const setMenu = (on: boolean) => { menuEl.hidden = !on; menuBtn.setAttribute('aria-expanded', String(on)); };
+  menuBtn.onclick = () => setMenu(!!menuEl.hidden);
+  let resetArm = 0;
+  resetBtn.onclick = () => {
+    if (performance.now() - resetArm < 3500) { clearSave(); location.reload(); return; }
+    resetArm = performance.now(); resetBtn.textContent = 'Tap again to reset'; resetBtn.classList.add('warn');
+    setTimeout(() => { resetBtn.textContent = 'Reset progress'; resetBtn.classList.remove('warn'); }, 3500);
+  };
+  // HUD: quest tracker + compass.
+  const qline = document.getElementById('qline')!, qstats = document.getElementById('qstats')!, carrow = document.getElementById('carrow')!, ctext = document.getElementById('ctext')!;
+  let hudT = 0;
+  function updateHud(dt: number) {
+    hudT -= dt; if (hudT > 0) return; hudT = 0.15;
+    const n = sealCount(save);
+    qline.textContent = !save.started ? 'Speak with the Wayfinder' : save.done ? 'Vale Walker · the seals burn again' : n < 4 ? `The Four Seals · ${n}/4` : 'All four seals held — return to the Wayfinder';
+    qstats.textContent = `Lv ${levelOf(save.xp)} · ${save.xp} XP · ${SEALS.map((d) => (save.seals[d.id] ? '◆' : '◇')).join('')}`;
+    let tgt = { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z };
+    if (save.started && n < 4) { let bd = 1e9; for (const d of SEALS) if (!save.seals[d.id]) { const dd = Math.hypot(d.x - state.px, d.z - state.pz); if (dd < bd) { bd = dd; tgt = { name: `${d.name} · ${d.at}`, x: d.x, z: d.z }; } } }
+    const dx = tgt.x - state.px, dz = tgt.z - state.pz, dist = Math.hypot(dx, dz);
+    const fx = -Math.sin(state.yaw), fz = -Math.cos(state.yaw), rx = Math.cos(state.yaw), rz = -Math.sin(state.yaw);
+    const sx = dx * rx + dz * rz, sy = dx * fx + dz * fz;
+    carrow.style.transform = `rotate(${(Math.atan2(-sy, sx) * 180 / Math.PI).toFixed(0)}deg)`;
+    ctext.textContent = save.done && dist < 6 ? 'Explore freely' : `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}`;
+    const it = talking ? null : nearestInteract();
+    actBtn.hidden = !it; if (it) actBtn.textContent = it.label;
+    document.getElementById('hint')!.textContent = it ? `E / Action: ${it.label}` : 'Drag to look · WASD / stick to move · Shift walks';
+  }
 
   // ---------- character creation ----------
   const createEl = document.getElementById('create') as HTMLFormElement, nameIn = document.getElementById('cname') as HTMLInputElement;
@@ -234,8 +301,10 @@ async function main() {
 
   function update(dt: number, t: number) {
     if (creating) { previewUpdate(dt, t); return; }
+    lastDt = dt;
     // Input → desired velocity in camera space.
     let ix = 0, iz = 0;
+    if (talking) { for (const k of Object.keys(keys)) keys[k] = false; }
     if (keys.KeyW || keys.ArrowUp) iz -= 1; if (keys.KeyS || keys.ArrowDown) iz += 1;
     if (keys.KeyA || keys.ArrowLeft) ix -= 1; if (keys.KeyD || keys.ArrowRight) ix += 1;
     let mag = Math.min(1, Math.hypot(ix, iz)); if (mag > 0) { const l = Math.hypot(ix, iz); ix /= l; iz /= l; }
@@ -252,11 +321,12 @@ async function main() {
     if (state.speed > 0.02) {
       let nx = state.px + Math.sin(state.facing) * state.speed * dt, nz = state.pz + Math.cos(state.facing) * state.speed * dt;
       for (const s of solids) { const dx = nx - s.x, dz = nz - s.z, dd = Math.hypot(dx, dz); if (dd < s.r) { nx = s.x + dx / dd * s.r; nz = s.z + dz / dd * s.r; } }
-      const R = 160; const rr = Math.hypot(nx, nz); if (rr > R) { nx *= R / rr; nz *= R / rr; }
-      if (Math.abs(nx - creekX(nz)) < creekHalf(nz) * 0.7) { nx = state.px; nz = state.pz; }
+      const R = 235; const rr = Math.hypot(nx, nz); if (rr > R) { nx *= R / rr; nz *= R / rr; }
+      // Wading: the creek is shallow — slow down instead of blocking.
+      if (Math.abs(nx - creekX(nz)) < creekHalf(nz)) { nx = state.px + (nx - state.px) * 0.5; nz = state.pz + (nz - state.pz) * 0.5; }
       state.px = nx; state.pz = nz;
     }
-    const gy = heightAt(state.px, state.pz);
+    const gy = Math.max(heightAt(state.px, state.pz), WATER_Y - 0.7);
     player.root.position.set(state.px, gy, state.pz);
     player.root.rotation.y = state.facing;
     player.setSpeed(state.speed, dt);
@@ -264,8 +334,8 @@ async function main() {
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 9) { const want = Math.atan2(state.px - WAYFINDER.x, state.pz - WAYFINDER.z); let d = want - wayfinder.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); wayfinder.root.rotation.y += d * Math.min(1, dt * 3); }
     wayfinder.setSpeed(0, dt);
-    document.getElementById('hint')!.textContent = dW < 4 ? 'E / double-tap: talk to the Wayfinder' : 'Drag to look · WASD / stick to move · Shift walks';
-    if (talkT > 0) { talkT -= dt; if (talkT <= 0) talkEl.style.display = 'none'; }
+    updateHud(dt);
+    if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
     // Over-the-shoulder camera.
     camTarget.set(state.px, gy + 1.42, state.pz);
     const cp = Math.cos(state.pitch), sp = Math.sin(state.pitch);
@@ -289,7 +359,7 @@ async function main() {
     grassField.uniforms.uTime.value = t; grassField.uniforms.uPlayer.value.set(state.px, gy, state.pz);
     water.update(t);
     (rift.material as THREE.ShaderMaterial).uniforms.uTime.value = t; foliageUniforms.uTime.value = t;
-    island.update(t);
+    island.update(t); landmarks.update(t); for (const o of seals) o.update(t, lastDt);
     wayfinder.root.updateMatrixWorld(true); handBone.getWorldPosition(handPos); staff.update(t, handPos, wayfinder.root.rotation.y);
     vignette.uniforms.uTime.value = t % 100;
   }
@@ -331,8 +401,14 @@ async function main() {
       if (name === 'ilka-close') { state.px = SPAWN.x + 1; state.pz = SPAWN.z - 2; state.facing = 0.6; state.yaw = 0.25; state.pitch = 0.1; state.dist = 3.6; }
       if (name === 'creek') { state.pz = -14; state.px = creekX(-14) + 8; state.facing = -Math.PI / 2; state.yaw = Math.PI / 2 - 0.35; state.pitch = 0.22; state.dist = 6.5; }
       if (name === 'island') { const dx = ISLAND_POS.x - SPAWN.x, dz = ISLAND_POS.z - SPAWN.z; state.px = SPAWN.x; state.pz = SPAWN.z; state.facing = Math.atan2(dx, dz); state.yaw = Math.atan2(-dx, -dz) + 0.1; state.pitch = -0.12; state.dist = 6.2; }
+      if (name === 'spawn') { state.px = SPAWN.x; state.pz = SPAWN.z; state.facing = Math.PI; state.yaw = 0; state.pitch = 0.1; state.dist = 7.4; }
+      if (name === 'landmark') { const l = LANDMARKS[0]; const dx = SPAWN.x - l.x, dz = SPAWN.z - l.z, d = Math.hypot(dx, dz); state.px = l.x + dx / d * 44; state.pz = l.z + dz / d * 44; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.12; state.pitch = -0.1; state.dist = 6.5; }
+      if (name === 'dialog') { state.px = WAYFINDER.x + 0.6; state.pz = WAYFINDER.z + 2.4; state.facing = Math.PI; state.yaw = 0.55; state.pitch = 0.12; state.dist = 4.6; }
+      if (name === 'seal') { const d = SEALS[0]; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4 + 0.15; state.pitch = 0.05; state.dist = 12; }
       if (name === 'run') { keys.KeyW = true; }
-      camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime);
+      camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30);
+      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {} }; interact(); }
+      if (name === 'seal') { save.started = true; interact(); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); hudT = 0; updateHud(0); }
     },
     key(code: string, down: boolean) { keys[code] = down; },
     get profile() { return profile; },
@@ -437,6 +513,8 @@ function prep(g: GLTF, cast = true): THREE.Object3D {
 function okSpot(x: number, z: number, clearPath = 2.2, clearCreek = 2): boolean {
   if (pathMask(x, z) > 0.05 || Math.abs(x - creekX(z)) < creekHalf(z) + clearCreek) return false;
   if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < 6 || Math.hypot(x - SPAWN.x, z - SPAWN.z - 6) < 6 || Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 3 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 9) return false;
+  for (const l of LANDMARKS) if (Math.hypot(x - l.x, z - l.z) < l.r * 1.25) return false;
+  for (const d of SEALS) if (Math.hypot(x - d.x, z - d.z) < 7) return false;
   void clearPath; return true;
 }
 function place(src: THREE.Object3D, x: number, z: number, s: number, ry: number, sink = 0.05) {
@@ -461,8 +539,8 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
   const hero: [number, number, number, boolean][] = [[13, -5, 0, false], [17, 4, 7, false], [-11, -13, 2, true], [9, -36, 8, true], [24, -21, 3, false], [-27, 9, 1, false], [8.5, -4, 4, true], [-19, -30, 7, false], [-44, -36, 2, true], [30, 12, 0, false]];
   for (const [x, z, k, au] of hero) if (okSpot(x, z)) addTree(k, x, z, 0.95 + r() * 0.3, au);
   // Groves: clumps of 6–14 trees in a ring 38–140 m out; ~1 in 4 groves turns autumn-gold.
-  for (let c = 0; c < (HIGH ? 30 : 18); c++) {
-    const a = r() * Math.PI * 2, d = 38 + r() * 100, cx = Math.cos(a) * d, cz = Math.sin(a) * d - 10;
+  for (let c = 0; c < (HIGH ? 38 : 22); c++) {
+    const a = r() * Math.PI * 2, d = 38 + r() * 150, cx = Math.cos(a) * d, cz = Math.sin(a) * d - 10;
     const autumnGrove = r() < 0.22, n = 6 + Math.floor(r() * (HIGH ? 9 : 5)), kindSet = r() < 0.12 ? twisted : broad;
     for (let i = 0; i < n; i++) {
       const x = cx + (r() - 0.5) * 22, z = cz + (r() - 0.5) * 16;
@@ -472,7 +550,7 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
   }
   // Pines on the lower mountain slopes.
   for (let i = 0; i < (HIGH ? 220 : 110); i++) {
-    const a = r() * Math.PI * 2, d = 105 + r() * 75, x = Math.cos(a) * d, z = Math.sin(a) * d;
+    const a = r() * Math.PI * 2, d = 150 + r() * 95, x = Math.cos(a) * d, z = Math.sin(a) * d;
     if (heightAt(x, z) > 40 || normalAt(x, z)[1] < 0.72 || !okSpot(x, z)) continue;
     addTree(pick(pines), x, z, 1.0 + r() * 0.7, r() < 0.06);
   }

@@ -16,7 +16,6 @@ canvas{display:block;width:100%;height:100%}
 #knob{position:absolute;left:38px;top:38px;width:44px;height:44px;border-radius:50%;background:rgba(244,234,210,.75)}
 #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#f4ead2;font-size:18px;background:linear-gradient(#58748a,#9fb6c8)}
 #talk{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translateX(-50%);max-width:min(560px,86vw);background:rgba(12,30,34,.62);color:#f4ead2;border:1px solid rgba(214,186,120,.6);border-radius:12px;padding:10px 14px;font-size:14px;display:none;pointer-events:none}
-#newchar{top:calc(max(12px,env(safe-area-inset-top)) + 46px)}
 #create{position:fixed;z-index:20;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));max-height:48%;overflow:auto;box-sizing:border-box;padding:16px 16px 14px;border-radius:16px;background:rgba(10,30,34,.9);color:#f4ead2;border:1px solid rgba(214,186,120,.85);box-shadow:0 10px 40px rgba(0,0,0,.35);backdrop-filter:blur(8px)}
 #create[hidden]{display:none}
 #create h2{margin:0 0 4px;font-size:22px;font-weight:600;letter-spacing:.03em;color:#e9d6a2}
@@ -32,17 +31,45 @@ canvas{display:block;width:100%;height:100%}
 .sexrow button{background:rgba(30,72,78,.55);color:#f4ead2;border:1px solid rgba(214,186,120,.55)}
 .sexrow button[aria-pressed="true"]{background:#d5b977;color:#1d1a12;border-color:#f0dca4;box-shadow:inset 0 0 0 2px rgba(255,245,210,.6)}
 #begin{width:100%;background:linear-gradient(#e2c98a,#c9a95e);color:#1d1a12;border:1px solid #f0dca4;font-weight:600;letter-spacing:.04em}
-body.creating #joy,body.creating #newchar,body.creating #pname,body.creating .hud p{display:none}
+body.creating #joy,body.creating #pname,body.creating .hud p{display:none}
 @media (min-width:760px) and (min-aspect-ratio:1/1){#create{left:max(28px,env(safe-area-inset-left));right:auto;top:50%;bottom:auto;transform:translateY(-50%);width:360px;max-height:86%}}
 #fps{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));z-index:15;min-width:44px;min-height:32px;padding:6px 10px;border-radius:9px;background:rgba(10,30,34,.55);color:#e9d6a2;border:1px solid rgba(214,186,120,.55);font:12px ui-monospace,Menlo,monospace;opacity:.75}
 #fps.on{opacity:1}
+#menubtn{min-height:40px}
+#menu{position:fixed;z-index:25;right:max(14px,env(safe-area-inset-right));top:calc(max(12px,env(safe-area-inset-top)) + 48px);display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:14px;background:rgba(10,30,34,.92);border:1px solid rgba(214,186,120,.8);min-width:200px}
+#menu[hidden]{display:none}
+#menu button{min-height:48px;border-radius:10px;font:16px Georgia,serif;color:#f4ead2;background:rgba(30,72,78,.6);border:1px solid rgba(214,186,120,.55);text-align:left;padding:0 14px}
+#menu button.warn{background:#7a2f2a;border-color:#f0a58a}
+#quest{position:fixed;left:max(14px,env(safe-area-inset-left));top:calc(max(12px,env(safe-area-inset-top)) + 46px);max-width:min(330px,62vw);padding:8px 12px;border-radius:12px;background:rgba(10,30,34,.55);color:#f4ead2;border:1px solid rgba(214,186,120,.45);font-size:13px;pointer-events:none;backdrop-filter:blur(4px)}
+#qline{color:#e9d6a2;font-size:14px}
+#qstats{opacity:.85;margin-top:2px}
+#compass{margin-top:4px;display:flex;align-items:center;gap:8px}
+#carrow{display:inline-block;color:#d5b977;font-size:16px;transition:transform .1s linear}
+#toast{position:fixed;left:50%;top:22%;transform:translateX(-50%);padding:10px 18px;border-radius:12px;background:rgba(10,30,34,.82);color:#f4ead2;border:1px solid rgba(214,186,120,.8);font-size:16px;opacity:0;transition:opacity .4s;pointer-events:none;white-space:nowrap}
+#toast.on{opacity:1}
+#dlg{position:fixed;z-index:22;left:50%;transform:translateX(-50%);bottom:max(12px,env(safe-area-inset-bottom));width:min(620px,calc(100vw - 24px));max-height:38%;overflow:auto;box-sizing:border-box;padding:14px 16px 12px;border-radius:14px;background:rgba(10,30,34,.92);color:#f4ead2;border:1px solid rgba(214,186,120,.85);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+#dlg[hidden]{display:none}
+#dspk{color:#d5b977;font-size:13px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+#dtxt{font-size:17px;line-height:1.45}
+#dnext{float:right;margin-top:8px;min-height:44px;min-width:110px;border-radius:10px;font:16px Georgia,serif;background:linear-gradient(#e2c98a,#c9a95e);color:#1d1a12;border:1px solid #f0dca4}
+#action{position:fixed;z-index:16;right:max(22px,env(safe-area-inset-right));bottom:calc(max(22px,env(safe-area-inset-bottom)) + 48px);min-width:88px;min-height:88px;max-width:46vw;padding:0 16px;border-radius:44px;background:radial-gradient(circle at 40% 35%,#e9d39a,#c9a95e);color:#1d1a12;border:2px solid #f6e6b8;font:600 16px Georgia,serif;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+#action[hidden]{display:none}
+body.talking #joy,body.talking #action,body.creating #quest,body.creating #menubtn,body.creating #action{display:none}
+@media (max-width:520px){#quest{font-size:12px;max-width:58vw}#dtxt{font-size:16px}}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <div class="hud"><h1>The Broken Vale<span id="pname"></span></h1><p id="hint">Drag to look · WASD / stick to move · Shift walks</p></div>
-<button class="btn" id="quality">Quality: …</button>
-<button class="btn" id="newchar">New character</button>
+<button class="btn" id="menubtn" aria-expanded="false" aria-controls="menu">☰ Menu</button>
+<div id="menu" hidden>
+  <button id="quality">Quality: …</button>
+  <button id="newchar">New character</button>
+  <button id="fpsmenu">Show FPS</button>
+  <button id="reset">Reset progress</button>
+</div>
+<div id="quest" aria-live="polite"><div id="qline"></div><div id="qstats"></div><div id="compass"><span id="carrow">➤</span><span id="ctext"></span></div></div>
+<div id="toast" aria-live="polite"></div>
 <form id="create" hidden autocomplete="off">
   <h2>Who walks the Vale?</h2>
   <p class="sub" id="csub">Seventeen, Enna’s daughter. Choose a first name — Marr is your family’s.</p>
@@ -55,7 +82,8 @@ body.creating #joy,body.creating #newchar,body.creating #pname,body.creating .hu
   <button type="submit" id="begin">Begin</button>
 </form>
 <div id="joy"><div id="knob"></div></div>
-<div id="talk"></div>
+<div id="dlg" hidden role="dialog" aria-live="polite"><div id="dspk"></div><div id="dtxt"></div><button id="dnext">Next ▸</button></div>
+<button id="action" hidden>Action</button>
 <button id="fps" aria-label="Toggle FPS readout">FPS</button>
 <div id="loading">Loading the Vale…</div>
 <script type="module" src="/src/main.ts"></script>

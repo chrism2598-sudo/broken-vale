@@ -1,3 +1,4 @@
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as THREE from 'three';
 import type { GroundTex } from './terrain';
 import { type Kind, TreeField, type TreeInst } from './nature';
@@ -83,6 +84,17 @@ export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundT
   const shardMat = new THREE.MeshStandardMaterial({ color: '#b48cff', emissive: '#8e5cff', emissiveIntensity: 2.4, roughness: 0.2, metalness: 0.1 });
   const shard = new THREE.Mesh(new THREE.OctahedronGeometry(1.6, 0), shardMat); shard.scale.set(0.7, 2.2, 0.7); shard.position.set(-3, 7.5, 2); g.add(shard);
   const glow = new THREE.PointLight('#a77bff', 30, 40, 2); glow.position.copy(shard.position); g.add(glow);
+  // Hollow Beacon: a ring of weathered stone pillars with a broken lintel cradling the shard.
+  const bMat = new THREE.MeshStandardMaterial({ color: '#c9c0ae', roughness: 0.92 }); addRimFill(bMat, { fill: 0.3, rim: 0.3, rimColor: '#e9dcff' });
+  const bGeos: THREE.BufferGeometry[] = [];
+  const base = new THREE.CylinderGeometry(3.6, 4.2, 1.2, 10); base.translate(-3, 1.9, 2); bGeos.push(base);
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2, h = i === 4 ? 3.2 : 6.5 + (i % 2) * 1.2;
+    const p = new THREE.CylinderGeometry(0.42, 0.55, h, 7); p.translate(-3 + Math.cos(a) * 3, 2.5 + h / 2, 2 + Math.sin(a) * 3); bGeos.push(p);
+    if (i < 3) { const cap = new THREE.BoxGeometry(1.3, 0.5, 1.3); cap.translate(-3 + Math.cos(a) * 3, 2.5 + h + 0.25, 2 + Math.sin(a) * 3); bGeos.push(cap); }
+  }
+  const lintel = new THREE.TorusGeometry(3, 0.32, 6, 24, Math.PI * 1.1); lintel.rotateX(Math.PI / 2); lintel.translate(-3, 9.6, 2); bGeos.push(lintel);
+  const beacon = new THREE.Mesh(mergeGeometries(bGeos.map((x) => x.toNonIndexed())), bMat); beacon.castShadow = true; g.add(beacon);
   return {
     group: g,
     update(t: number) {

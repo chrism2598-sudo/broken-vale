@@ -61,3 +61,14 @@ src/shading.ts    rim + hemisphere fill helper
 src/dialogue.ts   dialogue line bank with {name}/pronoun tokens
 public/           compressed models (Draco), WebP textures, HDRI, Draco decoder
 ```
+
+## Quest: The Four Seals (Milestone 4)
+
+Talk to the Wayfinder near spawn (**E** on desktop, the round **Action** button on phones, or double-click) to begin.
+Four glowing seals stand at the vale's landmarks: **Dawn Sigil** (Pale Keep, NW), **Tide Seal** (Azure Keep, NE),
+**Sun Shard** (Sunspire, SW) and **Forge Heart** (Iron Dome, SE). Walk up and press Action to claim one: a light column
+rises, +25 XP. Return to the Wayfinder with all four for +80 XP. The HUD tracker shows seals/level/XP and a compass
+arrow to the nearest unclaimed seal. The creek is shallow — you can wade across (half speed).
+
+Progress saves to `localStorage` (`vale3d-save`). **☰ Menu** has Quality, New character, Show FPS and Reset progress
+(tap twice to confirm). Dialogue: Space / Enter / E / tap **Next**; Esc closes.

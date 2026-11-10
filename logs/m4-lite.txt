@@ -1,0 +1,2 @@
+dialog lite load+settle s 16.9 {"fps":0,"tris":769662,"framing":0.38085263045342144,"errors":[]} error: Failed to load resource: the server responded with a status of 404 (File not found)
+spawn lite load+settle s 12.7 {"fps":0,"tris":782782,"framing":0.2393325401009042,"errors":[]} 

@@ -179,3 +179,15 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - **Defeat:** the surge throws Ilka onto the ledge with full HP. XP and progress are kept, and the Keeper resets.
 - **Victory:** +60 XP once (XP max 510), then Enna's knotted note on why the Keeper was never the enemy ("You did not open the door alone… Meet me at the Lamp"), then the **Chapter II complete** card. The Keeper sleeps afterwards with no farming. Save `sea` 4 = seal open, 5 = Keeper at rest. The Journal, map inset (seal open / Keeper ✦), quest line and hints are updated.
 - **Fixes:** the seal glyph rings are now circle-UV overlays (base, inner three, outer four) instead of an emissive map on the cylinder. The sea-cave floor gets vertex-colour wet/salt mottling, which gives the Lite floor shape.
+
+## M14: polish pass
+- **The Drowned Keeper, remodelled:**
+  - **Neck:** one continuous tapered tube skinned to the existing 7-bone chain. The fight animation still just rotates bones; nothing is rebuilt.
+  - **Hide:** a procedural plated texture set (albedo, normal and roughness, built once) on the neck, coil and head. On High it also has a wet clearcoat.
+  - **Coil:** a lumpy coil with slate dorsal scutes, instanced barnacle clusters, and kelp strands swayed in the vertex shader.
+  - **Collars:** worn bronze custodian collars with verdigris, polished bands and glowing glyphs.
+  - **Head:** sculpted skull with a brow ridge and tapering snout, crest scutes, eye sockets with glow, and a hinged toothed jaw that opens on windups.
+  - **Unchanged:** the heart, chest-plate and hit positions.
+- **Spout telegraph:** not tone-mapped and more opaque, so it reads orange-red on Lite instead of beige. The ring is also thicker.
+- **Lite heart glow:** dimmed to keep the core shaded rather than a flat white disc (Lite has no bloom).
+- **Portrait framing near the Keeper:** within 10.5 m, the camera eases back by 3.2 m and up by 0.06 rad. It's damped on the fixed tick and interpolated, so there's no jitter.

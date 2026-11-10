@@ -39,6 +39,38 @@ export const KEEPER_LINES = {
   card: { k: 'Chapter II complete', title: 'The Second Seam', tease: 'The Drowned Keeper rests at last. Enna lit the Lowtide Lamp and is waiting there — the seam below the sea is quiet, and the sky above still needs tying shut.' },
 };
 
+/** Plated sea-ancient hide: overlapping scales (height → normal), crevice-dark albedo with algae and nacre flecks, wet tops / rough crevices. Built once. */
+function hideTextures(seed: number) {
+  const N = 256; let sd = seed; const rnd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+  const h = new Float32Array(N * N), tint = new Float32Array(N * N), rows = 9, cols = 7;
+  const jit = Array.from({ length: rows * cols * 4 }, () => rnd());
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const v = (y / N) * rows; let best = 0, tb = 0;
+    for (let dr = -1; dr <= 1; dr++) { const r = Math.floor(v) + dr; const off = (r & 1) * 0.5; const u = (x / N) * cols - off; for (let dc = -1; dc <= 1; dc++) { const c = Math.floor(u) + dc; const id = (((r % rows) + rows) % rows) * cols + (((c % cols) + cols) % cols);
+      const cx = c + 0.5 + (jit[id * 4] - 0.5) * 0.2, cy = r + 0.35 + (jit[id * 4 + 1] - 0.5) * 0.15; const dx = (u - cx) / 0.62, dy = (v - cy) / 0.78; const d = dx * dx + dy * dy; if (d < 1) { const hh = (1 - d) ** 0.6 * (0.75 + 0.25 * jit[id * 4 + 2]) + (dy > 0 ? 0 : 0.1 * dy); if (hh > best) { best = hh; tb = jit[id * 4 + 3]; } } } }
+    const nz = 0.06 * Math.sin(x * 0.9 + y * 0.31) * Math.sin(y * 0.7 - x * 0.2) + 0.04 * (rnd() - 0.5); h[y * N + x] = Math.max(0, best) + nz; tint[y * N + x] = tb; }
+  const mk = (fn: (i: number, x: number, y: number) => [number, number, number]) => { const c = document.createElement('canvas'); c.width = c.height = N; const ctx = c.getContext('2d')!; const im = ctx.createImageData(N, N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const i = y * N + x; const [r, g2, b] = fn(i, x, y); im.data[i * 4] = r; im.data[i * 4 + 1] = g2; im.data[i * 4 + 2] = b; im.data[i * 4 + 3] = 255; } ctx.putImageData(im, 0, 0);
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t; };
+  const H = (x: number, y: number) => h[(((y % N) + N) % N) * N + (((x % N) + N) % N)];
+  const map = mk((i, x, y) => { const v = h[i], tb = tint[i]; const crev = Math.max(0, Math.min(1, v * 2.2)); const fleck = (x * 7 + y * 13) % 97 < 2 && v > 0.4 ? 1 : 0;
+    const r = (34 + 70 * crev + 26 * tb) * (1 - 0.25 * (1 - crev)) + 60 * fleck, g2 = (44 + 78 * crev + 14 * (1 - tb)) + 66 * fleck, b = (40 + 64 * crev + 10 * tb) + 70 * fleck; return [Math.min(255, r), Math.min(255, g2), Math.min(255, b)]; });
+  map.colorSpace = THREE.SRGBColorSpace;
+  const nor = mk((_i, x, y) => { const dx = (H(x + 1, y) - H(x - 1, y)) * 3.2, dy = (H(x, y + 1) - H(x, y - 1)) * 3.2; const l = Math.hypot(dx, dy, 1); return [(-dx / l * 0.5 + 0.5) * 255, (dy / l * 0.5 + 0.5) * 255, (1 / l * 0.5 + 0.5) * 255]; });
+  const rough = mk((i) => { const v = Math.max(0, Math.min(1, h[i] * 1.6)); const r = 235 - 165 * v; return [r, r, r]; });
+  return { map, nor, rough };
+}
+/** Worn custodian bronze: patina (verdigris in the pits), polished high spots, and a band of glyphs for the emissive map. */
+function bronzeTextures() {
+  const W = 256, Hh = 64; const mk = (draw: (x: CanvasRenderingContext2D) => void) => { const c = document.createElement('canvas'); c.width = W; c.height = Hh; const x = c.getContext('2d')!; draw(x); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 1); return t; };
+  let sd = 5; const rnd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+  const map = mk((x) => { x.fillStyle = '#7a5a2e'; x.fillRect(0, 0, W, Hh); for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(${60 + rnd() * 30},${130 + rnd() * 40},${110 + rnd() * 30},${0.25 + rnd() * 0.5})`; x.beginPath(); x.ellipse(rnd() * W, rnd() * Hh, 3 + rnd() * 14, 2 + rnd() * 6, rnd() * 3, 0, Math.PI * 2); x.fill(); }
+    x.fillStyle = 'rgba(210,160,90,0.5)'; for (let i = 0; i < 40; i++) x.fillRect(rnd() * W, Hh * 0.42 + rnd() * 4, 6 + rnd() * 18, 2); });
+  map.colorSpace = THREE.SRGBColorSpace;
+  const rough = mk((x) => { x.fillStyle = '#c8c8c8'; x.fillRect(0, 0, W, Hh); x.fillStyle = '#5a5a5a'; x.fillRect(0, Hh * 0.38, W, Hh * 0.24); });
+  const glyph = mk((x) => { x.fillStyle = '#000'; x.fillRect(0, 0, W, Hh); x.fillStyle = '#fff'; x.font = '18px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; const gl = '◎⁘≈◇△☽✶'; for (let k = 0; k < 8; k++) x.fillText(gl[k % 7], (k + 0.5) * (W / 8), Hh / 2); });
+  return { map, rough, glyph };
+}
+
 export type KeeperState = 'idle' | 'intro' | 'windup' | 'recover' | 'sweepWarn' | 'ebb' | 'low' | 'dead';
 export type KeeperEvent = 'intro' | 'windup' | 'spout' | 'sweepWarn' | 'sweep' | 'low' | 'rise' | 'phase' | 'dead';
 
@@ -82,36 +114,88 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
   waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping; const wn = waterNormals.clone(); wn.repeat.set(5, 5); wn.needsUpdate = true;
   const waterM = new THREE.MeshStandardMaterial({ color: '#0e4a52', roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.88, normalMap: wn, normalScale: new THREE.Vector2(0.35, 0.35), emissive: '#08343a', depthWrite: false });
   const water = new THREE.Mesh(new THREE.CircleGeometry(R + 4, 48).rotateX(-Math.PI / 2), waterM); water.renderOrder = 2; water.userData.noAO = true; g.add(water);
-  // ---- The Keeper: coiled body in the water, ringed neck of custodian collars, hooded nacre head with a lantern-lure, tide-glass heart behind two chest-plates.
-  const nacre = new THREE.MeshStandardMaterial({ color: '#93a6a0', roughness: 0.3, metalness: 0.12, emissive: '#0d3a3a', emissiveIntensity: 0.22 });
+  // ---- The Keeper: a coiled, plated sea-ancient. Neck is ONE skinned tapered tube on a 7-bone chain (bent by bone rotations only);
+  // hide = procedural plate/scale texture set (albedo + normal + roughness, built once); worn bronze custodian collars with verdigris;
+  // barnacle clusters (instanced), kelp (merged strips, swayed in the vertex shader), sculpted head with hinged jaw and eye glow.
+  const hide = hideTextures(901);
+  const hideOpts = { map: hide.map, normalMap: hide.nor, roughnessMap: hide.rough, normalScale: new THREE.Vector2(1.3, 1.3), color: '#ffffff', roughness: 1, metalness: 0.04, emissive: '#06201f', emissiveIntensity: 0.35 };
+  const nacre: THREE.MeshStandardMaterial = high ? new THREE.MeshPhysicalMaterial({ ...hideOpts, clearcoat: 0.55, clearcoatRoughness: 0.28 }) : new THREE.MeshStandardMaterial(hideOpts);
   const slate = triplanar(t.rock, 1.1, '#5d625f', { rough: 0.45, sat: 0.4 });
-  const collarM = new THREE.MeshStandardMaterial({ color: '#7a7466', roughness: 0.55, emissive: '#3fd0ff', emissiveIntensity: 0.6 });
+  const bronze = bronzeTextures();
+  const collarM = new THREE.MeshStandardMaterial({ map: bronze.map, roughnessMap: bronze.rough, color: '#ffffff', metalness: 0.7, roughness: 1, emissive: '#3fd0ff', emissiveMap: bronze.glyph, emissiveIntensity: 0.6 });
   const eyeM = new THREE.MeshBasicMaterial({ color: '#bff8ff' }), lureM = new THREE.MeshBasicMaterial({ color: '#9ff4ff' }), coreM = new THREE.MeshStandardMaterial({ color: '#1a4a50', emissive: '#7ff0ff', emissiveIntensity: 0.4 });
+  const boneM = new THREE.MeshStandardMaterial({ color: '#d8d0bc', roughness: 0.5 });
+  // Heart reads as a glowing sphere, not a flat disc: emissive falls off toward the silhouette (view-space normal).
+  coreM.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance *= 0.18 + 1.1 * pow(max(dot(normalize(vNormal), vec3(0., 0., 1.)), 0.), 1.8);'); };
   const root = new THREE.Group(); g.add(root);
   const M = (geo: THREE.BufferGeometry, m: THREE.Material, cast = true) => { const x = new THREE.Mesh(geo, m); x.castShadow = cast && high; x.receiveShadow = true; return x; };
-  { const tg = new THREE.TorusGeometry(3.1, 1.05, 14, 56); tg.rotateX(Math.PI / 2); const p = tg.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const a = Math.atan2(p.getZ(i), p.getX(i)); p.setY(i, p.getY(i) + 0.35 * Math.sin(a * 3)); } tg.computeVertexNormals(); root.add(M(tg, nacre));
-    const sp: THREE.BufferGeometry[] = []; for (let k = 0; k < 18; k++) { const a = (k / 18) * Math.PI * 2; const c = new THREE.ConeGeometry(0.22, 0.9, 5); c.translate(0, 0.45, 0); c.rotateZ(-0.35); c.rotateY(-a); c.translate(Math.cos(a) * 3.1, 0.9 + 0.35 * Math.sin(a * 3), Math.sin(a) * 3.1); sp.push(c); } root.add(M(mergeGeometries(sp), slate)); }
-  const segs: THREE.Group[] = []; let parent: THREE.Object3D = root; const SEG = 0.9;
-  for (let i = 0; i < 7; i++) { const s = new THREE.Group(); s.position.y = i === 0 ? 0.2 : SEG; parent.add(s); segs.push(s); const r = 1.0 - i * 0.06;
-    const b = M(new THREE.SphereGeometry(r, 16, 10), nacre); b.scale.set(1, 1.15, 1); s.add(b); if (i % 2 === 1) { const c = M(new THREE.TorusGeometry(r * 1.02, 0.14, 6, 24), collarM); c.rotation.x = Math.PI / 2; s.add(c); } parent = s; }
-  const head = new THREE.Group(); head.position.y = SEG; parent.add(head);
-  { const hood = M(new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), slate); hood.scale.set(1.05, 0.75, 1.6); hood.position.set(0, 0.1, 0.2); head.add(hood);
-    const skull = M(new THREE.SphereGeometry(0.75, 18, 12), nacre); skull.scale.set(0.9, 0.6, 1.6); skull.position.set(0, -0.05, 0.75); head.add(skull);
-    const jaw = M(new THREE.SphereGeometry(0.55, 14, 8), nacre); jaw.scale.set(0.85, 0.4, 1.5); jaw.position.set(0, -0.38, 0.8); head.add(jaw);
-    for (const sx of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), eyeM); e.position.set(sx * 0.45, 0.08, 1.15); head.add(e); }
-    const stalk = M(new THREE.CylinderGeometry(0.04, 0.05, 1.5, 6), slate, false); stalk.position.set(0, 0.95, 1.1); stalk.rotation.x = 0.9; head.add(stalk);
-    const lure = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), lureM); lure.position.set(0, 1.35, 1.75); head.add(lure); }
-  const lureHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: gradTex([[0, 'rgba(180,250,255,1)'], [0.4, 'rgba(80,210,255,0.35)'], [1, 'rgba(40,160,255,0)']], 4, 128, true), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 })); lureHalo.scale.setScalar(2.4); lureHalo.position.set(0, 1.35, 1.75); lureHalo.layers.set(1); head.add(lureHalo);
+  const CR = 3.1, CT = 1.05; const bump = (a: number) => 0.35 * Math.sin(a * 3);
+  // Coil body: lumpy torus (vertex noise baked at build).
+  { const tg = new THREE.TorusGeometry(CR, CT, high ? 24 : 16, high ? 96 : 64); tg.rotateX(Math.PI / 2); const p = tg.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(z, x); const rr = Math.hypot(x, z) - CR; const n = 1 + 0.07 * Math.sin(a * 11 + y * 4) + 0.05 * Math.sin(a * 23 - rr * 6); p.setXYZ(i, Math.cos(a) * (CR + rr * n), y * n + bump(a), Math.sin(a) * (CR + rr * n)); }
+    tg.computeVertexNormals(); root.add(M(tg, nacre));
+    // Dorsal scutes along the coil top (curved slate plates, not cones).
+    const sc: THREE.BufferGeometry[] = []; for (let k = 0; k < 26; k++) { const a = (k / 26) * Math.PI * 2; const s = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2); s.scale(0.42, 0.2 + 0.08 * Math.sin(k * 1.7), 0.62); s.rotateZ(0.25); s.rotateY(-a); s.translate(Math.cos(a) * (CR - 0.1), CT * 0.92 + bump(a), Math.sin(a) * (CR - 0.1)); sc.push(s); }
+    root.add(M(mergeGeometries(sc), slate)); }
+  // Barnacle clusters on the coil (one instanced mesh; volcano-shaped shells).
+  { const bg = new THREE.LatheGeometry([new THREE.Vector2(0.12, 0), new THREE.Vector2(0.11, 0.05), new THREE.Vector2(0.075, 0.12), new THREE.Vector2(0.045, 0.14), new THREE.Vector2(0.03, 0.09)], 8);
+    const n = high ? 260 : 150; const im = new THREE.InstancedMesh(bg, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.78 }), n); const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), sv = new THREE.Vector3(), pv = new THREE.Vector3(), nv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
+    let c = 0; while (c < n) { const a0 = rnd() * Math.PI * 2, b0 = -0.2 + rnd() * 2.2, m = 4 + Math.floor(rnd() * 7);
+      for (let j = 0; j < m && c < n; j++) { const a = a0 + (rnd() - 0.5) * 0.22, b = b0 + (rnd() - 0.5) * 0.5; nv.set(Math.cos(b) * Math.cos(a), Math.sin(b), Math.cos(b) * Math.sin(a)); pv.set(Math.cos(a) * (CR + CT * Math.cos(b)), CT * Math.sin(b) + bump(a), Math.sin(a) * (CR + CT * Math.cos(b))).addScaledVector(nv, -0.02);
+        q.setFromUnitVectors(up, nv); sv.setScalar(0.6 + rnd() * 1.1); mx.compose(pv, q, sv); im.setMatrixAt(c, mx); im.setColorAt(c, col.setHSL(0.11 + rnd() * 0.05, 0.12 + rnd() * 0.1, 0.55 + rnd() * 0.2)); c++; } }
+    im.castShadow = false; im.receiveShadow = true; root.add(im); }
+  // Neck: one tapered tube skinned to a 7-bone chain (segs = bones, rotated by the fight animation; nothing rebuilt).
+  const segs: THREE.Bone[] = []; const SEG = 0.9, NB = 7, Y0 = 0.2;
+  { let parent: THREE.Object3D = root; for (let i = 0; i < NB; i++) { const b = new THREE.Bone(); b.position.y = i === 0 ? Y0 : SEG; parent.add(b); segs.push(b); parent = b; } }
+  const neckR = (y: number) => 1.12 - 0.62 * Math.min(1, Math.max(0, (y + 0.6) / 7.0));
+  { const H = 7.0, ng = new THREE.CylinderGeometry(1, 1, H, high ? 28 : 20, high ? 56 : 36, true); ng.translate(0, H / 2 - 0.6, 0); const p = ng.attributes.position as THREE.BufferAttribute, uv = ng.attributes.uv as THREE.BufferAttribute;
+    const si = new Uint16Array(p.count * 4), sw = new Float32Array(p.count * 4);
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(z, x); const r = neckR(y) * (1 + 0.035 * Math.sin(y * 7 + a * 2) + (Math.sin(a) > 0.6 ? 0 : 0) + 0.06 * Math.max(0, -Math.cos(a - Math.PI / 2)) * 0.5); p.setXYZ(i, x * r, y, z * r * (z < 0 ? 0.92 : 1.04));
+      const tt = Math.max(0, (y - Y0) / SEG); const k = Math.min(NB - 1, Math.floor(tt)), f = Math.min(1, tt - k); si[i * 4] = k; si[i * 4 + 1] = Math.min(NB - 1, k + 1); sw[i * 4] = y < Y0 ? 1 : 1 - f; sw[i * 4 + 1] = y < Y0 ? 0 : f; uv.setXY(i, uv.getX(i) * 3, uv.getY(i) * 6); }
+    ng.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); ng.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4)); ng.computeVertexNormals();
+    const neck = new THREE.SkinnedMesh(ng, nacre); neck.castShadow = high; neck.receiveShadow = true; neck.frustumCulled = false; root.add(neck); root.updateMatrixWorld(true); neck.bind(new THREE.Skeleton(segs)); }
+  // Worn bronze custodian collars (rigid on bones 1, 3, 5), kelp hanging from them and from the coil.
+  const kelpU = { uKT: { value: 0 } };
+  const kelpM = new THREE.MeshStandardMaterial({ color: '#4a5e2a', roughness: 0.55, side: THREE.DoubleSide, emissive: '#0c1a08', emissiveIntensity: 0.4 });
+  kelpM.onBeforeCompile = (sh) => { sh.uniforms.uKT = kelpU.uKT; sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uKT; attribute vec2 kw;').replace('#include <begin_vertex>', '#include <begin_vertex>\n transformed.x += sin(uKT * 1.4 + kw.x * 1.9 + kw.y) * kw.x * 0.09; transformed.z += cos(uKT * 1.1 + kw.x * 1.5 + kw.y) * kw.x * 0.07;'); };
+  kelpM.customProgramCacheKey = () => 'kelp';
+  const kelp = (anchors: { x: number; y: number; z: number; a: number }[]) => { const parts: THREE.BufferGeometry[] = [];
+    for (const an of anchors) { const L2 = 0.8 + rnd() * 1.6, pg = new THREE.PlaneGeometry(0.16 + rnd() * 0.1, L2, 1, 8); pg.translate(0, -L2 / 2, 0); const pp = pg.attributes.position as THREE.BufferAttribute, kw = new Float32Array(pp.count * 2), ph = rnd() * 6;
+      for (let i = 0; i < pp.count; i++) { const d = -pp.getY(i); pp.setX(i, pp.getX(i) * (1 - 0.5 * d / L2) + 0.08 * Math.sin(d * 3 + ph)); pp.setZ(i, pp.getZ(i) + 0.06 * d * d); kw[i * 2] = d; kw[i * 2 + 1] = ph; }
+      pg.setAttribute('kw', new THREE.BufferAttribute(kw, 2)); pg.deleteAttribute('uv'); pg.rotateY(-an.a + Math.PI / 2); pg.translate(an.x, an.y, an.z); parts.push(pg); }
+    const m = new THREE.Mesh(mergeGeometries(parts), kelpM); m.frustumCulled = false; return m; };
+  for (const bi of [1, 3, 5]) { const yb = Y0 + bi * SEG, r = neckR(yb) + 0.05; const c = M(new THREE.TorusGeometry(r, 0.15, 8, 40), collarM); c.rotation.x = Math.PI / 2; c.scale.set(1, 1, 1.7); segs[bi].add(c);
+    const an: { x: number; y: number; z: number; a: number }[] = []; for (let k = 0; k < (high ? 6 : 4); k++) { const a = rnd() * Math.PI * 2; if (Math.abs(Math.atan2(Math.sin(a - Math.PI / 2), Math.cos(a - Math.PI / 2))) < 0.6) continue; an.push({ x: Math.cos(a) * (r + 0.1), y: -0.15, z: Math.sin(a) * (r + 0.1), a }); } segs[bi].add(kelp(an)); }
+  { const an: { x: number; y: number; z: number; a: number }[] = []; for (let k = 0; k < (high ? 30 : 18); k++) { const a = rnd() * Math.PI * 2; an.push({ x: Math.cos(a) * (CR + CT * 0.9), y: 0.35 + bump(a), z: Math.sin(a) * (CR + CT * 0.9), a }); } root.add(kelp(an)); }
+  // Sculpted head: plated skull with brow ridge and tapering snout, hinged jaw with teeth, glowing eyes in sockets, crest scutes, lantern-lure.
+  const head = new THREE.Group(); head.position.y = SEG; segs[NB - 1].add(head); let jaw: THREE.Group;
+  { const sk = new THREE.SphereGeometry(1, high ? 36 : 26, high ? 22 : 16); const p = sk.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) { let x = p.getX(i), y = p.getY(i), z = p.getZ(i); const fz = Math.max(0, z); const taper = 1 - 0.42 * fz * fz; x *= 0.68 * taper; y = y * 0.5 * taper + 0.16 * Math.exp(-((z - 0.35) ** 2) * 9) * Math.max(0, y + 0.2) * (1 - Math.abs(x) * 0.6); if (y < 0) y *= 0.55; z = z * 1.25 + 0.55; p.setXYZ(i, x, y + 0.05, z); }
+    sk.computeVertexNormals(); head.add(M(sk, nacre));
+    jaw = new THREE.Group(); jaw.position.set(0, -0.08, 0.1); head.add(jaw);
+    const jg = new THREE.SphereGeometry(1, high ? 28 : 20, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2); const jp = jg.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < jp.count; i++) { const x = jp.getX(i), y = jp.getY(i), z = jp.getZ(i); const fz = Math.max(0, z); jp.setXYZ(i, x * 0.58 * (1 - 0.4 * fz * fz), y * 0.22, z * 1.15 + 0.5); } jg.computeVertexNormals(); jaw.add(M(jg, nacre));
+    const th: THREE.BufferGeometry[] = []; for (let k = 0; k < 14; k++) { const s = k / 13, a = -1.25 + 2.5 * s; const zz = 0.5 + Math.cos(a) * 1.05, xx = Math.sin(a) * 0.5 * (1 - 0.35 * Math.max(0, Math.cos(a)) ** 2); const c = new THREE.ConeGeometry(0.045, 0.16 + 0.05 * Math.sin(k * 2.3), 5); c.translate(xx, 0.05, zz); th.push(c); }
+    jaw.add(M(mergeGeometries(th), boneM, false));
+    const glowTex = gradTex([[0, 'rgba(200,255,255,1)'], [0.35, 'rgba(90,220,255,0.45)'], [1, 'rgba(40,160,255,0)']], 4, 64, true);
+    for (const sx of [-1, 1]) { const sock = M(new THREE.SphereGeometry(0.17, 12, 8), slate, false); sock.scale.set(1, 0.7, 1.1); sock.position.set(sx * 0.4, 0.13, 1.0); head.add(sock);
+      const e = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8), eyeM); e.position.set(sx * 0.45, 0.13, 1.06); head.add(e);
+      const eg = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: '#9ff4ff', opacity: 0.9 })); eg.scale.setScalar(0.7); eg.position.copy(e.position); eg.layers.set(1); head.add(eg); }
+    const cr: THREE.BufferGeometry[] = []; for (let k = 0; k < 6; k++) { const s = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2); s.scale(0.1, 0.32 - k * 0.03, 0.34); s.rotateX(-0.5); s.translate(0, 0.4 - k * 0.02, 0.6 - k * 0.32); cr.push(s); }
+    head.add(M(mergeGeometries(cr), slate));
+    const stalk = M(new THREE.CylinderGeometry(0.035, 0.05, 1.5, 6), slate, false); stalk.position.set(0, 0.85, 1.05); stalk.rotation.x = 0.9; head.add(stalk);
+    const lure = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), lureM); lure.position.set(0, 1.25, 1.7); head.add(lure); }
+  const lureHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: gradTex([[0, 'rgba(180,250,255,1)'], [0.4, 'rgba(80,210,255,0.35)'], [1, 'rgba(40,160,255,0)']], 4, 128, true), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 })); lureHalo.scale.setScalar(2.4); lureHalo.position.set(0, 1.25, 1.7); lureHalo.layers.set(1); head.add(lureHalo);
   // Heart and chest-plates on the front of the neck base.
   const chest = new THREE.Group(); chest.position.set(0, 0.55, 0.92); segs[1].add(chest);
   const core = new THREE.Mesh(new THREE.SphereGeometry(0.62, 18, 14), coreM); chest.add(core);
   const coreHalo = new THREE.Sprite(lureHalo.material.clone()); coreHalo.scale.setScalar(3.2); coreHalo.layers.set(1); (coreHalo.material as THREE.SpriteMaterial).opacity = 0; chest.add(coreHalo);
   const plates = [-1, 1].map((sx) => { const pg = new THREE.Group(); pg.position.set(sx * 0.7, 0, -0.1); chest.add(pg); const pl = M(new THREE.SphereGeometry(0.78, 14, 10, sx < 0 ? Math.PI : 0, Math.PI, 0, Math.PI), slate); pl.scale.set(1, 1.15, 0.7); pl.rotation.y = -Math.PI / 2; pl.position.x = -sx * 0.7; pg.add(pl); return pg; });
   // Telegraphs: spout ring (under Ilka) + geyser column; sweep foam ring.
-  const zoneMat = new THREE.MeshBasicMaterial({ color: '#ff6a2a', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, fog: false });
-  const zoneFill = new THREE.MeshBasicMaterial({ color: '#d8401a', transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const zoneMat = new THREE.MeshBasicMaterial({ color: '#ff5a1f', toneMapped: false, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const zoneFill = new THREE.MeshBasicMaterial({ color: '#e0401a', toneMapped: false, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide, fog: false });
   const zone = new THREE.Group(); zone.visible = false; g.add(zone);
-  { const r = new THREE.Mesh(new THREE.RingGeometry(SPOUT_R - 0.22, SPOUT_R, 48), zoneMat); r.rotation.x = -Math.PI / 2; zone.add(r); const f = new THREE.Mesh(new THREE.CircleGeometry(SPOUT_R, 40), zoneFill); f.rotation.x = -Math.PI / 2; f.name = 'fill'; zone.add(f); zone.layers.set(1); zone.children.forEach((c) => { c.layers.set(1); c.renderOrder = 5; }); }
+  { const r = new THREE.Mesh(new THREE.RingGeometry(SPOUT_R - 0.32, SPOUT_R, 48), zoneMat); r.rotation.x = -Math.PI / 2; zone.add(r); const f = new THREE.Mesh(new THREE.CircleGeometry(SPOUT_R, 40), zoneFill); f.rotation.x = -Math.PI / 2; f.name = 'fill'; zone.add(f); zone.layers.set(1); zone.children.forEach((c) => { c.layers.set(1); c.renderOrder = 5; }); }
   const geyser = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.3, 5, 20, 1, true), new THREE.MeshBasicMaterial({ color: '#cff6ff', map: gradTex([[0, 'rgba(255,255,255,0)'], [0.3, 'rgba(255,255,255,0.8)'], [1, 'rgba(255,255,255,0.1)']]), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
   geyser.geometry.translate(0, 2.5, 0); geyser.layers.set(1); geyser.renderOrder = 5; g.add(geyser);
   const sweepRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.0, 96), new THREE.MeshBasicMaterial({ color: '#e8fbff', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); sweepRing.rotation.x = -Math.PI / 2; sweepRing.layers.set(1); sweepRing.renderOrder = 5; g.add(sweepRing);
@@ -182,7 +266,8 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
       else if (s === 'recover' || s === 'intro') { bend = 0.25 * impactK; }
       else if (s === 'sweepWarn') { bend = -0.2; rise = 0.3; }
       else if (s === 'low' || s === 'ebb') { bend = 0.35; side = 1.5; rise = -0.7; } // slumps sideways: head on the floor to its left, chest (and heart) turned to Ilka
-      impactK = Math.max(0, impactK - dt * 2);
+      impactK = Math.max(0, impactK - dt * 2); kelpU.uKT.value = time;
+      { const jw = s === 'windup' ? 0.55 * (1 - Math.max(0, f.t) / T_SLAM[f.phase]) : s === 'sweepWarn' ? 0.35 : s === 'dead' ? 0.05 : 0.08 + 0.05 * Math.sin(time * 0.7); jaw.rotation.x += (jw - jaw.rotation.x) * Math.min(1, dt * 8); }
       deadK = s === 'dead' ? Math.min(1, deadK + dt / 3) : 0;
       if (s === 'dead') { bend = 0.3; side = 1.6; rise = -1.2 * deadK; }
       for (let i = 0; i < segs.length; i++) { const sg = segs[i]; const tgt = bend / segs.length * (i < 2 ? 0.4 : 1.3) + 0.04 * Math.sin(time * 1.3 - i * 0.6); sg.rotation.x += (tgt - sg.rotation.x) * Math.min(1, dt * 6); const tz = side / segs.length * (i < 2 ? 0.4 : 1.3) + 0.05 * Math.sin(time * 0.9 - i * 0.5) * (1 - deadK); sg.rotation.z += (tz - sg.rotation.z) * Math.min(1, dt * 4); }
@@ -190,13 +275,13 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
       revealK += ((f.revealed > 0 || s === 'dead' ? 1 : 0) - revealK) * Math.min(1, dt * 6);
       plates[0].rotation.y = revealK * 1.9; plates[1].rotation.y = -revealK * 1.9;
       hitK = Math.max(0, hitK - dt * 3);
-      coreM.emissiveIntensity = (0.4 + revealK * 2.6 + hitK * 4) * (1 - 0.85 * deadK); (coreHalo.material as THREE.SpriteMaterial).opacity = revealK * (0.7 + 0.2 * Math.sin(time * 6)) * (1 - deadK);
+      coreM.emissiveIntensity = (0.4 + revealK * 2.6 + hitK * 4) * (1 - 0.85 * deadK) * (high ? 1 : 0.4); // Lite has no bloom/tonemap headroom: keep the heart shaded, not a flat white disc (coreHalo.material as THREE.SpriteMaterial).opacity = revealK * (0.7 + 0.2 * Math.sin(time * 6)) * (1 - deadK);
       collarM.emissiveIntensity = (0.5 + (f.phase - 1) * 0.6 + (s === 'windup' || s === 'sweepWarn' ? 0.9 + 0.6 * Math.sin(time * 14) : 0)) * (1 - deadK);
       eyeM.color.setRGB(0.75 + (s === 'windup' ? 0.25 : 0), s === 'windup' ? 0.6 : 0.97, s === 'windup' ? 0.45 : 1).multiplyScalar(1 - 0.8 * deadK); lureM.color.copy(eyeM.color);
       (lureHalo.material as THREE.SpriteMaterial).opacity = 0.8 * (1 - deadK);
       chest.getWorldPosition(exV); coreLight.position.copy(exV).add(new THREE.Vector3(0, 0, 0)); coreLight.intensity = (0.6 + revealK * 2.4 + hitK * 4) * (1 - 0.7 * deadK);
       // telegraphs
-      if (zone.visible) { const p = 1 - Math.max(0, f.t) / T_SLAM[f.phase]; zone.position.set(f.zx, Math.max(lev, FLOOR + 0.18) + 0.06, f.zz); const fl = zone.getObjectByName('fill')!; fl.scale.setScalar(0.15 + 0.85 * p); zoneMat.opacity = 0.6 + 0.4 * Math.sin(time * 18); }
+      if (zone.visible) { const p = 1 - Math.max(0, f.t) / T_SLAM[f.phase]; zone.position.set(f.zx, Math.max(lev, FLOOR + 0.18) + 0.06, f.zz); const fl = zone.getObjectByName('fill')!; fl.scale.setScalar(0.15 + 0.85 * p); zoneMat.opacity = 0.88 + 0.12 * Math.sin(time * 18); }
       spoutT = Math.max(0, spoutT - dt * 1.4); (geyser.material as THREE.MeshBasicMaterial).opacity = spoutT * 0.55; geyser.position.set(f.zx, Math.max(lev, FLOOR), f.zz); geyser.scale.set(1, 0.2 + (1 - spoutT) * 0.8 + spoutT * 0.4, 1);
       const sw = s === 'sweepWarn' ? 1 - Math.max(0, f.t) / T_SWEEP[f.phase] : 0; stoneGlow.opacity = s === 'sweepWarn' ? 0.55 + 0.4 * Math.sin(time * 10) : 0;
       sweepT = Math.max(0, sweepT - dt * 0.9); const sr = s === 'sweepWarn' ? 3 + sw * 3 : 3 + (1 - sweepT) * 14; sweepRing.scale.setScalar(sr); sweepRing.position.y = lev + 0.05; (sweepRing.material as THREE.MeshBasicMaterial).opacity = s === 'sweepWarn' ? 0.35 + 0.3 * sw : sweepT * 0.8;

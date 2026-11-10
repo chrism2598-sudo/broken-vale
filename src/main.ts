@@ -392,7 +392,7 @@ async function main() {
       document.getElementById('chtease')!.textContent = SEA_LINES.card.tease; document.getElementById('chxp')!.textContent = `+${SEA_XP} XP · Level ${levelOf(save.xp)} · The round seal waits`; chapterEl.hidden = false; });
   }
   // ---------- M13 · The Drowned Keeper ----------
-  let inKeep = false, keep: Keeper | null = null, kHud = '';
+  let inKeep = false, keep: Keeper | null = null, kHud = '', kPull = 0;
   const kev: KeeperEvent[] = [];
   function openSeal() {
     if (!sea || save.sea >= 4) return; save.sea = 4; persist(); sea.setOpen(true); hudT = 0; shake = 0.25; camFocus = { x: sea.sealPos.x, z: sea.sealPos.z, t: 4 };
@@ -894,10 +894,13 @@ async function main() {
     // Over-the-shoulder camera.
     if (snapCam || Math.abs(gy - camGy) > 3) camGy = gy; else camGy += (gy - camGy) * damp(12, dt); // soften terrain bumps, no horizontal lag
     camTarget.set(state.px, camGy + 1.42, state.pz);
-    const cp = Math.cos(state.pitch), sp = Math.sin(state.pitch);
+    // Portrait + close to the Keeper: ease the camera back and up so the coil doesn't fill the screen (damped on the fixed tick → interpolated, no jitter).
+    { const want = inKeep && keep && innerHeight > innerWidth && Math.hypot(state.px - keep.center.x, state.pz - keep.center.z) < 10.5 ? 1 : 0; kPull = snapCam ? want : kPull + (want - kPull) * damp(2.2, dt); }
+    const pitchK = state.pitch + 0.06 * kPull, distK = state.dist + 3.2 * kPull;
+    const cp = Math.cos(pitchK), sp = Math.sin(pitchK);
     const back = backV.set(Math.sin(state.yaw) * cp, sp, Math.cos(state.yaw) * cp);
     const right = rightV.set(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
-    camPos.copy(camTarget).addScaledVector(back, state.dist).addScaledVector(right, 0.65);
+    camPos.copy(camTarget).addScaledVector(back, distK).addScaledVector(right, 0.65);
     if (onIsland) {
       // Rim trees: pull the camera in front of any trunk/canopy between it and the player.
       const a = toLocal(camTarget.x, camTarget.z, camTarget.y).clone(), b = toLocal(camPos.x, camPos.z, camPos.y).clone();
@@ -1151,7 +1154,7 @@ async function main() {
           if (name === 'chapter2-complete') { tick(3); keeperWin(); while (talking) advance(); return; }
           state.px = k.center.x + (name === 'keeper-windup' ? -3.2 : 7.5); state.pz = k.center.z + (name === 'keeper-windup' ? 7.5 : 3.2); state.facing = Math.atan2(k.center.x - state.px, k.center.z - state.pz); state.yaw = state.facing + Math.PI; state.pitch = 0.22; state.dist = 7.2; snapCam = true;
           tick(4); while (talking) advance(); tick(80);
-          if (name === 'keeper-windup') { for (let i = 0; i < 400 && k.state !== 'windup'; i++) { tick(1); if (talking) while (talking) advance(); } tick(Math.round(0.85 * 30)); k.hold = true; state.pitch = 0.42; state.dist = 8.5; snapCam = true; tick(2); }
+          if (name === 'keeper-windup') { for (let i = 0; i < 400 && k.state !== 'windup'; i++) { tick(1); if (talking) while (talking) advance(); } tick(Math.round(0.85 * 30)); k.hold = true; }
           else { for (let i = 0; i < 3000 && k.state !== 'low'; i++) { tick(1); if (talking) while (talking) advance(); if (k.state === 'sweepWarn') { const s0 = k.stones[0]; state.px = s0.x; state.pz = s0.z; } } state.px = k.center.x + 5.0; state.pz = k.center.z + 1.5; snapCam = true; tick(6); k.reveal(); playerHp = HP_MAX; tick(45); state.facing = Math.atan2(k.center.x - state.px, k.center.z - state.pz); state.yaw = state.facing + Math.PI + 0.35; state.dist = 7.5; state.pitch = 0.18; snapCam = true; tick(3); k.hold = true; }
         })();
       }

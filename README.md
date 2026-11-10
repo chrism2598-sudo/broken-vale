@@ -1,5 +1,7 @@
 # The Broken Vale — 3D vertical slice
 
+Play: https://chrism2598-sudo.github.io/broken-vale/
+
 A standalone Three.js (r187) + Vite + TypeScript web game slice of *The Broken Vale*: a stylised meadow at spawn, the Wayfinder with his lantern staff, the path to the Wind Shrine, a creek, a floating island and the sky rift. Mobile-first (touch joystick + drag camera), with desktop WASD.
 
 ## Run

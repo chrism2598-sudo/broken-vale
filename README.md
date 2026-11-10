@@ -148,3 +148,11 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - **Facing.** Turns only with real input (|stick| > 0.2, or a big turn); small corrections are gentler than real turns; turn rate capped; angle wrapped.
 - **No camera auto-swing while steering** (interaction camera-focus is cancelled by stick input). There is no other auto-yaw; the camera follows the root position (never a bone), with only the vertical terrain follow damped.
 - `?legacymotion` (QA only) runs the old M11 path so `tools/motion-probe.cjs` can measure before/after in one build. The probe now uses CPU throttling ×5, a noisy touch stick and injected phone frame timing (straight and curving 10 s runs).
+
+## M11.2: phone motion, round 3
+- **Grass re-scatter hitch (likely the main remaining cause).** The near grass disc (≈15k instances on Lite) was rebuilt synchronously every 6 m — about once a second while running — costing ~140 ms on this box (~690 ms at 5× CPU throttle). That periodic stall + catch-up reads as a surge back and forth. It is now time-sliced per cell into a back buffer (2.5–4 ms per frame) with per-cell caching, and swapped in when done, aimed slightly ahead of the runner (a typical 5 m re-scatter: 89 ms total in ≤6 ms slices at 5× throttle, vs one 689 ms block); immediate rebuild only after teleports (>13 m).
+- **Motion setting** (Menu → *Motion: Smooth (30 fps) / Fast (60 fps)*, saved as `vale3d-motion`; default Smooth on touch devices). Smooth presents every ~33.3 ms (2 vsyncs at 60 Hz, 3 at 90 Hz, 4 at 120 Hz) with the fixed 60 Hz simulation + interpolation underneath. `?motion=fast|smooth` overrides.
+- **Touch camera fully rigid** relative to the interpolated player (occlusion pull-in and floor push applied directly); only ground height stays smoothed. Look-at and position come from the same interpolated sample.
+- Menu *Show FPS / frame time* (now wired) — the chip shows fps · ms/frame · tris · quality.
+- Run cycle measured: hips lateral 0 cm, head lateral sway 3.2 cm, hips bob 7.4 cm, no root motion — left as is (≈2 px at camera distance). Shadows: frustum is texel-snapped (world-stable); adaptive quality only ever steps down (High only).
+- `tools/motion-probe.cjs` adds a pacing model (`__vale.simVsync`): 60/120 Hz vsync, 14–26 ms frame cost with 45–80 ms spikes, Smooth vs Fast.

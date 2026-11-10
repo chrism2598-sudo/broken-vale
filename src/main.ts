@@ -776,11 +776,11 @@ async function main() {
     // uneven frame times the camera→player distance pumped every frame while running ("view goes back and forth").
     // Only the occlusion pull-in and the terrain floor push are smoothed (dt-correct), as offsets along the boom / in height.
     const want = camPos.distanceTo(camTarget);
-    if (snapCam || camDistS < 0) camDistS = want; else camDistS += (want - camDistS) * damp(want < camDistS ? 14 : 4, dt);
+    if (snapCam || camDistS < 0 || isPhone) camDistS = want; else camDistS += (want - camDistS) * damp(want < camDistS ? 14 : 4, dt);
     tmp.copy(camPos).sub(camTarget).setLength(camDistS); const rigidY = camTarget.y + tmp.y;
     const fl = floor - rigidY; // how far the floor pushes the camera up
     const yOffWant = Math.max(0, fl);
-    if (snapCam) camYOff = yOffWant; else camYOff += (yOffWant - camYOff) * damp(yOffWant > camYOff ? 18 : 5, dt);
+    if (snapCam || isPhone) camYOff = yOffWant; else camYOff += (yOffWant - camYOff) * damp(yOffWant > camYOff ? 18 : 5, dt);
     camera.position.set(camTarget.x + tmp.x, Math.max(rigidY + camYOff, floor - 0.25), camTarget.z + tmp.z); snapCam = false;
     tmp.copy(camTarget).addScaledVector(right, 0.65); tmp.y += 0.15;
     if (finaleDelay > 0) { finaleDelay -= dt; if (finaleDelay <= 0) startFinale(); }
@@ -825,7 +825,9 @@ async function main() {
     updraft.update(t, lastDt); hollow.update(t, lastDt); grove.update(t, lastDt); grove.near(inCave || inCoast || aqLevel >= 2 ? 1e9 : Math.hypot(camera.position.x - ECHO.x, camera.position.z - ECHO.z)); updraft.setActive(save.done);
     stair.update(t, lastDt); if (inCave && cave) cave.update(t, lastDt); if (inCoast && coast) coast.update(t, lastDt, camera, camTarget);
     if (!inCave && !inCoast) treeField.update(state.px, state.pz);
-    if (!inCave && !inCoast && Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y) > (HIGH ? 9 : 6)) { grassField.recenter(state.px, state.pz); grassFar.recenter(state.px, state.pz); }
+    if (!inCave && !inCoast) { const gd = Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y);
+      if (gd > (HIGH ? 12 : 13)) { grassField.recenter(state.px, state.pz); if (HIGH) grassFar.recenter(state.px, state.pz); } // teleport-sized jump: rebuild now
+      else if (gd > (HIGH ? 6 : 5)) { grassField.recenterSoon(state.px + Math.sin(state.facing) * state.speed * 0.4, state.pz + Math.cos(state.facing) * state.speed * 0.4); if (HIGH) grassFar.recenterSoon(state.px, state.pz); } }
     for (const gf of [grassField, grassFar]) { gf.uniforms.uTime.value = t; gf.uniforms.uPlayer.value.set(state.px, gy, state.pz); }
     water.update(t);
     (rift.material as THREE.ShaderMaterial).uniforms.uTime.value = t; foliageUniforms.uTime.value = t;
@@ -871,6 +873,7 @@ async function main() {
   let fpsOn = params.has('fps') || localStorage.getItem('vale3d-fps') === '1';
   const setFps = (on: boolean) => { fpsOn = on; fpsEl.classList.toggle('on', on); fpsEl.textContent = on ? '… fps' : 'FPS'; try { localStorage.setItem('vale3d-fps', on ? '1' : '0'); } catch { /* */ } };
   setFps(fpsOn);
+  { const fb = document.getElementById('fpsmenu'); if (fb) { const lab = () => { fb.textContent = fpsOn ? 'Hide FPS / frame time' : 'Show FPS / frame time'; }; lab(); fb.addEventListener('click', () => { setFps(!fpsOn); lab(); }); } }
   fpsEl.addEventListener('click', () => setFps(!fpsOn));
   addEventListener('keydown', (e) => { if (e.code === 'KeyF' && (e.target as HTMLElement).tagName !== 'INPUT') setFps(!fpsOn); });
   renderer.info.autoReset = false;
@@ -893,12 +896,24 @@ async function main() {
   // Per-frame motion recorder (QA): wall time, dt, player root, hips (mesh) world pos, camera pos, camera→target distance, player screen pos.
   let legacyMotion = params.has('legacymotion'); // QA only: the M11 motion path, for before/after probes
   let rec: number[][] | null = null; const hipsBone = player.root.getObjectByName('Hips'); const recV = new THREE.Vector3();
+  const headBone = player.root.getObjectByName('Head'), swV = new THREE.Vector3();
+  /** Lateral (character-right) offsets of hips and head from the root, and hips height: run-cycle sway/bob probe. */
+  const swayOf = () => { const r = player.root, rx = Math.cos(r.rotation.y), rz = -Math.sin(r.rotation.y); r.updateMatrixWorld(true); const o: number[] = [];
+    for (const b of [hipsBone, headBone]) { if (!b) { o.push(0); continue; } b.getWorldPosition(swV); o.push((swV.x - r.position.x) * rx + (swV.z - r.position.z) * rz); }
+    if (hipsBone) { hipsBone.getWorldPosition(swV); o.push(swV.y - r.position.y); } else o.push(0); return o; };
   function recFrame(dt: number) {
     camera.updateMatrixWorld(); const hp = hipsBone ? hipsBone.getWorldPosition(recV).clone() : player.root.position.clone(); recV.copy(player.root.position).add(new THREE.Vector3(0, 1.1, 0)).project(camera);
-    rec!.push([performance.now(), dt, player.root.position.x, player.root.position.z, hp.x, hp.z, camera.position.x, camera.position.y, camera.position.z, camera.position.distanceTo(player.root.position) , recV.x, recV.y, state.speed, player.root.rotation.y, state.yaw, camera.rotation.y]);
+    rec!.push([performance.now(), dt, player.root.position.x, player.root.position.z, hp.x, hp.z, camera.position.x, camera.position.y, camera.position.z, camera.position.distanceTo(player.root.position) , recV.x, recV.y, state.speed, player.root.rotation.y, state.yaw, camera.rotation.y, ...swayOf(), sun.target.position.x, sun.target.position.z]);
   }
   // Fixed 60 Hz simulation + render interpolation. Frame dt comes from the vsync-aligned rAF timestamp (not from when the
   // callback happens to start), so irregular JS start latency on phones no longer turns into uneven per-frame motion.
+  let motionSmooth = (localStorage.getItem('vale3d-motion') ?? (isPhone ? 'smooth' : 'fast')) === 'smooth'; if (params.has('motion')) motionSmooth = params.get('motion') !== 'fast';
+  const motionBtn = document.getElementById('motion') as HTMLButtonElement | null;
+  const setMotionLabel = () => { if (motionBtn) motionBtn.textContent = `Motion: ${motionSmooth ? 'Smooth (30 fps)' : 'Fast (60 fps)'}`; }; setMotionLabel();
+  if (motionBtn) motionBtn.onclick = () => { motionSmooth = !motionSmooth; try { localStorage.setItem('vale3d-motion', motionSmooth ? 'smooth' : 'fast'); } catch { /* private mode */ } setMotionLabel(); lastTs = -1; };
+  const ftHist = new Float32Array(60); let ftI = 0, rawLast = -1, presented = 0; void presented;
+  /** Presentation gate: returns the frame dt (s) if this vsync should be presented, else -1. */
+  function gate(ts: number): number { if (motionSmooth && lastTs >= 0 && ts - lastTs < 29.3) return -1; const d = lastTs < 0 ? 0 : Math.max(0, Math.min(0.1, (ts - lastTs) / 1000)); lastTs = ts; return d; }
   const FIXED = 1 / 60; let acc = 0, simT = 0, lastTs = -1, interpOn = false;
   const ipP0 = new THREE.Vector3(), ipP1 = new THREE.Vector3(), ipC0 = new THREE.Vector3(), ipC1 = new THREE.Vector3(), ipQ0 = new THREE.Quaternion(), ipQ1 = new THREE.Quaternion(); let ipR0 = 0, ipR1 = 0;
   function stepFrame(frameDt: number) {
@@ -917,12 +932,16 @@ async function main() {
   function frame(ts?: number) {
     renderer.info.reset();
     const cd = Math.min(0.1, clock.getDelta()), t = clock.elapsedTime;
-    let dt = cd; if (!legacyMotion && ts !== undefined) { dt = lastTs < 0 ? cd : Math.max(0, Math.min(0.1, (ts - lastTs) / 1000)); lastTs = ts; }
+    let dt = cd; if (!legacyMotion && ts !== undefined) {
+      // Motion: Smooth = present every ~33.3 ms (2 vsyncs at 60 Hz, 3 at 90, 4 at 120): even pacing instead of 40–60 fps wobble.
+      const g = gate(ts); if (g < 0) { clock.getDelta(); return; } dt = g < 1e-6 ? cd : g; }
+    if (ts !== undefined) { const fms = rawLast >= 0 ? ts - rawLast : 0; rawLast = ts; if (fms > 0) { ftHist[ftI++ % 60] = fms; } }
     if (!paused) stepFrame(dt); else if (!mapEl.hidden) { mapT -= dt; if (mapT <= 0) { mapT = 0.12; drawMap(t); } }
+    grassField.pump(motionSmooth ? 4 : 2.5); if (HIGH) grassFar.pump(2);
     if (rec) recFrame(dt);
     if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : scene, camera);
     unInterp();
-    frames++; totalFrames++; fpsT += dt; if (fpsT > 0.5) { fps = frames / fpsT; adaptQuality(fpsT); frames = 0; fpsT = 0; if (fpsOn) fpsEl.textContent = `${fps.toFixed(0)} fps · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M tris · ${quality}${aqLevel ? ` · aq${aqLevel}` : ''}`; }
+    frames++; totalFrames++; fpsT += dt; if (fpsT > 0.5) { fps = frames / fpsT; const fpsT0 = fpsT / frames; adaptQuality(fpsT); frames = 0; fpsT = 0; if (fpsOn) fpsEl.textContent = `${fps.toFixed(0)} fps · ${(fpsT0 * 1000).toFixed(1)} ms · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M tris · ${quality}${aqLevel ? ` · aq${aqLevel}` : ''}`; }
   }
   renderer.setAnimationLoop(frame);
   addEventListener('resize', () => {
@@ -1006,6 +1025,11 @@ async function main() {
     talkLine() { return say('Wayfinder', LINES.wayfinder.greet, profile); },
     /** Phone-condition simulation through the real frame path (minus GPU): f = [vsync dt, callback-measured dt, stickX, stickY]. */
     simFrames(fr: number[][]) { const id = stick.id; stick.id = 999; rec = []; for (const [vd, md, sx, sy] of fr) { stick.x = sx; stick.y = sy; stepFrame(legacyMotion ? md : vd); recFrame(vd); unInterp(); } stick.id = id; stick.x = stick.y = 0; const r = rec; rec = null; return r; },
+    /** Phone pacing model: vsync every `period` ms; a presented frame keeps the main thread busy for costs[i] ms (vsyncs that
+     *  arrive while busy are missed). Runs the real gate + fixed-step + interpolation path; returns recorder rows. */
+    simVsync(period: number, n: number, costs: number[], sx: number, sy: number, smooth: boolean) { const ms = motionSmooth; motionSmooth = smooth; lastTs = -1; acc = 0; const id = stick.id; stick.id = 999; stick.x = sx; stick.y = sy; rec = []; let busy = -1, ci = 0;
+      for (let k = 0; k < n; k++) { const ts = 1000 + k * period; if (ts < busy) continue; const g = gate(ts); if (g < 0) continue; stepFrame(g || FIXED); recFrame(g || FIXED); rec[rec.length - 1][0] = ts; unInterp(); busy = ts + costs[ci++ % costs.length]; }
+      motionSmooth = ms; lastTs = -1; stick.id = id; stick.x = stick.y = 0; const r = rec; rec = null; return r; },
     setLegacyMotion(on: boolean) { legacyMotion = on; stickF.x = stickF.y = 0; acc = 0; },
     recStart() { rec = [];}, recStop() { const r = rec; rec = null; return r; },
     /** Deterministic stepping: run update() with a given dt sequence while holding the stick at (sx, sy); returns recorder rows. */
@@ -1023,7 +1047,7 @@ async function main() {
     sheets: () => ({ journal: !jEl.hidden, map: !mapEl.hidden, paused, journalText: jEl.innerText }),
     warden: () => ({ x: WARDEN.x, z: WARDEN.z, hp: wd.hp, phase: wd.phase, awake: wd.awake, playerHp, atkCd, recovery: recoveryPoint(), melee: W_MELEE }),
     quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
-    debug: { scene, camera, renderer, get composer() { return composer; }, get aq() { return { level: aqLevel, low: aqLow, warm: aqWarm, on: aqOn, fps, paused, fading, talking }; }, get player() { return player.root; }, wayfinder: wayfinder.root },
+    debug: { get grass() { return [grassField, grassFar]; }, treeField, scene, camera, renderer, get composer() { return composer; }, get aq() { return { level: aqLevel, low: aqLow, warm: aqWarm, on: aqOn, fps, paused, fading, talking }; }, get player() { return player.root; }, wayfinder: wayfinder.root },
   };
   (window as unknown as { __vale: typeof api }).__vale = api;
   document.getElementById('loading')!.remove();

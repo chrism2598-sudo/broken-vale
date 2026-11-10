@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { heightAt, normalAt, pathMask, creekX, creekHalf, rng, SHRINE, fbm } from './world';
 
 /** Instanced grass clumps (tapered curved blades) with GPU wind sway and distance fade. */
-export function makeGrass(count: number, radius: number, bladesPerClump: number, seg = 4, inner = 0): { mesh: THREE.InstancedMesh; uniforms: { uTime: THREE.IUniform; uPlayer: THREE.IUniform }; center: THREE.Vector2; recenter: (x: number, z: number) => void } {
+export function makeGrass(count: number, radius: number, bladesPerClump: number, seg = 4, inner = 0): { mesh: THREE.InstancedMesh; uniforms: { uTime: THREE.IUniform; uPlayer: THREE.IUniform }; center: THREE.Vector2; recenter: (x: number, z: number) => void; recenterSoon: (x: number, z: number) => void; pump: (ms: number) => void; busy: () => boolean } {
   const r = rng(7); void rng;
   const pos: number[] = [], col: number[] = [], bend: number[] = [], idx: number[] = [];
   let v = 0;
@@ -49,38 +49,61 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
   const tint = new THREE.Color();
   const center = new THREE.Vector2();
   // Grass lives in a disc around the player and is re-scattered (deterministically per cell) as they travel.
-  function recenter(cx: number, cz: number) {
-    center.set(cx, cz);
+  // The re-scatter is time-sliced into a back buffer (a few ms per frame) and swapped in when complete: a synchronous
+  // rebuild of ~15k instances cost 30–140 ms every ~6 m, i.e. a hitch about once a second while running.
+  const mk = () => ({ m: new THREE.InstancedBufferAttribute(new Float32Array(count * 16), 16), c: new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3) });
+  let back = mk(); const cellCache = new Map<number, Float32Array>(); let job: Generator<void, number, void> | null = null; let jobC = new THREE.Vector2();
+  function* fill(cx: number, cz: number, dm: Float32Array, dc: Float32Array): Generator<void, number, void> {
     let n = 0;
     const cell = 2, R = radius, c0x = Math.floor((cx - R) / cell), c1x = Math.floor((cx + R) / cell), c0z = Math.floor((cz - R) / cell), c1z = Math.floor((cz + R) / cell);
     const ri = Math.max(0, inner - 10), per = Math.max(1, Math.round(count / (Math.PI * (R * R - ri * ri) / (cell * cell))));
-    for (let gx = c0x; gx <= c1x && n < count; gx++) for (let gz = c0z; gz <= c1z && n < count; gz++) {
-      const rr = rng((gx * 73856093) ^ (gz * 19349663));
-      for (let k = 0; k < per && n < count; k++) {
-        const x = (gx + rr()) * cell, z = (gz + rr()) * cell;
-        const rot = rr() * Math.PI * 2, sc0 = rr(), sc1 = rr(), t0 = rr(), t1 = rr(), t2 = rr();
-        const dd = Math.hypot(x - cx, z - cz); if (dd > R || dd < inner - 10) continue;
-        const pm = pathMask(x, z); if (pm > 0.42) continue;
-        const dc = Math.abs(x - creekX(z)); if (dc < creekHalf(z) + 0.6) continue;
-        if (Math.hypot(x - SHRINE.x, z - SHRINE.z) < 7) continue;
-        const nrm = normalAt(x, z); if (nrm[1] < 0.86) continue;
-        p.set(x, heightAt(x, z) - 0.02, z);
-        q.setFromAxisAngle(up, rot);
-        // Height varies ankle → knee: lawn-like short patches, taller tussocks, and a trodden fringe along the path.
-        const patch = fbm(x * 0.07 + 11, z * 0.07);
-        let hy = patch < -0.12 ? 0.32 + 0.18 * sc1 : patch > 0.22 ? 1.05 + 0.35 * sc1 : 0.6 + 0.45 * sc1;
-        hy *= 1 - 0.75 * Math.min(1, pm / 0.42);
-        const sc = 0.8 + sc0 * 0.45; s.set(sc, sc * hy, sc);
-        m.compose(p, q, s); mesh.setMatrixAt(n, m);
-        tint.setRGB(0.85 + t0 * 0.3, 0.9 + t1 * 0.2, 0.7 + t2 * 0.35); mesh.setColorAt(n, tint);
-        n++;
+    for (let gx = c0x; gx <= c1x && n < count; gx++) { for (let gz = c0z; gz <= c1z && n < count; gz++) {
+      // Per-cell blades are cached (matrix 16 + colour 3 + x,z), so a re-scatter mostly copies and only computes new cells.
+      const key = gx * 100003 + gz; let cb = cellCache.get(key);
+      if (!cb) {
+        const rr = rng((gx * 73856093) ^ (gz * 19349663)); const tmpA: number[] = [];
+        for (let k = 0; k < per; k++) {
+          const x = (gx + rr()) * cell, z = (gz + rr()) * cell;
+          const rot = rr() * Math.PI * 2, sc0 = rr(), sc1 = rr(), t0 = rr(), t1 = rr(), t2 = rr();
+          const pm = pathMask(x, z); if (pm > 0.42) continue;
+          const dcr = Math.abs(x - creekX(z)); if (dcr < creekHalf(z) + 0.6) continue;
+          if (Math.hypot(x - SHRINE.x, z - SHRINE.z) < 7) continue;
+          const nrm = normalAt(x, z); if (nrm[1] < 0.86) continue;
+          p.set(x, heightAt(x, z) - 0.02, z);
+          q.setFromAxisAngle(up, rot);
+          // Height varies ankle → knee: lawn-like short patches, taller tussocks, and a trodden fringe along the path.
+          const patch = fbm(x * 0.07 + 11, z * 0.07);
+          let hy = patch < -0.12 ? 0.32 + 0.18 * sc1 : patch > 0.22 ? 1.05 + 0.35 * sc1 : 0.6 + 0.45 * sc1;
+          hy *= 1 - 0.75 * Math.min(1, pm / 0.42);
+          const sc = 0.8 + sc0 * 0.45; s.set(sc, sc * hy, sc);
+          m.compose(p, q, s); const o = tmpA.length; m.toArray(tmpA, o);
+          tmpA.push(0.85 + t0 * 0.3, 0.9 + t1 * 0.2, 0.7 + t2 * 0.35, x, z);
+        }
+        cb = new Float32Array(tmpA); if (cellCache.size > 6000) cellCache.clear(); cellCache.set(key, cb);
       }
+      for (let o = 0; o < cb.length && n < count; o += 21) {
+        const dd = Math.hypot(cb[o + 19] - cx, cb[o + 20] - cz); if (dd > R || dd < inner - 10) continue;
+        dm.set(cb.subarray(o, o + 16), n * 16); dc[n * 3] = cb[o + 16]; dc[n * 3 + 1] = cb[o + 17]; dc[n * 3 + 2] = cb[o + 18]; n++;
+      }
+      yield; }
     }
-    mesh.count = n;
-    mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    return n;
   }
+  function swapIn(n: number) {
+    const cur = { m: mesh.instanceMatrix, c: mesh.instanceColor! };
+    back.m.needsUpdate = true; back.c.needsUpdate = true; mesh.instanceMatrix = back.m; mesh.instanceColor = back.c; mesh.count = n;
+    back = { m: cur.m as THREE.InstancedBufferAttribute, c: cur.c }; center.copy(jobC);
+  }
+  /** Immediate rebuild (load, teleports). */
+  function recenter(cx: number, cz: number) { job = null; jobC.set(cx, cz); const g = fill(cx, cz, back.m.array as Float32Array, back.c.array as Float32Array); let r = g.next(); while (!r.done) r = g.next(); swapIn(r.value); }
+  /** Start a time-sliced rebuild around (cx, cz); keeps the current grass until it is ready. */
+  function recenterSoon(cx: number, cz: number) { if (job) return; jobC.set(cx, cz); job = fill(cx, cz, back.m.array as Float32Array, back.c.array as Float32Array); }
+  /** Advance a pending rebuild for up to `ms` milliseconds. */
+  function pump(ms: number) { if (!job) return; const t0 = performance.now(); let r = job.next(); while (!r.done && performance.now() - t0 < ms) r = job.next(); if (r.done) { job = null; swapIn(r.value); } }
+  const busy = () => !!job;
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
   recenter(0, 0);
   mesh.frustumCulled = false;
   mesh.receiveShadow = true;
-  return { mesh, uniforms, center, recenter };
+  return { mesh, uniforms, center, recenter, recenterSoon, pump, busy };
 }

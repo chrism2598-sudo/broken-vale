@@ -12,7 +12,7 @@ function phoneFrames(sec,curve){const f=[];let t=0,e0=0,i=0;while(t<sec){let d=1
 const sd=a=>{const m=a.reduce((s,x)=>s+x,0)/a.length;return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/a.length);};const rms=a=>Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length);
 function revs(a,th){let n=0,last=0;for(let i=1;i<a.length;i++){const d=a[i]-a[i-1];const dd=Math.atan2(Math.sin(d),Math.cos(d));if(Math.abs(dd)>th){if(last&&Math.sign(dd)!==Math.sign(last))n++;last=dd;}}return n;}
 function metrics(R){ // [t,dt,px,pz,hx,hz,cx,cy,cz,dist,sx,sy,speed,heading,yaw,camRotY]
-  const r=R.filter(x=>x[12]>4.5);if(r.length<20)return {n:r.length};
+  const r=R.filter(x=>x[12]>4.5).slice(2);if(r.length<20)return {n:r.length};
   const lat=[],scroll=[],sj=[];for(let i=0;i<r.length;i++){const x=r[i];const ry=x[14];const rx=Math.cos(ry),rz=-Math.sin(ry);lat.push((x[2]-x[6])*rx+(x[3]-x[8])*rz);
     if(i){const a=r[i-1];const mv=Math.hypot(x[6]-a[6],x[8]-a[8]);const exp=x[12]*x[1];scroll.push(mv/exp-1);sj.push(Math.hypot((x[10]-a[10])*W/2,(x[11]-a[11])*H/2));}}
   const lv=[];for(let i=1;i<r.length;i++){const x=r[i],a=r[i-1];const ry=x[14];lv.push(((x[6]-a[6])*Math.cos(ry)+(x[8]-a[8])*-Math.sin(ry))/x[1]);}
@@ -31,6 +31,15 @@ const out={cpuThrottle:5};
 for(const mode of ['before','after']){await p.evaluate(m=>window.__vale.setLegacyMotion(m==='before'),mode);out[mode]={};
   for(const kind of ['straight','curve']){seed=kind==='straight'?7:11;await go();await p.evaluate(f=>window.__vale.simFrames(f),phoneFrames(1.5,false));
     const R=await p.evaluate(f=>window.__vale.simFrames(f),phoneFrames(10,kind==='curve'));out[mode][kind]=metrics(R);}}
+// C) frame pacing: phone vsync 60/120 Hz, per-frame main-thread cost 14–26 ms with occasional 45–80 ms spikes; Smooth vs Fast.
+seed=3;const costs=[];for(let i=0;i<400;i++)costs.push(rnd()<0.03?45+rnd()*35:14+rnd()*12);
+const pace=R=>{const iv=[];for(let i=1;i<R.length;i++)iv.push(+(R[i][0]-R[i-1][0]).toFixed(1));const s2=[...iv].sort((a,b)=>a-b);const mode=s2[Math.floor(s2.length/2)];
+  let changes=0;for(let i=1;i<iv.length;i++)if(Math.abs(iv[i]-iv[i-1])>1)changes++;
+  const st=[];for(let i=1;i<R.length;i++){const a=R[i-1],x=R[i];st.push(Math.hypot(x[19]-a[19],x[20]-a[20])-Math.hypot(x[6]-a[6],x[8]-a[8]));}
+  return {presented:R.length,intervalMsP50:mode,intervalMsP95:s2[Math.floor(s2.length*.95)],evenShare:+(iv.filter(v=>Math.abs(v-mode)<1).length/iv.length).toFixed(3),intervalChanges:changes,
+    shadowStepMinusCamStepMaxCm:+(Math.max(...st.slice(5))*100).toFixed(1)};};
+out.pacing={};for(const [hz,per] of [['60Hz',1000/60],['120Hz',1000/120]])for(const sm of [true,false]){await go();const n=Math.round(10000/per);
+  const R=await p.evaluate((per,n,c,sm)=>window.__vale.simVsync(per,n,c,0,-1,sm),per,n,costs,sm);out.pacing[hz+(sm?' Smooth':' Fast')]={...pace(R),...metrics(R)};}
 // B) real touch, throttled, noisy thumb (after path)
 await p.evaluate(()=>window.__vale.setLegacyMotion(false));await go();await sleep(1500);
 const jr=await p.$eval('#joy',e=>{const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,h:r.height};});

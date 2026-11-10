@@ -109,6 +109,7 @@ body.sheet #joy,body.sheet #action{display:none}
 body.cine #quest,body.cine #menubtn,body.cine #joy,body.cine #action,body.cine #hint{opacity:0;pointer-events:none;transition:opacity .6s}
 body.talking #joy,body.talking #action,body.creating #quest,body.creating #menubtn,body.creating #action{display:none}
 @media (max-width:520px){#toast{top:27%;white-space:normal;max-width:86vw;text-align:center}#combat{left:max(14px,env(safe-area-inset-left));transform:none;top:calc(max(12px,env(safe-area-inset-top)) + 172px);font-size:16px}#quest{font-size:12px;max-width:58vw}#dtxt{font-size:16px}}
+#fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .5s ease;z-index:40}#fade.on{opacity:1}
 </style>
 </head>
 <body>
@@ -126,6 +127,7 @@ body.talking #joy,body.talking #action,body.creating #quest,body.creating #menub
 </div>
 <div id="quest" aria-live="polite"><div id="qline"></div><div id="qstats"></div><div id="compass"><span id="carrow">➤</span><span id="ctext"></span></div><div id="wind"><span id="warrow">➤</span><span id="wtext"></span></div><div id="wdl"><span id="wdarrow">➤</span><span id="wdtext"></span></div></div>
 <div id="toast" aria-live="polite"></div>
+<div id="fade" aria-hidden="true"></div>
 <div id="combat" hidden aria-live="polite"><span class="lbl">HP</span> <span id="hp"></span><span class="sep">·</span><span class="lbl">Warden</span> <span id="whp"></span></div>
 <div id="chapter" hidden role="dialog" aria-labelledby="chtitle"><div class="chin"><div class="chk">Chapter I complete</div><h2 id="chtitle">The Four Seals</h2><p id="chtease"></p><p class="chxp" id="chxp"></p><button id="chok">Continue</button></div></div>
 <div id="ending" hidden role="dialog" aria-labelledby="endtitle"><div class="chin endin"><div class="chk">The Unspent Morning</div><h2 id="endtitle"></h2><div id="endlines"></div><p class="chxp" id="endxp"></p><button id="endok">Continue</button></div></div>

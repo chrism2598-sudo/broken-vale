@@ -5,6 +5,7 @@ import { ISLAND_POS } from './island';
 import { sealCount, levelOf, type Save } from './quest';
 import { fill, type Profile } from './dialogue';
 import { MARR_MARKS, CHART_DONE, ECHO } from './echo';
+import { STAIR, CAVE_XP } from './cave';
 
 // ---------- Journal (live quest state + lore from the Page) ----------
 export type JSection = { h: string; items: { t: string; done?: boolean; lore?: boolean }[] };
@@ -36,7 +37,16 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
     { t: '“Enna never paid me to follow her map. She paid me to bring her home.” — Ress', lore: true },
   ] };
   if (s.done) lore.items.push({ t: 'Far beyond the root-hung islands, a second seam answers — not in the sky, but beneath the sea.', lore: true });
-  const sections = [quest, chart, shrine, warden, echo, beacon, lore];
+  const trail: JSection = { h: 'Chapter II · Enna’s Trail', items: [] };
+  if (s.beacon) {
+    const c = s.cave;
+    trail.items.push({ t: c >= 1 ? 'The Wayfinder’s lead: Enna went down the collapsed stair east of Pale Keep — the keep’s old water-road.' : 'The Wayfinder has word of Enna. Speak with them by the meadow crossing.', done: c >= 1 });
+    if (c >= 1) trail.items.push({ t: c >= 2 ? 'Descended into the torch-lit ruin beneath Pale Keep.' : 'Descend the collapsed stair east of Pale Keep.', done: c >= 2 });
+    if (c >= 2) trail.items.push({ t: c >= 3 ? 'Braziers lit as the river runs — Spring, Ford, Sea. The sealed door is open.' : 'Light the three braziers as the river runs: where it is born, where it is crossed, where it is lost.', done: c >= 3 });
+    if (c >= 3) trail.items.push({ t: c >= 4 ? `Enna’s carved message found · Enna’s Tide-Glass (+${CAVE_XP} XP).` : 'Read what waits in the alcove behind the door.', done: c >= 4 });
+    if (c >= 4) trail.items.push({ t: '“The water-road runs west beneath the hills to the sea caves, where the second seam answers under the tide. I have gone to listen.” — E. M.', lore: true }, { t: 'Next: follow the water-road west to the sea (Chapter II continues).' });
+  }
+  const sections = s.beacon ? [trail, quest, chart, shrine, warden, echo, beacon, lore] : [quest, chart, shrine, warden, echo, beacon, lore];
   return {
     title: fill('Field notes — {fullname}', p),
     sub: fill(`{Name}, 17 · Enna’s {child} · Level ${levelOf(s.xp)} · ${s.xp} XP`, p),
@@ -113,6 +123,12 @@ export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m
     const BX = sx(ISLAND_POS.x - 3), BY = sz(ISLAND_POS.z + 2), lit = m.save.done;
     x.fillStyle = m.save.beacon ? '#e0a020' : lit ? '#7a5ae0' : '#6a6070'; x.beginPath(); for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 3 : 7; x.lineTo(BX + Math.cos(a) * r, BY + Math.sin(a) * r); } x.closePath(); x.fill();
     label('Hollow Beacon', X - 6, Y - 22 * k - 8 - fs, 'center', '#3a2a5a'); label('(floating isle)', X - 6, Y - 22 * k - 8, 'center', '#3a2a5a', fs - 2); }
+  // Chapter II: the collapsed stair (once the Wayfinder points to it) and, after Enna's message, the trail west to the sea.
+  if (m.save.cave >= 1) { const X = sx(STAIR.x), Y = sz(STAIR.z);
+    if (m.save.cave >= 4) { x.save(); x.setLineDash([5, 4]); x.strokeStyle = 'rgba(31,95,120,.9)'; x.lineWidth = 2; x.beginPath(); x.moveTo(X, Y); x.bezierCurveTo(X - 30 * k, Y + 40 * k, sx(MAPBOX.x0) + 40, Y + 70 * k, sx(MAPBOX.x0) + 4, Y + 60 * k); x.stroke(); x.restore();
+      label('to the sea ←', sx(MAPBOX.x0) + 8, Y + 60 * k - 10, 'left', '#1f5f78', fs - 1, true); }
+    x.fillStyle = '#2e1e0e'; for (let i = 0; i < 4; i++) x.fillRect(X - 6 + i * 1.5, Y - 5 + i * 3, 12 - i * 3, 2.2);
+    label('Collapsed Stair', X + 9, Y - 6, 'left', '#2e1e0e', fs - 1); }
   // Seals.
   for (const d of SEALS) { const X = sx(d.x), Y = sz(d.z), got = !!m.save.seals[d.id]; x.save(); x.translate(X, Y); x.rotate(Math.PI / 4); x.fillStyle = got ? d.color : 'rgba(0,0,0,0)'; x.strokeStyle = '#3a2814'; x.lineWidth = 1.4; x.fillRect(-4.5, -4.5, 9, 9); x.strokeRect(-4.5, -4.5, 9, 9); x.restore(); label(d.short, X + 9, Y, 'left', got ? '#3a2814' : '#6b4a26', fs - 1); }
   // Objective marker.

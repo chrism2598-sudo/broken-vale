@@ -15,6 +15,8 @@ for(let i=0;i<4&&(await Q()).talking;i++){await p.keyboard.press('Space');await 
 // Echo Grove silent before any seal; charting starts (Wind Shrine is within reach of the Updraft)
 const E0=await p.evaluate(()=>window.__vale.echo());log('charted after visiting the Updraft',E0.marks.filter((m,i)=>E0.charted[i]).map(m=>m.name));
 await p.evaluate((x,z)=>window.__vale.warp(x,z+4),E0.x,E0.z);await sleep(1200);log('echo before seals',{near:(await Q()).near});await p.keyboard.press('KeyE');await sleep(500);log('echo silent',{toast:await p.$eval('#toast',e=>e.textContent),done:(await p.evaluate(()=>window.__vale.echo())).done,xp:(await Q()).save.xp});
+// Chapter II stair is sealed before the dawn ending
+{const C0=await p.evaluate(()=>window.__vale.cave());await p.evaluate((x,z)=>window.__vale.warp(x,z),C0.mouth.x,C0.mouth.z);await sleep(1200);const n0=(await Q()).near;await p.keyboard.press('KeyE');await sleep(700);log('stair before dawn',{near:n0,toast:await p.$eval('#toast',e=>e.textContent),inCave:(await p.evaluate(()=>window.__vale.cave())).inCave,stage:(await p.evaluate(()=>window.__vale.cave())).stage});}
 for(const s of q.seals){await p.evaluate((x,z)=>window.__vale.warp(x+1.5,z+1.2),s.x,s.z);await sleep(1500);const n=(await Q()).near;await p.keyboard.press('KeyE');await sleep(700);const qq=await Q();log('seal '+s.id,{near:n,claimed:qq.save.seals[s.id],xp:qq.save.xp,toast:await p.$eval('#toast',e=>e.textContent)});}
 // finale: cine → Wayfinder completion dialogue → chapter card
 await p.waitForFunction('window.__vale.quest().cine',{timeout:60000}).catch(()=>{});log('cine started',(await Q()).cine);
@@ -85,10 +87,31 @@ await p.waitForFunction('!window.__vale.beacon().onIsland&&!window.__vale.beacon
 B=await p.evaluate(()=>window.__vale.beacon());const pd=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,z:v.z};});log('rode down',{onIsland:B.onIsland,distFromUpdraft:+Math.hypot(pd.x-B.updraft.x,pd.z-B.updraft.z).toFixed(1)});
 await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(1200);
 B=await p.evaluate(()=>window.__vale.beacon());log('after reload (beacon persisted)',{echo:(await p.evaluate(()=>window.__vale.echo())).done,charted:(await p.evaluate(()=>window.__vale.echo())).charted.filter(Boolean).length,beacon:B.beacon,dawn:B.dawn,mirrors:B.mirrors,xp:(await Q()).save.xp,qline:await p.$eval('#qline',e=>e.textContent)});
+// Chapter II opener: Wayfinder's lead (only after dawn) → collapsed stair → cave → puzzle wrong/right → Enna's carving (+40 once) → exit → persist
+const C=()=>p.evaluate(()=>window.__vale.cave());const xpC0=(await Q()).save.xp;
+{let c=await C();await p.evaluate((x,z)=>window.__vale.warp(x,z),c.mouth.x,c.mouth.z);await sleep(1000);await p.keyboard.press('KeyE');await sleep(700);log('stair before the lead',{toast:await toastTxt(),inCave:(await C()).inCave,stage:(await C()).stage});
+q=await Q();await p.evaluate((x,z)=>window.__vale.warp(x,z+1.5),q.wayfinder.x,q.wayfinder.z);await sleep(1200);const nW=(await Q()).near;await p.keyboard.press('KeyE');await sleep(700);const dl=[(await Q()).dlg];for(let i=0;i<5&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(350);dl.push((await Q()).dlg);}
+log('wayfinder lead',{near:nW,mentionsStair:dl.some(t=>/collapsed stair/.test(t)),stage:(await C()).stage,qline:await p.$eval('#qline',e=>e.textContent)});
+c=await C();await p.evaluate((x,z)=>window.__vale.warp(x,z),c.mouth.x,c.mouth.z);await sleep(1000);const nS=(await Q()).near;await p.keyboard.press('KeyE');await sleep(200);const fadeOn=await p.$eval('#fade',e=>e.classList.contains('on'));
+await p.waitForFunction('window.__vale.cave().inCave&&window.__vale.ready',{timeout:120000});await sleep(900);c=await C();
+log('entered cave',{near:nS,fadeOn,inCave:c.inCave,stage:c.stage,fadeOff:!(await p.$eval('#fade',e=>e.classList.contains('on'))),qline:await p.$eval('#qline',e=>e.textContent),near2:(await Q()).near});
+await p.evaluate((x,z)=>window.__vale.warp(x,z+1.2),c.doorAt.x,c.doorAt.z);await sleep(700);log('near door',(await Q()).near);await p.keyboard.press('KeyE');await sleep(500);const hint=(await Q()).dlg;await closeDlg();log('door hint',hint);
+const atB=async(i)=>{await p.evaluate((x,z)=>window.__vale.warp(x,z+1.2),c.braziers[i].x,c.braziers[i].z);await sleep(600);const n=(await Q()).near;await p.keyboard.press('KeyE');await sleep(400);return {near:n,toast:await toastTxt(),lit:(await C()).lit};};
+const w=await atB(0);await sleep(2000);log('puzzle wrong (Ford first)',{...w,litAfter:(await C()).lit,stage:(await C()).stage,xpUnchanged:(await Q()).save.xp===xpC0});
+for(const i of c.order){log('light '+c.names[i],await atB(i));}
+await p.waitForFunction('window.__vale.cave().door',{timeout:120000});c=await C();log('door open',{stage:c.stage,door:c.door,xpUnchanged:(await Q()).save.xp===xpC0});
+await p.evaluate((x,z)=>window.__vale.warp(x,z+0.6),c.carving.x,c.carving.z);await sleep(700);const nC=(await Q()).near;await p.keyboard.press('KeyE');await sleep(600);const d1=(await Q()).dlg;const cl=[d1];for(let i=0;i<6&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);if((await Q()).talking)cl.push((await Q()).dlg);}
+log('Enna carving',{near:nC,first:d1,seaLine:cl.some(t=>/sea/.test(t)),xpGain:(await Q()).save.xp-xpC0,stage:(await C()).stage,toast:await toastTxt()});
+await p.keyboard.press('KeyE');await sleep(500);await closeDlg();log('carving again (no farming)',{xpGain:(await Q()).save.xp-xpC0});
+c=await C();await p.evaluate((x,z)=>window.__vale.warp(x,z),c.exit.x,c.exit.z);await sleep(700);const nE=(await Q()).near;await p.keyboard.press('KeyE');
+await p.waitForFunction('!window.__vale.cave().inCave&&window.__vale.ready',{timeout:120000});await sleep(800);const pe=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,z:v.z};});c=await C();
+log('exited cave',{near:nE,inCave:c.inCave,distFromStair:+Math.hypot(pe.x-c.mouth.x,pe.z-c.mouth.z).toFixed(1),qline:await p.$eval('#qline',e=>e.textContent)});
+await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(1200);
+log('after reload (cave persisted)',{stage:(await C()).stage,xp:(await Q()).save.xp,inCave:(await C()).inCave});}
 // Journal / Map: open, state, input paused, close
 const ppos=()=>p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,z:v.z};});
 await p.keyboard.press('KeyJ');await sleep(500);let sh=await p.evaluate(()=>window.__vale.sheets());
-log('journal open (J)',{open:sh.journal,paused:sh.paused,seals:/Forge Heart — found/.test(sh.journalText),shrine:/Windward Blessing quickens/.test(sh.journalText),warden:/Crest claimed/.test(sh.journalText),beacon:/Dawn released/.test(sh.journalText),lore:/Sefa Lune/.test(sh.journalText),echo:/Memory of the Break heard/.test(sh.journalText),charting:/7\/7 charted/i.test(sh.journalText)});
+log('journal open (J)',{open:sh.journal,paused:sh.paused,seals:/Forge Heart — found/.test(sh.journalText),shrine:/Windward Blessing quickens/.test(sh.journalText),warden:/Crest claimed/.test(sh.journalText),beacon:/Dawn released/.test(sh.journalText),lore:/Sefa Lune/.test(sh.journalText),echo:/Memory of the Break heard/.test(sh.journalText),charting:/7\/7 charted/i.test(sh.journalText),trail:/Enna’s carved message found/.test(sh.journalText)});
 let p0=await ppos();await p.keyboard.down('KeyW');await sleep(1500);await p.keyboard.up('KeyW');let p1=await ppos();log('input paused (W held 1.5 s)',{moved:+Math.hypot(p1.x-p0.x,p1.z-p0.z).toFixed(2)});
 await p.keyboard.press('Escape');await sleep(300);log('journal closed',!(await p.evaluate(()=>window.__vale.sheets())).journal);
 await p.click('#menubtn');await sleep(300);await p.click('#mbtn');await sleep(800);sh=await p.evaluate(()=>window.__vale.sheets());

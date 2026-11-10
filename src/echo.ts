@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { fromMap, heightAt, LANDMARKS, SHRINE } from './world';
 
 /** Echo Grove (Page): five pale crystal trees east of the old crossing; a seal wakes them; +20 XP once. */
@@ -26,22 +27,74 @@ function pick(l: { x: number; z: number }) { return { x: l.x, z: l.z }; }
 export const CHART_R = 32.4;
 export const CHART_DONE = 'Every familiar landmark has a place on Enna’s map. The blank above the valley remains.';
 
-/** Five faceted crystal pines in a ring, a floating memory crystal and motes. light(i) wakes tree i. */
-export function makeEchoGrove(hasLight: boolean) {
+/** Irregular hexagonal crystal shard (prism + off-centre point), non-indexed so it shades faceted. */
+function shardGeo(r: number, h: number, rnd: () => number) {
+  const n = 6, body = h * (0.62 + rnd() * 0.18), rr = Array.from({ length: n }, () => r * (0.72 + rnd() * 0.5));
+  const ring = (y: number, k: number) => rr.map((q, i) => { const a = (i / n) * Math.PI * 2 + 0.2; return new THREE.Vector3(Math.cos(a) * q * k, y, Math.sin(a) * q * k); });
+  const b = ring(-0.15, 1), m = ring(body, 0.86 + rnd() * 0.1), tip = new THREE.Vector3((rnd() - 0.5) * r * 0.5, h, (rnd() - 0.5) * r * 0.5);
+  const v: number[] = [], push = (...ps: THREE.Vector3[]) => ps.forEach((q) => v.push(q.x, q.y, q.z));
+  for (let i = 0; i < n; i++) { const k = (i + 1) % n; push(b[i], m[i], m[k], b[i], m[k], b[k], m[i], tip, m[k]); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals(); return g;
+}
+/** Fresnel edge glow: emissive rises at grazing angles (cheap "light caught in the facets"). */
+function edgeGlow(mat: THREE.MeshStandardMaterial, k: { value: number }) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uEdge = k;
+    sh.fragmentShader = 'uniform float uEdge;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { float fr = pow(1.0 - clamp(abs(dot(normalize(vViewPosition), normal)), 0.0, 1.0), 2.5); totalEmissiveRadiance += emissive * fr * uEdge; }`);
+  };
+}
+
+/** Five crystal "trees": clusters of irregular faceted shards on dark stone-and-root bases, natural size variation.
+ *  High: MeshPhysicalMaterial (transmission + iridescence); Lite: glossy standard + fresnel edge glow. light(i) wakes tree i. */
+export function makeEchoGrove(high: boolean, rock?: { diff: THREE.Texture; nor: THREE.Texture; arm: THREE.Texture }) {
+  const hasLight = high;
   const g = new THREE.Group(); g.position.set(ECHO.x, heightAt(ECHO.x, ECHO.z), ECHO.z);
-  const trees: { mat: THREE.MeshStandardMaterial; k: number; want: number }[] = [];
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const stone = new THREE.MeshStandardMaterial(rock ? { map: rock.diff, normalMap: rock.nor, roughnessMap: rock.arm, color: '#8c857c', roughness: 1 } : { color: '#3b3632', roughness: 0.95, flatShading: true });
+  const root = new THREE.MeshStandardMaterial({ color: '#4a3a2c', roughness: 0.85 });
+  const trees: { mat: THREE.MeshStandardMaterial; edge: { value: number }; core: THREE.MeshBasicMaterial; k: number; want: number }[] = [];
+  const up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 5; i++) {
     const a = i * Math.PI * 2 / 5 + 0.3, x = Math.cos(a) * 10, z = Math.sin(a) * 10, y = heightAt(ECHO.x + x, ECHO.z + z) - g.position.y;
-    const mat = new THREE.MeshStandardMaterial({ color: '#9ccfc8', emissive: '#6ff2d8', emissiveIntensity: 0.04, roughness: 0.12, metalness: 0.35, flatShading: true, envMapIntensity: 1.6 });
-    const t = new THREE.Group(); t.position.set(x, y, z); t.rotation.y = a * 2.7; t.scale.setScalar(0.92 + (i % 3) * 0.08); g.add(t);
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.28, 2.2, 6), mat); trunk.position.y = 1.1; trunk.castShadow = true; t.add(trunk);
-    [[2.0, 2.4, 1.6], [1.6, 2.2, 3.0], [1.15, 2.0, 4.3], [0.7, 1.7, 5.4]].forEach(([r, h, yy], j) => {
-      const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 6, 1), mat); c.position.y = yy; c.rotation.y = j * 0.5; c.castShadow = true; t.add(c);
-    });
-    trees.push({ mat, k: 0, want: 0 });
+    const edge = { value: 0.25 };
+    const mat: THREE.MeshStandardMaterial = high
+      ? new THREE.MeshPhysicalMaterial({ color: '#b9efe6', emissive: '#5fe8d0', emissiveIntensity: 0.03, roughness: 0.06, metalness: 0, transmission: 0.72, thickness: 1.4, ior: 1.55, attenuationColor: new THREE.Color('#4fbfae'), attenuationDistance: 2.2, iridescence: 0.55, iridescenceIOR: 1.35, iridescenceThicknessRange: [180, 520], specularIntensity: 0.9, clearcoat: 0.4, clearcoatRoughness: 0.05, flatShading: true, envMapIntensity: 1.1 })
+      : new THREE.MeshStandardMaterial({ color: '#8fd3c8', emissive: '#5fe8d0', emissiveIntensity: 0.03, roughness: 0.14, metalness: 0.08, flatShading: true, envMapIntensity: 1.3 });
+    edgeGlow(mat, edge);
+    const core = new THREE.MeshBasicMaterial({ color: '#7ff5de', transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    const t = new THREE.Group(); t.position.set(x, y, z); t.rotation.y = rnd() * 6.28; const sc = 0.78 + rnd() * 0.5; t.scale.setScalar(sc); g.add(t);
+    // dark stone base: 3-4 jittered rocks + roots gripping the ground
+    for (let k = 0; k < 4; k++) {
+      const rg = new THREE.DodecahedronGeometry(k ? 0.45 + rnd() * 0.4 : 0.9 + rnd() * 0.3, 1); const pa = rg.attributes.position as THREE.BufferAttribute;
+      for (let v = 0; v < pa.count; v++) { const f = 0.82 + rnd() * 0.3; pa.setXYZ(v, pa.getX(v) * f, pa.getY(v) * f * 0.8, pa.getZ(v) * f); } rg.computeVertexNormals();
+      const m = new THREE.Mesh(rg, stone); const ra = k * 1.7 + rnd(); m.position.set(Math.cos(ra) * (k ? 1.0 : 0), k ? 0.05 : 0.25, Math.sin(ra) * (k ? 1.0 : 0)); m.rotation.y = rnd() * 6; m.castShadow = m.receiveShadow = true; t.add(m);
+    }
+    for (let k = 0; k < 4; k++) {
+      const ra = k * 1.57 + rnd() * 0.5, L = 1.2 + rnd() * 0.8;
+      const c = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.6, 0), new THREE.Vector3(Math.cos(ra) * L * 0.45, 0.45 + rnd() * 0.2, Math.sin(ra) * L * 0.45), new THREE.Vector3(Math.cos(ra + 0.2) * L, -0.25, Math.sin(ra + 0.2) * L)]);
+      const m = new THREE.Mesh(new THREE.TubeGeometry(c, 8, 0.07 + rnd() * 0.05, 5), root); m.castShadow = true; t.add(m);
+    }
+    // crystal cluster: tall leaning spire + shards fanning outward and upward
+    const parts: THREE.BufferGeometry[] = [], cores: THREE.BufferGeometry[] = [];
+    const nS = 9 + Math.floor(rnd() * 5);
+    for (let k = 0; k < nS; k++) {
+      const main = k === 0, hgt = main ? 5.2 + rnd() * 1.8 : 1.2 + rnd() * (k < 4 ? 3.4 : 2.0), r = main ? 0.55 : 0.18 + rnd() * 0.3;
+      const geo = shardGeo(r, hgt, rnd);
+      const tilt = main ? 0.06 + rnd() * 0.1 : 0.25 + rnd() * 0.65, az = rnd() * 6.28, axis = new THREE.Vector3(Math.cos(az), 0, Math.sin(az)).cross(up).normalize();
+      const q = new THREE.Quaternion().setFromAxisAngle(axis, tilt).multiply(new THREE.Quaternion().setFromAxisAngle(up, rnd() * 6));
+      const off = main ? 0 : 0.2 + rnd() * 0.6, h0 = main ? 0.35 : 0.3 + rnd() * (k < 5 ? 1.6 : 0.4);
+      const mtx = new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(az) * off, h0, Math.sin(az) * off), q, new THREE.Vector3(1, 1, 1));
+      geo.applyMatrix4(mtx); parts.push(geo);
+      if (k < 4) { const cg = shardGeo(r * 0.45, hgt * 0.8, rnd); cg.applyMatrix4(mtx); cores.push(cg); }
+    }
+    const cm = new THREE.Mesh(mergeGeometries(parts), mat); cm.castShadow = true; t.add(cm);
+    const cc = new THREE.Mesh(mergeGeometries(cores), core); cc.renderOrder = 2; t.add(cc);
+    trees.push({ mat, edge, core, k: 0, want: 0 });
   }
-  const memMat = new THREE.MeshStandardMaterial({ color: '#e6fff8', emissive: '#d4fff1', emissiveIntensity: 0, roughness: 0.1, flatShading: true, transparent: true, opacity: 0 });
-  const mem = new THREE.Mesh(new THREE.OctahedronGeometry(1.1, 0), memMat); mem.scale.y = 1.7; mem.position.y = 7.5; g.add(mem);
+  const memMat = new THREE.MeshStandardMaterial({ color: '#cffff3', emissive: '#7ff5de', emissiveIntensity: 0, roughness: 0.08, metalness: 0.1, flatShading: true, transparent: true, opacity: 0 });
+  const mg1 = shardGeo(0.55, 1.9, rnd), mg2 = shardGeo(0.55, 1.5, rnd); mg2.rotateX(Math.PI); mg1.translate(0, -0.1, 0); mg2.translate(0, 0.1, 0);
+  const mem = new THREE.Mesh(mergeGeometries([mg1, mg2]), memMat); mem.position.y = 7.5; g.add(mem);
   const light = hasLight ? new THREE.PointLight('#bff7ea', 0, 26, 2) : null; if (light) { light.position.y = 5; g.add(light); }
   const N = 70, pos = new Float32Array(N * 3); for (let i = 0; i < N; i++) { const a = i * 2.399, r = 3 + (i % 9) * 1.1; pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = 1 + (i % 7) * 1.1; pos[i * 3 + 2] = Math.sin(a) * r; }
   const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -51,12 +104,14 @@ export function makeEchoGrove(hasLight: boolean) {
   return {
     group: g,
     light(i: number, on = true) { trees[i].want = on ? 1 : 0; },
+    /** Transmission re-renders the opaque scene, so only enable it when the camera is near the grove (High). */
+    near(d: number) { const on = d < 42; for (const tr of trees) { const m = tr.mat as THREE.MeshPhysicalMaterial; if (m.isMeshPhysicalMaterial) { const want = on ? 0.72 : 0; if (m.transmission !== want) m.transmission = want; } } },
     memory(on: boolean, instant = false) { memWant = on ? 1 : 0; if (instant) { memK = memWant; for (const t of trees) t.k = t.want; } },
     update(t: number, dt: number) {
       let lit = 0;
-      for (const tr of trees) { tr.k += (tr.want - tr.k) * Math.min(1, dt * 4); tr.mat.emissiveIntensity = 0.04 + tr.k * (0.42 + 0.08 * Math.sin(t * 2 + lit)); lit += tr.k; }
+      for (const tr of trees) { tr.k += (tr.want - tr.k) * Math.min(1, dt * 4); const pulse = 0.08 * Math.sin(t * 2 + lit); tr.mat.emissiveIntensity = 0.03 + tr.k * (0.22 + pulse); tr.edge.value = 0.25 + tr.k * (2.2 + pulse * 4); tr.core.opacity = 0.14 + tr.k * (0.5 + pulse); lit += tr.k; }
       memK += (memWant - memK) * Math.min(1, dt * 1.5);
-      memMat.opacity = memK * 0.85; memMat.emissiveIntensity = memK * 1.6; mem.visible = memK > 0.01; mem.rotation.y = t * 0.5; mem.position.y = 7.5 + Math.sin(t) * 0.4;
+      memMat.opacity = memK * 0.85; memMat.emissiveIntensity = memK * 0.9; mem.visible = memK > 0.01; mem.rotation.y = t * 0.5; mem.position.y = 7.5 + Math.sin(t) * 0.4;
       pm.opacity = 0.15 + lit / 5 * 0.7; motes.rotation.y = t * 0.05; motes.position.y = Math.sin(t * 0.5) * 0.3;
       if (light) light.intensity = lit * 1.4 + memK * 4;
     },

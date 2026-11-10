@@ -3,14 +3,14 @@ import { SEALS, heightAt, WAYFINDER, type SealDef } from './world';
 import { fill, type Profile } from './dialogue';
 
 /** Save format (localStorage 'vale3d-save'). */
-export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean> };
+export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean };
 const KEY = 'vale3d-save';
 export const SEAL_XP = 25, QUEST_XP = 80;
 export const levelOf = (xp: number) => 1 + Math.floor(xp / 50);
 
 export function loadSave(): Save {
-  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.v === 1) return { v: 1, started: !!s.started, done: !!s.done, xp: Math.max(0, +s.xp || 0), seals: { ...s.seals } }; } catch { /* corrupt → fresh */ }
-  return { v: 1, started: false, done: false, xp: 0, seals: {} };
+  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.v === 1) return { v: 1, started: !!s.started, done: !!s.done, xp: Math.max(0, +s.xp || 0), seals: { ...s.seals }, runes: Array.isArray(s.runes) && s.runes.length === 3 ? s.runes.map((v: number) => ((v | 0) % 3 + 3) % 3) : [0, 0, 0], wind: !!s.wind }; } catch { /* corrupt → fresh */ }
+  return { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false };
 }
 export function writeSave(s: Save) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode */ } }
 export function clearSave() { try { localStorage.removeItem(KEY); } catch { /* */ } }

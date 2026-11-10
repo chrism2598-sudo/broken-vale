@@ -45,6 +45,8 @@ body.creating #joy,body.creating #pname,body.creating .hud p{display:none}
 #qline{color:#e9d6a2;font-size:14px}
 #qstats{opacity:.85;margin-top:2px}
 #compass{margin-top:4px;display:flex;align-items:center;gap:8px}
+#wind{margin-top:3px;display:flex;align-items:center;gap:8px;font-size:12px;opacity:.85}
+#warrow{display:inline-block;color:#9fd8d0;font-size:13px}
 #carrow{display:inline-block;color:#d5b977;font-size:16px;transition:transform .1s linear}
 #toast{position:fixed;left:50%;top:22%;transform:translateX(-50%);padding:10px 18px;border-radius:12px;background:rgba(10,30,34,.82);color:#f4ead2;border:1px solid rgba(214,186,120,.8);font-size:16px;opacity:0;transition:opacity .4s;pointer-events:none;white-space:nowrap}
 #toast.on{opacity:1}
@@ -79,7 +81,7 @@ body.talking #joy,body.talking #action,body.creating #quest,body.creating #menub
   <button id="fpsmenu">Show FPS</button>
   <button id="reset">Reset progress</button>
 </div>
-<div id="quest" aria-live="polite"><div id="qline"></div><div id="qstats"></div><div id="compass"><span id="carrow">➤</span><span id="ctext"></span></div></div>
+<div id="quest" aria-live="polite"><div id="qline"></div><div id="qstats"></div><div id="compass"><span id="carrow">➤</span><span id="ctext"></span></div><div id="wind"><span id="warrow">➤</span><span id="wtext"></span></div></div>
 <div id="toast" aria-live="polite"></div>
 <div id="chapter" hidden role="dialog" aria-labelledby="chtitle"><div class="chin"><div class="chk">Chapter I complete</div><h2 id="chtitle">The Four Seals</h2><p id="chtease"></p><p class="chxp" id="chxp"></p><button id="chok">Continue</button></div></div>
 <form id="create" hidden autocomplete="off">

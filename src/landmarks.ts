@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LANDMARKS, SPAWN, heightAt, type Landmark } from './world';
 import { addRimFill } from './shading';
 import type { GroundTex } from './terrain';
@@ -165,10 +165,10 @@ function makeSunspire(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): T
   const ring = [[0, 38, 18, 26], [0.8, 42, 14, 32], [1.6, 36, 16, 22], [2.4, 44, 15, 28], [3.2, 40, 17, 24], [4.0, 38, 13, 30], [4.8, 42, 15, 20], [5.6, 36, 14, 27]];
   for (const [a, r, s, h] of ring) {
     for (let k = 0; k < 3; k++) {
-      const o = new THREE.OctahedronGeometry(1, 0); o.scale(s * 0.09, h * 0.33 * (1 - k * 0.22), s * 0.09); o.rotateZ((k - 1) * 0.25);
-      o.translate(Math.sin(a) * r * 0.5 + (k - 1) * 1.6, y0 + h * 0.15, Math.cos(a) * r * 0.5); cg.push(o);
+      const H = h * 0.11 * (1 - k * 0.25); const o = new THREE.OctahedronGeometry(1, 0); o.scale(s * 0.045, H, s * 0.045); o.rotateZ((k - 1) * 0.3);
+      o.translate(Math.sin(a) * r * 0.5 + (k - 1) * 0.75, y0 + H * 0.55, Math.cos(a) * r * 0.5); cg.push(o);
     }
-    solids.push({ x: l.x + Math.sin(a) * r * 0.5, z: l.z + Math.cos(a) * r * 0.5, r: 2.4 });
+    solids.push({ x: l.x + Math.sin(a) * r * 0.5, z: l.z + Math.cos(a) * r * 0.5, r: 1.3 });
   }
   const crystals = new THREE.Mesh(mergeGeometries(cg), amber); crystals.castShadow = true; g.add(crystals);
   g.position.set(l.x, 0, l.z);
@@ -238,9 +238,9 @@ function makeVeilfall(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): {
   const face = Math.atan2(SPAWN.x - l.x, SPAWN.z - l.z);
   const blobs: [number, number, number, number, number, number][] = [[0, 9, -2, 15, 11, 13], [-4, 18, -4, 11, 9, 10], [5, 14, -6, 10, 10, 9], [9, 6, 4, 8, 7, 7], [-10, 6, 3, 9, 7, 8], [2, 24, -3, 9, 5, 8], [-6, 3, -12, 10, 6, 9]];
   for (const [x, y, z, sx, sy, sz] of blobs) {
-    const gm = new THREE.IcosahedronGeometry(1, 3); const p = gm.attributes.position;
+    const gm = new THREE.IcosahedronGeometry(1, 4); const p = gm.attributes.position;
     for (let i = 0; i < p.count; i++) { const v = new THREE.Vector3().fromBufferAttribute(p, i); const n = 1 + 0.18 * Math.sin(v.x * 5 + v.y * 3) * Math.sin(v.z * 4 + 1) + 0.08 * Math.sin(v.y * 11); p.setXYZ(i, v.x * sx * n, v.y * sy * n, v.z * sz * n); }
-    gm.computeVertexNormals(); b.add(rock, gm, x, y0 + y, z);
+    const sm = mergeVertices(gm.deleteAttribute('normal').deleteAttribute('uv')); sm.computeVertexNormals(); b.add(rock, sm, x, y0 + y, z); // welded → smooth shading (no facets)
   }
   const top = y0 + 29;
   b.add(sand, cyl(7.5, 7.2, 1.4, 32), 0, top - 1, -3);
@@ -253,8 +253,7 @@ function makeVeilfall(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): {
   // Detail pass: entablature + base steps on the rotunda, a carved stair up the bluff's flank, boulders ringing the pool.
   b.add(sand, new THREE.TorusGeometry(10.6 * sc, 0.28, 6, 40).rotateX(Math.PI / 2), 0, top + (49.6 - 37) * sc + 0.2, -3);
   for (let i = 0; i < 3; i++) b.add(sand, cyl(7.9 + i * 0.7, 7.9 + i * 0.7, 0.4, 32), 0, top - 1.4 - i * 0.4, -3);
-  for (let i = 0; i < 16; i++) { const a = -0.3 + i * 0.13, rr = 15.5 - i * 0.2; b.add(sand, box(2.6, 0.5, 1.6), Math.sin(a) * rr + 12, y0 + i * 1.8, Math.cos(a) * rr - 10, a); }
-  for (let i = 0; i < 9; i++) { const a = Math.PI * (0.15 + i * 0.09) * (i % 2 ? 1 : -1), rr = 7.2 + (i % 3) * 0.6; const gm = new THREE.IcosahedronGeometry(1, 1); gm.scale(1.2 + (i % 3) * 0.4, 0.8 + (i % 2) * 0.4, 1.1); b.add(rock, gm, Math.sin(a) * rr, y0 + 0.2, 15 + Math.cos(a) * rr); }
+  for (let i = 0; i < 9; i++) { const a = Math.PI * (0.15 + i * 0.09) * (i % 2 ? 1 : -1), rr = 7.2 + (i % 3) * 0.6; const gm = mergeVertices(new THREE.IcosahedronGeometry(1, 2).deleteAttribute('normal').deleteAttribute('uv')); gm.computeVertexNormals(); gm.scale(1.2 + (i % 3) * 0.4, 0.8 + (i % 2) * 0.4, 1.1); b.add(rock, gm, Math.sin(a) * rr, y0 + 0.2, 15 + Math.cos(a) * rr); }
   solids.push({ x: l.x, z: l.z - 2, r: 14 });
   const g = b.build(); g.rotation.y = face;
   // Lantern posts at the pool and a teal glow inside the rotunda.

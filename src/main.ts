@@ -13,6 +13,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { makeTerrain, type GroundTex } from './terrain';
 import { makeGrass } from './grass';
 import { makeLandmarks } from './landmarks';
+import { makeWindShrine, RUNES, TABLET, TABLET_LINES, SOLVED_LINES, RUNE_GLYPHS, RUNE_LABELS, SHRINE_XP, WIND_BLESS, runesMatch } from './shrine';
 import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP, CHAPTER_TEASER } from './quest';
 import { addRimFill } from './shading';
 import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
@@ -118,12 +119,13 @@ async function main() {
   const treeField = scatter(treeKinds, plantKinds, rocksG, boulderG, shrubG, fernG);
   const island = makeFloatingIsland(renderer, grass, rock, treeKinds.slice(0, 5));
   scene.add(island.group);
-  makeShrine(rock);
   // Landmarks from the Page map (keeps, Sunspire, Iron Dome, Veilfall) and the four seals.
   const landmarks = makeLandmarks({ brick, roof: roofT, sand: sandT, metal: metalT, rock }, SOLIDS, { lights: HIGH });
   scene.add(landmarks.group);
   let save = loadSave();
   const plinthMat = new THREE.MeshStandardMaterial({ color: '#cfc3a8', roughness: 0.9 }); addRimFill(plinthMat, { fill: 0.2, rim: 0.2 });
+  const shrine = makeWindShrine(rock, { runes: save.runes, solved: save.wind }); scene.add(shrine.group);
+  for (const r of RUNES) SOLIDS.push({ x: r.x, z: r.z, r: 0.9 }); SOLIDS.push({ x: TABLET.x, z: TABLET.z, r: 1.2 });
   const seals = SEALS.map((d) => { const o = new SealObject(d, plinthMat, !!save.seals[d.id]); scene.add(o.group); SOLIDS.push({ x: d.x, z: d.z, r: 1.3 }); return o; });
   const rift = makeRift();
   scene.add(rift);
@@ -240,6 +242,9 @@ async function main() {
     openDialog('Wayfinder', fillLines(WAYFINDER_LINES.complete, profile), () => { chapterEl.hidden = false; });
   }
   if (save.done || sealCount(save) === 4) island.light(true, true);
+  // Transparent effects (smoke/mist sprites, waterfalls, beams, ribbons) live on layer 1: the AO pass would otherwise
+  // draw them as opaque cards and darken a box around each one.
+  scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && !Array.isArray(m) && m.transparent && ((o as THREE.Mesh).isMesh || (o as THREE.Sprite).isSprite)) o.layers.set(1); });
   function claimSeal(o: SealObject) {
     if (o.claimed) return;
     const lv = levelOf(save.xp); o.claim(); save.seals[o.def.id] = true; save.xp += SEAL_XP; persist();
@@ -253,7 +258,19 @@ async function main() {
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 3.8) return { label: !save.started ? 'Talk · begin quest' : save.done ? 'Talk' : `Talk · seals ${sealCount(save)}/4`, act: talkWayfinder };
     for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return { label: `Claim ${o.def.name}`, act: () => claimSeal(o) };
+    if (Math.hypot(state.px - TABLET.x, state.pz - TABLET.z) < 2.8) return { label: 'Read Wind Tablet', act: () => openDialog('Wind Shrine', TABLET_LINES) };
+    for (let i = 0; i < RUNES.length; i++) if (Math.hypot(state.px - RUNES[i].x, state.pz - RUNES[i].z) < 2.6) { const v = save.runes[i]; return { label: save.wind ? `${RUNES[i].name} · ${RUNE_GLYPHS[v]}` : `Turn ${RUNES[i].name} · ${RUNE_GLYPHS[v]} ${RUNE_LABELS[v]}`, act: () => turnRune(i) }; }
     return null;
+  }
+  function turnRune(i: number) {
+    if (save.wind) { toast('The Wind Shrine already sings.', 2.5); return; }
+    const v = (save.runes[i] + 1) % 3; save.runes[i] = v;
+    if (runesMatch(save.runes)) {
+      const lv = levelOf(save.xp); save.wind = true; save.xp += SHRINE_XP; persist();
+      shrine.setRune(i, v, false); shrine.awaken();
+      toast(`Wind Shrine wakes! +${SHRINE_XP} XP · Windward Blessing${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 5);
+      openDialog('Wind Shrine', SOLVED_LINES);
+    } else { persist(); shrine.setRune(i, v, true); toast(`${RUNES[i].name} → ${RUNE_GLYPHS[v]} ${RUNE_LABELS[v]} · not yet`, 2.2); }
   }
   function interact() { if (creating || cine || !chapterEl.hidden) return; if (talking) { advance(); return; } nearestInteract()?.act(); }
   function talk() { interact(); }
@@ -271,6 +288,7 @@ async function main() {
     setTimeout(() => { resetBtn.textContent = 'Reset progress'; resetBtn.classList.remove('warn'); }, 3500);
   };
   // HUD: quest tracker + compass.
+  const wArrow = document.getElementById('warrow')!, wText = document.getElementById('wtext')!;
   const qline = document.getElementById('qline')!, qstats = document.getElementById('qstats')!, carrow = document.getElementById('carrow')!, ctext = document.getElementById('ctext')!;
   let hudT = 0;
   function updateHud(dt: number) {
@@ -285,6 +303,11 @@ async function main() {
     const sx = dx * rx + dz * rz, sy = dx * fx + dz * fz;
     carrow.style.transform = `rotate(${(Math.atan2(-sy, sx) * 180 / Math.PI).toFixed(0)}deg)`;
     ctext.textContent = save.done && dist < 6 ? 'Explore freely' : `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}`;
+    // Optional Wind Shrine locator line.
+    { const ws = { x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z }; const ddx = ws.x - state.px, ddz = ws.z - state.pz, dd = Math.hypot(ddx, ddz);
+      const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
+      wArrow.style.transform = `rotate(${(Math.atan2(-wy, wx) * 180 / Math.PI).toFixed(0)}deg)`; wArrow.style.visibility = save.wind ? 'hidden' : 'visible';
+      wText.textContent = save.wind ? 'Wind Shrine awake · Windward Blessing +15%' : `Wind Shrine (optional) · ${save.runes.map((v) => RUNE_GLYPHS[v]).join(' ')} · ${dd < 18 ? 'here' : Math.round(dd) + ' m'}`; }
     const it = talking || cine ? null : nearestInteract();
     actBtn.hidden = !it; if (it) actBtn.textContent = it.label;
     document.getElementById('hint')!.textContent = it ? `E / Action: ${it.label}` : 'Drag to look · WASD / stick to move · Shift walks';
@@ -344,6 +367,7 @@ async function main() {
     let mag = Math.min(1, Math.hypot(ix, iz)); if (mag > 0) { const l = Math.hypot(ix, iz); ix /= l; iz /= l; }
     let target = mag * (keys.ShiftLeft || keys.ShiftRight ? 1.9 : 5.6);
     if (stick.id >= 0 && Math.hypot(stick.x, stick.y) > 0.12) { ix = stick.x; iz = stick.y; mag = Math.min(1, Math.hypot(ix, iz)); target = mag < 0.7 ? 1.9 * mag / 0.7 : 1.9 + (mag - 0.7) / 0.3 * 3.7; }
+    if (save.wind) target *= WIND_BLESS; // Windward Blessing
     state.speed += (target - state.speed) * Math.min(1, dt * (target > state.speed ? 4 : 7));
     if (mag > 0.05) {
       const s = Math.sin(state.yaw), c = Math.cos(state.yaw);
@@ -405,7 +429,7 @@ async function main() {
     for (const gf of [grassField, grassFar]) { gf.uniforms.uTime.value = t; gf.uniforms.uPlayer.value.set(state.px, gy, state.pz); }
     water.update(t);
     (rift.material as THREE.ShaderMaterial).uniforms.uTime.value = t; foliageUniforms.uTime.value = t;
-    island.update(t, lastDt); landmarks.update(t); for (const o of seals) o.update(t, lastDt);
+    island.update(t, lastDt); landmarks.update(t); shrine.update(t, lastDt); for (const o of seals) o.update(t, lastDt);
     wayfinder.root.updateMatrixWorld(true); handBone.getWorldPosition(handPos); staff.update(t, handPos, wayfinder.root.rotation.y);
     vignette.uniforms.uTime.value = t % 100;
   }
@@ -451,11 +475,13 @@ async function main() {
       if (name === 'landmark') { const l = LANDMARKS[0]; const dx = SPAWN.x - l.x, dz = SPAWN.z - l.z, d = Math.hypot(dx, dz); state.px = l.x + dx / d * 44; state.pz = l.z + dz / d * 44; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.12; state.pitch = -0.1; state.dist = 6.5; }
       if (name === 'dialog') { state.px = WAYFINDER.x + 0.6; state.pz = WAYFINDER.z + 2.4; state.facing = Math.PI; state.yaw = 0.55; state.pitch = 0.12; state.dist = 4.6; }
       if (name === 'seal') { const d = SEALS[0]; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4 + 0.15; state.pitch = 0.05; state.dist = 12; }
-      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true } }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
-      if (name === 'sunspire' || name === 'dome') { const l = LANDMARKS.find((x) => x.id === name)!; const rot = name === 'sunspire' ? 0.55 : 0, dx0 = SPAWN.x - l.x, dz0 = SPAWN.z - l.z, dx = dx0 * Math.cos(rot) + dz0 * Math.sin(rot), dz = -dx0 * Math.sin(rot) + dz0 * Math.cos(rot), d = Math.hypot(dx, dz), off = name === 'dome' ? 36 : 40; state.px = l.x + dx / d * off; state.pz = l.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.1; state.pitch = name === 'dome' ? 0.02 : -0.05; state.dist = 6.5; }
+      if (name === 'shrine' || name === 'shrine-awake') { state.px = TABLET.x + 2.2; state.pz = TABLET.z + 13; state.facing = Math.PI; state.yaw = 0.16; state.pitch = 0.06; state.dist = 12; }
+      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true }, runes: [0, 0, 0], wind: false }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
+      if (name === 'sunspire' || name === 'dome' || name === 'veilfall') { const l = LANDMARKS.find((x) => x.id === name)!; const rot = name === 'sunspire' ? 0.55 : name === 'veilfall' ? -0.3 : 0, dx0 = SPAWN.x - l.x, dz0 = SPAWN.z - l.z, dx = dx0 * Math.cos(rot) + dz0 * Math.sin(rot), dz = -dx0 * Math.sin(rot) + dz0 * Math.cos(rot), d = Math.hypot(dx, dz), off = name === 'dome' ? 36 : name === 'veilfall' ? 40 : 40; state.px = l.x + dx / d * off; state.pz = l.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.1; state.pitch = name === 'dome' ? 0.02 : name === 'veilfall' ? -0.3 : -0.05; state.dist = 6.5; }
       if (name === 'run') { keys.KeyW = true; }
       camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30);
-      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {} }; interact(); }
+      if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false }; interact(); }
+      if (name === 'shrine-awake') { save.runes = [1, 0, 2]; save.wind = true; for (let i = 0; i < 3; i++) shrine.setRune(i, save.runes[i], false); shrine.awaken(true); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); }
       if (name === 'beam') { interact(); for (let i = 0; i < 50; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); if (cine) cine.hold = cine.dur * 0.6; for (let i = 0; i < 130; i++) update(1 / 30, clock.elapsedTime + 5 + i / 30); }
       if (name === 'seal') { save.started = true; interact(); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); hudT = 0; updateHud(0); }
     },
@@ -466,6 +492,7 @@ async function main() {
     warp(x: number, z: number) { state.px = x; state.pz = z; snapCam = true; },
     interact() { interact(); },
     advance() { if (talking) advance(); },
+    runes: RUNES.map((r) => ({ x: r.x, z: r.z })), tablet: TABLET, speedMul: () => (save.wind ? WIND_BLESS : 1),
     quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
     debug: { scene, camera, renderer, get player() { return player.root; }, wayfinder: wayfinder.root },
   };
@@ -565,8 +592,8 @@ function prep(g: GLTF, cast = true): THREE.Object3D {
 }
 function okSpot(x: number, z: number, clearPath = 2.2, clearCreek = 2): boolean {
   if (pathMask(x, z) > 0.05 || Math.abs(x - creekX(z)) < creekHalf(z) + clearCreek) return false;
-  if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < 6 || Math.hypot(x - SPAWN.x, z - SPAWN.z - 6) < 6 || Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 3 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 9) return false;
-  for (const l of LANDMARKS) if (Math.hypot(x - l.x, z - l.z) < l.r * 1.25) return false;
+  if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < 6 || Math.hypot(x - SPAWN.x, z - SPAWN.z - 6) < 6 || Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 3 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 20) return false;
+  for (const l of LANDMARKS) if (Math.hypot(x - l.x, z - l.z) < l.r * (l.id === 'veilfall' ? 1.7 : 1.25)) return false;
   for (const d of SEALS) if (Math.hypot(x - d.x, z - d.z) < 7) return false;
   void clearPath; return true;
 }
@@ -619,7 +646,7 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
     const kindRoll = r(); const k = kindRoll < 0.45 ? (r() < 0.5 ? 0 : 1) : kindRoll < 0.8 ? (r() < 0.5 ? 2 : 3) : kindRoll < 0.95 ? 4 : 5;
     for (let j = 0; j < 3; j++) {
       const x = px + (r() - 0.5) * 2.5, z = pz + (r() - 0.5) * 2.5;
-      if (pathMask(x, z) > 0.15 || Math.abs(x - creekX(z)) < creekHalf(z) + 0.8 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 6) continue;
+      if (pathMask(x, z) > 0.15 || Math.abs(x - creekX(z)) < creekHalf(z) + 0.8 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 18) continue;
       const s = k <= 1 ? 0.16 + r() * 0.1 : k === 5 ? 0.35 + r() * 0.2 : 0.14 + r() * 0.08;
       flora[k].push([x, heightAt(x, z) - 0.02, z, s, r() * 6.28]);
     }
@@ -637,21 +664,6 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
   for (let i = 0; i < 9; i++) { const a = r() * 6.28, d = 16 + r() * 70, x = Math.cos(a) * d, z = Math.sin(a) * d - 15; if (!okSpot(x, z)) continue; const s = 0.6 + r() * 0.9; place(boulder, x, z, s, r() * 6.28, 0.3); SOLIDS.push({ x, z, r: 1.4 * s }); }
   for (let i = 0; i < 60; i++) { const a = r() * 6.28, d = 8 + r() * 80, x = Math.cos(a) * d, z = Math.sin(a) * d - 8; if (!okSpot(x, z)) continue; place(shrub, x, z, 0.7 + r() * 0.8, r() * 6.28); }
   for (let i = 0; i < 90; i++) { const z = -90 + r() * 170, side = r() < 0.5 ? -1 : 1, x = creekX(z) + side * (creekHalf(z) + 1.2 + r() * 3.5); place(fern, x, z, 0.8 + r() * 0.9, r() * 6.28); }
-}
-function makeShrine(rock: GroundTex) {
-  // Wind Shrine stand-in on its terrace: warm-stone drum on four flared pillars with a gilded dome.
-  const stone = new THREE.MeshStandardMaterial({ map: rock.diff, normalMap: rock.nor, roughnessMap: rock.arm, color: '#e8d6b2', roughness: 1 });
-  const gold = new THREE.MeshStandardMaterial({ color: '#c99a45', metalness: 0.85, roughness: 0.32 });
-  const g = new THREE.Group(); const y0 = heightAt(SHRINE.x, SHRINE.z) - 0.2;
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(6, 6.6, 0.8, 40), stone); base.position.y = 0.4; g.add(base);
-  for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2; const p = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.75, 6.2, 16), stone); p.position.set(Math.cos(a) * 3.2, 3.8, Math.sin(a) * 3.2); p.rotation.z = Math.cos(a) * 0.12; p.rotation.x = -Math.sin(a) * 0.12; g.add(p); }
-  const drumPts = [[2.6, 0], [3.0, 0.4], [3.0, 0.8], [2.5, 1.1], [2.35, 3.0], [2.9, 3.3], [2.9, 3.8], [2.4, 4.0]].map(([x, y]) => new THREE.Vector2(x, y));
-  const drum = new THREE.Mesh(new THREE.LatheGeometry(drumPts, 40), stone); drum.position.y = 6.6; g.add(drum);
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(2.4, 40, 16, 0, Math.PI * 2, 0, Math.PI / 2), gold); dome.position.y = 10.6; g.add(dome);
-  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.8, 12), gold); fin.position.y = 13.7; g.add(fin);
-  g.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = m.receiveShadow = true; } });
-  g.position.set(SHRINE.x, y0, SHRINE.z);
-  scene.add(g);
 }
 function makeRift() {
   // Sky rift: a soft violet/teal glow tear in the north-east sky (additive, unaffected by fog).

@@ -81,3 +81,11 @@ Beacon and the sea. Headless QA: `node tools/qa-run.cjs` plays the full four-sea
 
 Performance: grass uses a dense near disc plus a sparse far ring and is excluded from the AO pass; AO and the creek
 mirror cull beyond 110 m / 150 m; small flora skips the mirror. Typical triangles: High ≈ 2.7–2.9M, Lite ≈ 0.6M.
+
+## Wind Shrine (optional, Milestone 6)
+
+North-west of spawn, past the creek path. Read the **Wind Tablet** (E / Action), then turn the three mossy runes
+(each cycles ○ Still → ▲ Rise → ✕ Gale). Clue: *West must Rise ▲ · North stays Still ○ · East calls the Gale ✕*.
+Wrong combinations just say "not yet" (0 XP). Solving wakes the orrery (spinning gilded rings, glowing heart-stone,
+wind ribbons) for a one-time **+35 XP** and the **Windward Blessing** (+15% move speed). Rune states and the blessing
+are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker has a Wind Shrine locator line.

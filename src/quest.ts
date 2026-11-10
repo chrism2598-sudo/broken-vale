@@ -28,7 +28,7 @@ export const WAYFINDER_LINES = {
     'Pale Keep to the north-west, Azure Keep to the north-east; the Sunspire and the Iron Dome lie south. Wade the creek where it runs shallow.',
   ],
   complete: [
-    'All four seals — the wild vale stirs once more!',
+    'Do you see it, {name}? The Hollow Beacon answers — all four seals burn, and the wild vale stirs once more!',
     'The Hollow Beacon on the floating isle still keeps an unspent morning. That road is for another day, {name}.',
     'You are a Vale Walker. +80 XP',
   ],
@@ -55,11 +55,11 @@ export class SealObject {
     this.colMat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
       uniforms: { uTime: { value: 0 }, uFade: { value: 0 }, uCol: { value: col } },
-      vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader: `uniform float uTime,uFade;uniform vec3 uCol;varying vec2 vUv;
-        void main(){float edge=pow(sin(vUv.x*3.14159),2.);float top=1.-smoothstep(.55,1.,vUv.y);
+      vertexShader: 'varying vec2 vUv;varying float vNear;void main(){vUv=uv;vec3 c=(modelMatrix*vec4(0.,0.,0.,1.)).xyz;vNear=smoothstep(5.,26.,length(cameraPosition.xz-c.xz));gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+      fragmentShader: `uniform float uTime,uFade;uniform vec3 uCol;varying vec2 vUv;varying float vNear;
+        void main(){float edge=sin(vUv.x*3.14159);edge*=edge;float top=1.-smoothstep(.55,1.,vUv.y);
           float flow=.75+.25*sin(vUv.y*40.-uTime*3.+vUv.x*6.28);
-          gl_FragColor=vec4((uCol*.8+vec3(.25))*edge*top*flow*uFade*.5,1.);}`,
+          gl_FragColor=vec4((uCol*.8+vec3(.25))*edge*top*flow*uFade*.5*(.06+.94*vNear),1.);}`,
     });
     this.column = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.8, 160, 20, 1, true), this.colMat);
     this.column.position.y = 80; this.column.frustumCulled = false; this.column.renderOrder = 2;
@@ -86,3 +86,6 @@ export function nextTarget(s: Save): { name: string; x: number; z: number } {
 export function fillLines(lines: string[], p: Profile, extra: Record<string, string | number> = {}): string[] {
   return lines.map((l) => fill(l.replace(/\{(\w+)\}/g, (m, k: string) => (k in extra ? String(extra[k]) : m)), p));
 }
+
+/** Chapter card copy (teaser drawn from the Page's Hollow Beacon ending). */
+export const CHAPTER_TEASER = 'Above the vale the Hollow Beacon has woken, keeping an unspent morning. Far beyond the root-hung islands, a second seam answers — not in the sky, but beneath the sea.';

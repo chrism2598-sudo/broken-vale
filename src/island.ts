@@ -12,7 +12,7 @@ function noise3(x: number, y: number, z: number) {
 }
 
 /** The floating island: grassy top, jagged rock underside, trees, a ribbon waterfall and a glowing rift shard. */
-export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundTex, rock: GroundTex, trees: Kind[]): { group: THREE.Group; update: (t: number) => void } {
+export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundTex, rock: GroundTex, trees: Kind[]): { group: THREE.Group; update: (t: number, dt?: number) => void; light: (on: boolean, instant?: boolean) => void; beaconWorld: () => THREE.Vector3 } {
   const g = new THREE.Group(); g.position.copy(ISLAND_POS); g.rotation.set(-0.03, 0, 0.1); // tip the top toward spawn so it reads from the meadow
   const R = 24, r = rng(5);
   // Top: a slightly domed disc with a wavy rim.
@@ -49,11 +49,11 @@ export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundT
   const rockMat = new THREE.MeshStandardMaterial({ map: rmaps[0], normalMap: rmaps[1], aoMap: rmaps[2], roughnessMap: rmaps[2], color: '#e9dcc6', roughness: 1, envMapIntensity: 1.3 });
   addRimFill(rockMat, { fill: 0.55, rim: 0.5, sky: '#e8e4da', ground: '#5a4a72', rimColor: '#d9c9ff' });
   const underMesh = new THREE.Mesh(ug, rockMat); g.add(underMesh);
-  // Satellite rocks.
-  for (let i = 0; i < 7; i++) {
-    const s = 1.5 + r() * 3.5; const d = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 1), rockMat);
-    const a = r() * Math.PI * 2, dd = R * (1.15 + r() * 0.6);
-    d.position.set(Math.cos(a) * dd, -4 - r() * 18, Math.sin(a) * dd); d.scale.y = 1.4; d.rotation.set(r() * 3, r() * 3, r() * 3); d.userData.bob = r() * 6;
+  // Satellite rocks: kept tight under the rim so none reads as a lone stone floating off in the sky.
+  for (let i = 0; i < 6; i++) {
+    const s = 1.2 + r() * 2.2; const d = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 1), rockMat);
+    const a = r() * Math.PI * 2, dd = R * (0.9 + r() * 0.22);
+    d.position.set(Math.cos(a) * dd, -3 - r() * 6, Math.sin(a) * dd); d.scale.y = 1.4; d.rotation.set(r() * 3, r() * 3, r() * 3); d.userData.bob = r() * 6;
     g.add(d);
   }
   // Trees on top (a couple autumn-gold).
@@ -95,9 +95,33 @@ export function makeFloatingIsland(renderer: THREE.WebGLRenderer, grass: GroundT
   }
   const lintel = new THREE.TorusGeometry(3, 0.32, 6, 24, Math.PI * 1.1); lintel.rotateX(Math.PI / 2); lintel.translate(-3, 9.6, 2); bGeos.push(lintel);
   const beacon = new THREE.Mesh(mergeGeometries(bGeos.map((x) => x.toNonIndexed())), bMat); beacon.castShadow = true; g.add(beacon);
+  // Awakened beacon: a violet core beam wrapped in a gold sheath, plus a flare ring — hidden until the four seals burn.
+  const beamMat = (c0: string, c1: string, k: number) => new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+    uniforms: { uTime: { value: 0 }, uFade: { value: 0 }, uA: { value: new THREE.Color(c0) }, uB: { value: new THREE.Color(c1) } },
+    vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader: `uniform float uTime,uFade;uniform vec3 uA,uB;varying vec2 vUv;
+      void main(){float e=sin(vUv.x*3.14159);e*=e;float top=1.-smoothstep(.45,1.,vUv.y);float fl=.7+.3*sin(vUv.y*60.-uTime*4.+vUv.x*12.57);
+        gl_FragColor=vec4(mix(uA,uB,vUv.y)*e*top*fl*uFade*${k.toFixed(2)},1.);}`,
+  });
+  const core = beamMat('#b48cff', '#7a4cff', 1.1), sheath = beamMat('#ffcf70', '#c9a24c', 0.38);
+  const beamCore = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.0, 220, 20, 1, true), core); beamCore.position.set(-3, 9 + 110, 2);
+  const beamSheath = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 3.4, 220, 24, 1, true), sheath); beamSheath.position.copy(beamCore.position);
+  const flare = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.18, 6, 48).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffe0a0', toneMapped: false, transparent: true, opacity: 0 }));
+  flare.position.set(-3, 9.6, 2);
+  for (const m of [beamCore, beamSheath]) { m.frustumCulled = false; m.renderOrder = 3; m.visible = false; }
+  g.add(beamCore, beamSheath, flare);
+  let lit = false, fade = 0;
   return {
     group: g,
-    update(t: number) {
+    light(on: boolean, instant = false) { lit = on; if (instant) fade = on ? 1 : 0; },
+    beaconWorld() { return shard.getWorldPosition(new THREE.Vector3()); },
+    update(t: number, dt = 1 / 60) {
+      fade = THREE.MathUtils.clamp(fade + (lit ? dt / 2.2 : -dt), 0, 1);
+      for (const m of [core, sheath]) { m.uniforms.uFade.value = fade; m.uniforms.uTime.value = t; }
+      beamCore.visible = beamSheath.visible = fade > 0.001;
+      (flare.material as THREE.MeshBasicMaterial).opacity = fade * (0.55 + 0.25 * Math.sin(t * 2.2)); flare.scale.setScalar(1 + 0.08 * Math.sin(t * 1.4));
+      shardMat.emissive.set(lit ? '#b98cff' : '#8e5cff'); shardMat.emissiveIntensity = 2.4 + fade * 0.8;
       g.position.y = ISLAND_POS.y + Math.sin(t * 0.25) * 0.8; g.rotation.y = Math.sin(t * 0.05) * 0.03;
       shard.rotation.y = t * 0.4; shard.position.y = 7.5 + Math.sin(t * 0.9) * 0.4;
       wfMat.uniforms.uTime.value = t;

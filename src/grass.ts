@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { heightAt, normalAt, pathMask, creekX, creekHalf, rng, SHRINE, fbm } from './world';
 
 /** Instanced grass clumps (tapered curved blades) with GPU wind sway and distance fade. */
-export function makeGrass(count: number, radius: number, bladesPerClump: number, seg = 4): { mesh: THREE.InstancedMesh; uniforms: { uTime: THREE.IUniform; uPlayer: THREE.IUniform }; center: THREE.Vector2; recenter: (x: number, z: number) => void } {
+export function makeGrass(count: number, radius: number, bladesPerClump: number, seg = 4, inner = 0): { mesh: THREE.InstancedMesh; uniforms: { uTime: THREE.IUniform; uPlayer: THREE.IUniform }; center: THREE.Vector2; recenter: (x: number, z: number) => void } {
   const r = rng(7); void rng;
   const pos: number[] = [], col: number[] = [], bend: number[] = [], idx: number[] = [];
   let v = 0;
   for (let b = 0; b < bladesPerClump; b++) {
-    const a = r() * Math.PI, ox = (r() - 0.5) * 0.35, oz = (r() - 0.5) * 0.35, h = 0.2 + r() * 0.3, w = 0.022 + r() * 0.018, lean = (r() - 0.5) * 0.25;
+    const wide = inner > 0 ? 1.7 : 1; const a = r() * Math.PI, ox = (r() - 0.5) * 0.35, oz = (r() - 0.5) * 0.35, h = 0.2 + r() * 0.3, w = (0.022 + r() * 0.018) * wide, lean = (r() - 0.5) * 0.25;
     const ca = Math.cos(a), sa = Math.sin(a);
     for (let s = 0; s <= seg; s++) {
       const t = s / seg, ww = w * (1 - t * 0.92), y = h * t, f = lean * t * t;
@@ -37,7 +37,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
   vec2 away=iw.xz-uPlayer.xz; float pd=length(away); float push=(1.-smoothstep(.3,1.3,pd))*.35;
   float b2=bend*bend; transformed.x+=sway*b2; transformed.z+=sway*.45*b2;
   transformed.xz+=normalize(away+1e-4)*push*b2; transformed.y-=push*b2*.4;
-  float cd=length(cameraPosition.xz-iw.xz); transformed*=1.-smoothstep(${(radius * 0.72).toFixed(1)},${radius.toFixed(1)},cd);
+  float cd=length(cameraPosition.xz-iw.xz); transformed*=(1.-smoothstep(${(radius * 0.72).toFixed(1)},${radius.toFixed(1)},cd))${inner > 0 ? `*smoothstep(${(inner - 4).toFixed(1)},${inner.toFixed(1)},cd)` : ''};
   vBend=bend;`)
       .replace('#include <beginnormal_vertex>', 'vec3 objectNormal=vec3(0.,1.,0.);');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vBend;')
@@ -53,13 +53,13 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
     center.set(cx, cz);
     let n = 0;
     const cell = 2, R = radius, c0x = Math.floor((cx - R) / cell), c1x = Math.floor((cx + R) / cell), c0z = Math.floor((cz - R) / cell), c1z = Math.floor((cz + R) / cell);
-    const per = Math.max(1, Math.round(count / (Math.PI * R * R / (cell * cell))));
+    const ri = Math.max(0, inner - 10), per = Math.max(1, Math.round(count / (Math.PI * (R * R - ri * ri) / (cell * cell))));
     for (let gx = c0x; gx <= c1x && n < count; gx++) for (let gz = c0z; gz <= c1z && n < count; gz++) {
       const rr = rng((gx * 73856093) ^ (gz * 19349663));
       for (let k = 0; k < per && n < count; k++) {
         const x = (gx + rr()) * cell, z = (gz + rr()) * cell;
         const rot = rr() * Math.PI * 2, sc0 = rr(), sc1 = rr(), t0 = rr(), t1 = rr(), t2 = rr();
-        if (Math.hypot(x - cx, z - cz) > R) continue;
+        const dd = Math.hypot(x - cx, z - cz); if (dd > R || dd < inner - 10) continue;
         const pm = pathMask(x, z); if (pm > 0.42) continue;
         const dc = Math.abs(x - creekX(z)); if (dc < creekHalf(z) + 0.6) continue;
         if (Math.hypot(x - SHRINE.x, z - SHRINE.z) < 7) continue;

@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
 <title>The Broken Vale — Vertical Slice</title>
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:#9fb6c8;font-family:Georgia,'Times New Roman',serif;touch-action:none;-webkit-user-select:none;user-select:none}
 #app{position:fixed;inset:0}
@@ -54,6 +55,16 @@ body.creating #joy,body.creating #pname,body.creating .hud p{display:none}
 #dnext{float:right;margin-top:8px;min-height:44px;min-width:110px;border-radius:10px;font:16px Georgia,serif;background:linear-gradient(#e2c98a,#c9a95e);color:#1d1a12;border:1px solid #f0dca4}
 #action{position:fixed;z-index:16;right:max(22px,env(safe-area-inset-right));bottom:calc(max(22px,env(safe-area-inset-bottom)) + 48px);min-width:88px;min-height:88px;max-width:46vw;padding:0 16px;border-radius:44px;background:radial-gradient(circle at 40% 35%,#e9d39a,#c9a95e);color:#1d1a12;border:2px solid #f6e6b8;font:600 16px Georgia,serif;box-shadow:0 6px 18px rgba(0,0,0,.3)}
 #action[hidden]{display:none}
+#chapter{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(20,10,40,.35),rgba(5,12,16,.72));animation:chin 1.2s ease}
+#chapter[hidden]{display:none}
+.chin{width:min(520px,calc(100vw - 32px));box-sizing:border-box;padding:22px 22px 18px;text-align:center;border-radius:16px;background:rgba(10,30,34,.94);border:1px solid #d5b977;box-shadow:0 0 40px rgba(170,120,255,.35);color:#f4ead2}
+.chk{color:#d5b977;letter-spacing:.22em;text-transform:uppercase;font-size:12px}
+.chin h2{margin:6px 0 10px;font-weight:400;font-size:28px;color:#f6e7bd}
+#chtease{font-style:italic;line-height:1.5;margin:0 0 10px;color:#e6dcf7}
+.chxp{font-size:13px;opacity:.85;margin:0 0 14px}
+#chok{min-height:46px;min-width:150px;border-radius:10px;font:16px Georgia,serif;background:linear-gradient(#e2c98a,#c9a95e);color:#1d1a12;border:1px solid #f0dca4}
+@keyframes chin{from{opacity:0}to{opacity:1}}
+body.cine #quest,body.cine #menubtn,body.cine #joy,body.cine #action,body.cine #hint{opacity:0;pointer-events:none;transition:opacity .6s}
 body.talking #joy,body.talking #action,body.creating #quest,body.creating #menubtn,body.creating #action{display:none}
 @media (max-width:520px){#quest{font-size:12px;max-width:58vw}#dtxt{font-size:16px}}
 </style>
@@ -70,6 +81,7 @@ body.talking #joy,body.talking #action,body.creating #quest,body.creating #menub
 </div>
 <div id="quest" aria-live="polite"><div id="qline"></div><div id="qstats"></div><div id="compass"><span id="carrow">➤</span><span id="ctext"></span></div></div>
 <div id="toast" aria-live="polite"></div>
+<div id="chapter" hidden role="dialog" aria-labelledby="chtitle"><div class="chin"><div class="chk">Chapter I complete</div><h2 id="chtitle">The Four Seals</h2><p id="chtease"></p><p class="chxp" id="chxp"></p><button id="chok">Continue</button></div></div>
 <form id="create" hidden autocomplete="off">
   <h2>Who walks the Vale?</h2>
   <p class="sub" id="csub">Seventeen, Enna’s daughter. Choose a first name — Marr is your family’s.</p>

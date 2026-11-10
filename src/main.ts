@@ -13,7 +13,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { makeTerrain, type GroundTex } from './terrain';
 import { makeGrass } from './grass';
 import { makeLandmarks } from './landmarks';
-import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP } from './quest';
+import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP, CHAPTER_TEASER } from './quest';
 import { addRimFill } from './shading';
 import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
 import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, type Kind, type TreeInst } from './nature';
@@ -83,6 +83,11 @@ async function main() {
   ]);
   // HDRI image-based lighting + sky background.
   hdr.mapping = THREE.EquirectangularReflectionMapping;
+  // Clamp the HDRI's sun core: its raw radiance overflows half-float in the bloom chain (a black dot + full-screen glare when looking at it).
+  { const d = hdr.image.data as Uint16Array | Float32Array, half = d instanceof Uint16Array, cap = 48;
+    if (half) { const capH = THREE.DataUtils.toHalfFloat(cap); for (let i = 0; i < d.length; i++) if ((i & 3) !== 3 && (d[i] & 0x7fff) > capH) d[i] = capH; }
+    else for (let i = 0; i < d.length; i++) if ((i & 3) !== 3 && d[i] > cap) d[i] = cap;
+    hdr.needsUpdate = true; }
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromEquirectangular(hdr).texture;
   scene.environmentIntensity = 0.85;
@@ -91,18 +96,23 @@ async function main() {
   scene.backgroundRotation.y = scene.environmentRotation.y = 1.2;
 
   // Terrain.
-  const terrain = makeTerrain(760, HIGH ? 448 : 256, { grass, path, rock, bed });
+  const terrain = makeTerrain(760, HIGH ? 320 : 256, { grass, path, rock, bed });
   scene.add(terrain);
 
   // Grass.
-  const grassField = makeGrass(HIGH ? 52000 : 15000, HIGH ? 34 : 22, HIGH ? 5 : 4, 3);
-  scene.add(grassField.mesh);
+  // Grass LOD: a dense near disc of curved blades plus a sparse ring of simple wide blades further out.
+  // (Lite keeps one mid-density disc of 2-segment blades: the sparse ring read as bare ground on small screens.)
+  const grassField = makeGrass(HIGH ? 20000 : 15000, HIGH ? 20 : 22, HIGH ? 5 : 4, HIGH ? 3 : 2);
+  const grassFar = makeGrass(HIGH ? 16000 : 1, HIGH ? 36 : 1, 3, 1, HIGH ? 18 : 0.5); grassFar.mesh.visible = HIGH;
+  scene.add(grassField.mesh, grassFar.mesh); grassFar.mesh.layers.set(1);
   // Grass lives on layer 1: the main camera sees it, the water's mirror camera (layer 0 only) skips it.
   grassField.mesh.layers.set(1); camera.layers.enable(1);
 
   // Creek water.
   const water = makeCreek(waterNormals);
   scene.add(water.mesh);
+  // The creek mirror only needs nearby banks, trees and sky: cull beyond 150 m during the reflection render.
+  { const ob = water.mesh.onBeforeRender.bind(water.mesh); water.mesh.onBeforeRender = (r, sc, cam, ...rest) => { const pc = cam as THREE.PerspectiveCamera; const f0 = pc.far; pc.far = 150; pc.updateProjectionMatrix(); ob(r, sc, cam, ...rest); pc.far = f0; pc.updateProjectionMatrix(); }; }
 
   const treeKinds = bakeKinds(treesG), plantKinds = bakeKinds(plantsG);
   const treeField = scatter(treeKinds, plantKinds, rocksG, boulderG, shrubG, fernG);
@@ -110,7 +120,7 @@ async function main() {
   scene.add(island.group);
   makeShrine(rock);
   // Landmarks from the Page map (keeps, Sunspire, Iron Dome, Veilfall) and the four seals.
-  const landmarks = makeLandmarks({ brick, roof: roofT, sand: sandT, metal: metalT, rock }, SOLIDS);
+  const landmarks = makeLandmarks({ brick, roof: roofT, sand: sandT, metal: metalT, rock }, SOLIDS, { lights: HIGH });
   scene.add(landmarks.group);
   let save = loadSave();
   const plinthMat = new THREE.MeshStandardMaterial({ color: '#cfc3a8', roughness: 0.9 }); addRimFill(plinthMat, { fill: 0.2, rim: 0.2 });
@@ -154,6 +164,11 @@ async function main() {
     gtao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
     gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.6, thickness: 1.2, scale: 1.0, samples: 12 });
     gtao.blendIntensity = 0.85;
+    // Keep grass (layer 1) out of the AO normal/depth pass — it is the single largest triangle cost.
+    const gRender = gtao.render.bind(gtao);
+    // AO only matters up close: also pull the far plane in to 110 m for this pass so distant trees/landmarks are culled.
+    const withFar = (far: number, fn: () => void) => { const f0 = camera.far; camera.far = far; camera.updateProjectionMatrix(); fn(); camera.far = f0; camera.updateProjectionMatrix(); };
+    gtao.render = (...args: Parameters<GTAOPass['render']>) => { camera.layers.disable(1); water.mesh.visible = false; withFar(110, () => { gtao!.pdMaterial.uniforms.cameraProjectionMatrixInverse.value.copy(camera.projectionMatrixInverse); gRender(...args); }); camera.layers.enable(1); water.mesh.visible = true; };
     composer.addPass(gtao);
     composer.addPass(new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.28, 0.6, 0.92));
     composer.addPass(new OutputPass());
@@ -192,9 +207,9 @@ async function main() {
   // ---------- dialogue, interaction, quest ----------
   const dlgEl = document.getElementById('dlg')!, dspk = document.getElementById('dspk')!, dtxt = document.getElementById('dtxt')!, dnext = document.getElementById('dnext') as HTMLButtonElement;
   const actBtn = document.getElementById('action') as HTMLButtonElement, toastEl = document.getElementById('toast')!;
-  let talking = false, dq: string[] = [], toastT = 0, lastDt = 1 / 60;
-  function openDialog(speaker: string, lines: string[]) { dq = [...lines]; dspk.textContent = speaker; talking = true; dlgEl.hidden = false; document.body.classList.add('talking'); for (const k of Object.keys(keys)) keys[k] = false; advance(); }
-  function advance() { const l = dq.shift(); if (l === undefined) { talking = false; dlgEl.hidden = true; document.body.classList.remove('talking'); return; } dtxt.textContent = l; dnext.textContent = dq.length ? 'Next ▸' : 'Close'; }
+  let talking = false, dq: string[] = [], toastT = 0, lastDt = 1 / 60, onDlgClose: (() => void) | null = null;
+  function openDialog(speaker: string, lines: string[], onClose: (() => void) | null = null) { onDlgClose = onClose; dq = [...lines]; dspk.textContent = speaker; talking = true; dlgEl.hidden = false; document.body.classList.add('talking'); for (const k of Object.keys(keys)) keys[k] = false; advance(); }
+  function advance() { const l = dq.shift(); if (l === undefined) { talking = false; dlgEl.hidden = true; document.body.classList.remove('talking'); const cb = onDlgClose; onDlgClose = null; cb?.(); return; } dtxt.textContent = l; dnext.textContent = dq.length ? 'Next ▸' : 'Close'; }
   dnext.onclick = advance;
   function toast(msg: string, secs = 3.2) { toastEl.textContent = msg; toastEl.classList.add('on'); toastT = secs; }
   const persist = () => writeSave(save);
@@ -204,16 +219,35 @@ async function main() {
     if (save.done) return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.after, profile));
     if (!save.started) { save.started = true; persist(); toast('Quest: The Four Seals'); return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.start, profile)); }
     if (n < 4) return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.progress, profile, { n }));
-    const lv = levelOf(save.xp); save.done = true; save.xp += QUEST_XP; persist();
-    toast(levelOf(save.xp) > lv ? `Seals restored · +${QUEST_XP} XP · Level ${levelOf(save.xp)}` : `Seals restored · +${QUEST_XP} XP`, 5);
-    openDialog('Wayfinder', fillLines(WAYFINDER_LINES.complete, profile));
+    startFinale();
   }
+  // ---------- Chapter I finale: beacon wakes → camera pan → Wayfinder's line → chapter card ----------
+  const chapterEl = document.getElementById('chapter')!;
+  document.getElementById('chtease')!.textContent = CHAPTER_TEASER;
+  document.getElementById('chok')!.onclick = () => { chapterEl.hidden = true; };
+  let cine: { t: number; dur: number; hold: number } | null = null;
+  function startFinale() {
+    if (cine || save.done) return;
+    island.light(true); cine = { t: 0, dur: 6.5, hold: -1 };
+    document.body.classList.add('cine'); actBtn.hidden = true;
+    for (const k of Object.keys(keys)) keys[k] = false;
+    toast('The Hollow Beacon wakes…', 3);
+  }
+  function finishFinale() {
+    cine = null; document.body.classList.remove('cine');
+    const lv = levelOf(save.xp); save.done = true; save.xp += QUEST_XP; persist();
+    document.getElementById('chxp')!.textContent = `+${QUEST_XP} XP · Vale Walker · Level ${levelOf(save.xp)}${levelOf(save.xp) > lv ? ' (up!)' : ''}`;
+    openDialog('Wayfinder', fillLines(WAYFINDER_LINES.complete, profile), () => { chapterEl.hidden = false; });
+  }
+  if (save.done || sealCount(save) === 4) island.light(true, true);
   function claimSeal(o: SealObject) {
     if (o.claimed) return;
     const lv = levelOf(save.xp); o.claim(); save.seals[o.def.id] = true; save.xp += SEAL_XP; persist();
     const n = sealCount(save);
-    toast(`${o.def.name} claimed · +${SEAL_XP} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}${n === 4 ? ' — return to the Wayfinder' : ` · ${n}/4`}`, 4);
+    toast(`${o.def.name} claimed · +${SEAL_XP} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''} · ${n}/4`, 4);
+    if (n === 4 && !save.done) finaleDelay = 1.4;
   }
+  let finaleDelay = -1;
   type Inter = { label: string; act: () => void };
   function nearestInteract(): Inter | null {
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
@@ -221,7 +255,7 @@ async function main() {
     for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return { label: `Claim ${o.def.name}`, act: () => claimSeal(o) };
     return null;
   }
-  function interact() { if (creating) return; if (talking) { advance(); return; } nearestInteract()?.act(); }
+  function interact() { if (creating || cine || !chapterEl.hidden) return; if (talking) { advance(); return; } nearestInteract()?.act(); }
   function talk() { interact(); }
   actBtn.onclick = (e) => { e.stopPropagation(); interact(); };
   addEventListener('keydown', (e) => { if (creating || (e.target as HTMLElement).tagName === 'INPUT') return; if (talking && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.preventDefault(); if (e.code === 'Escape') { dq = []; } advance(); } });
@@ -251,7 +285,7 @@ async function main() {
     const sx = dx * rx + dz * rz, sy = dx * fx + dz * fz;
     carrow.style.transform = `rotate(${(Math.atan2(-sy, sx) * 180 / Math.PI).toFixed(0)}deg)`;
     ctext.textContent = save.done && dist < 6 ? 'Explore freely' : `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}`;
-    const it = talking ? null : nearestInteract();
+    const it = talking || cine ? null : nearestInteract();
     actBtn.hidden = !it; if (it) actBtn.textContent = it.label;
     document.getElementById('hint')!.textContent = it ? `E / Action: ${it.label}` : 'Drag to look · WASD / stick to move · Shift walks';
   }
@@ -304,7 +338,7 @@ async function main() {
     lastDt = dt;
     // Input → desired velocity in camera space.
     let ix = 0, iz = 0;
-    if (talking) { for (const k of Object.keys(keys)) keys[k] = false; }
+    if (talking || cine) { for (const k of Object.keys(keys)) keys[k] = false; }
     if (keys.KeyW || keys.ArrowUp) iz -= 1; if (keys.KeyS || keys.ArrowDown) iz += 1;
     if (keys.KeyA || keys.ArrowLeft) ix -= 1; if (keys.KeyD || keys.ArrowRight) ix += 1;
     let mag = Math.min(1, Math.hypot(ix, iz)); if (mag > 0) { const l = Math.hypot(ix, iz); ix /= l; iz /= l; }
@@ -345,6 +379,18 @@ async function main() {
     const floor = heightAt(camPos.x, camPos.z) + 0.6; if (camPos.y < floor) camPos.y = floor;
     if (snapCam) { camera.position.copy(camPos); snapCam = false; } else camera.position.lerp(camPos, Math.min(1, dt * 8));
     tmp.copy(camTarget).addScaledVector(right, 0.65); tmp.y += 0.15;
+    if (finaleDelay > 0) { finaleDelay -= dt; if (finaleDelay <= 0) startFinale(); }
+    if (cine) {
+      // Pan: rise and pull back while the gaze swings from the hero to the waking beacon, hold, then return.
+      if (cine.hold < 0 || cine.t < cine.hold) cine.t += dt;
+      const u = cine.t / cine.dur, ease = (x: number) => x * x * (3 - 2 * x);
+      const k = ease(THREE.MathUtils.clamp(u / 0.35, 0, 1)) * (1 - ease(THREE.MathUtils.clamp((u - 0.82) / 0.18, 0, 1)));
+      const bw = island.beaconWorld(); bw.y += 2;
+      const dir = tmp.clone().sub(bw).setY(0).normalize();
+      const pos = camTarget.clone().addScaledVector(dir, 7).add(new THREE.Vector3(0, 1.6, 0));
+      camera.position.lerp(pos, k); tmp.lerp(bw, k);
+      if (u >= 1) finishFinale();
+    }
     camera.lookAt(tmp);
     tick(t, gy);
   }
@@ -355,11 +401,11 @@ async function main() {
     sun.target.position.copy(camTarget).addScaledVector(new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw)), SH * 0.55);
     sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 120);
     treeField.update(state.px, state.pz);
-    if (Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y) > (HIGH ? 9 : 6)) grassField.recenter(state.px, state.pz);
-    grassField.uniforms.uTime.value = t; grassField.uniforms.uPlayer.value.set(state.px, gy, state.pz);
+    if (Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y) > (HIGH ? 9 : 6)) { grassField.recenter(state.px, state.pz); grassFar.recenter(state.px, state.pz); }
+    for (const gf of [grassField, grassFar]) { gf.uniforms.uTime.value = t; gf.uniforms.uPlayer.value.set(state.px, gy, state.pz); }
     water.update(t);
     (rift.material as THREE.ShaderMaterial).uniforms.uTime.value = t; foliageUniforms.uTime.value = t;
-    island.update(t); landmarks.update(t); for (const o of seals) o.update(t, lastDt);
+    island.update(t, lastDt); landmarks.update(t); for (const o of seals) o.update(t, lastDt);
     wayfinder.root.updateMatrixWorld(true); handBone.getWorldPosition(handPos); staff.update(t, handPos, wayfinder.root.rotation.y);
     vignette.uniforms.uTime.value = t % 100;
   }
@@ -405,16 +451,23 @@ async function main() {
       if (name === 'landmark') { const l = LANDMARKS[0]; const dx = SPAWN.x - l.x, dz = SPAWN.z - l.z, d = Math.hypot(dx, dz); state.px = l.x + dx / d * 44; state.pz = l.z + dz / d * 44; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.12; state.pitch = -0.1; state.dist = 6.5; }
       if (name === 'dialog') { state.px = WAYFINDER.x + 0.6; state.pz = WAYFINDER.z + 2.4; state.facing = Math.PI; state.yaw = 0.55; state.pitch = 0.12; state.dist = 4.6; }
       if (name === 'seal') { const d = SEALS[0]; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4 + 0.15; state.pitch = 0.05; state.dist = 12; }
+      if (name === 'beam') { save = { v: 1, started: true, done: false, xp: 75, seals: { dawn: true, sun: true, tide: true } }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); const d = SEALS.find((x) => x.id === 'forge')!; state.px = d.x + 1.9; state.pz = d.z + 1.9; state.facing = Math.atan2(-1.9, -1.9); state.yaw = Math.PI / 4; state.pitch = 0.12; state.dist = 7; }
+      if (name === 'sunspire' || name === 'dome') { const l = LANDMARKS.find((x) => x.id === name)!; const rot = name === 'sunspire' ? 0.55 : 0, dx0 = SPAWN.x - l.x, dz0 = SPAWN.z - l.z, dx = dx0 * Math.cos(rot) + dz0 * Math.sin(rot), dz = -dx0 * Math.sin(rot) + dz0 * Math.cos(rot), d = Math.hypot(dx, dz), off = name === 'dome' ? 36 : 40; state.px = l.x + dx / d * off; state.pz = l.z + dz / d * off; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.1; state.pitch = name === 'dome' ? 0.02 : -0.05; state.dist = 6.5; }
       if (name === 'run') { keys.KeyW = true; }
       camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30);
       if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {} }; interact(); }
+      if (name === 'beam') { interact(); for (let i = 0; i < 50; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); if (cine) cine.hold = cine.dur * 0.6; for (let i = 0; i < 130; i++) update(1 / 30, clock.elapsedTime + 5 + i / 30); }
       if (name === 'seal') { save.started = true; interact(); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); hudT = 0; updateHud(0); }
     },
     key(code: string, down: boolean) { keys[code] = down; },
     get profile() { return profile; },
     get creating() { return creating; },
     talkLine() { return say('Wayfinder', LINES.wayfinder.greet, profile); },
-    debug: { scene, camera, get player() { return player.root; }, wayfinder: wayfinder.root },
+    warp(x: number, z: number) { state.px = x; state.pz = z; snapCam = true; },
+    interact() { interact(); },
+    advance() { if (talking) advance(); },
+    quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
+    debug: { scene, camera, renderer, get player() { return player.root; }, wayfinder: wayfinder.root },
   };
   (window as unknown as { __vale: typeof api }).__vale = api;
   document.getElementById('loading')!.remove();
@@ -555,7 +608,7 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
     addTree(pick(pines), x, z, 1.0 + r() * 0.7, r() < 0.06);
   }
   // Distance LOD: full meshes near the player under a triangle budget (~400k High / 120k Lite), impostor cards beyond.
-  const field = new TreeField(renderer, trees, treeList, SUN_DIR, { nearR: HIGH ? 60 : 38, triBudget: HIGH ? 400000 : 120000, shadowR: 0 });
+  const field = new TreeField(renderer, trees, treeList, SUN_DIR, { nearR: HIGH ? 52 : 38, triBudget: HIGH ? 300000 : 120000, shadowR: 0 });
   scene.add(field.group); field.update(SPAWN.x, SPAWN.z, true);
 
   // ---- Meadow flora: clover carpets and wildflower patches near the path (instanced). ----
@@ -576,7 +629,8 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
   const floraAll = flora.flatMap((l, k) => l.map((t) => ({ k, t, d: Math.hypot(t[0] - SPAWN.x, t[2] - SPAWN.z) }))).sort((a, b) => a.d - b.d);
   const keep: number[][][] = plants.map(() => []);
   for (const f of floraAll) { const tr = kindTris(plants[f.k]); if (floraTris + tr > floraBudget) continue; floraTris += tr; keep[f.k].push(f.t); }
-  plants.forEach((k, i) => { if (keep[i].length) scene.add(instanceKind(k, keep[i], { shadows: false })); });
+  // Small flora sits on layer 1 too: skipped by the water mirror and the AO pass.
+  plants.forEach((k, i) => { if (keep[i].length) { const o = instanceKind(k, keep[i], { shadows: false }); o.traverse((c) => c.layers.set(1)); scene.add(o); } });
   return field;
   // ---- Rocks, boulders, shrubs, ferns (Poly Haven scans). ----
   for (let i = 0; i < 26; i++) { const a = r() * 6.28, d = 10 + r() * 90, x = Math.cos(a) * d, z = Math.sin(a) * d - 10; if (!okSpot(x, z)) continue; const p = rockParts[i % rockParts.length]; const o = place(p, x, z, 1.4 + r() * 2.2, r() * 6.28, 0.25); o.rotation.x = (r() - 0.5) * 0.3; }

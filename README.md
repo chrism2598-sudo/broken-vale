@@ -72,3 +72,12 @@ arrow to the nearest unclaimed seal. The creek is shallow — you can wade acros
 
 Progress saves to `localStorage` (`vale3d-save`). **☰ Menu** has Quality, New character, Show FPS and Reset progress
 (tap twice to confirm). Dialogue: Space / Enter / E / tap **Next**; Esc closes.
+
+## Chapter I finale & performance (Milestone 5)
+
+Claiming the fourth seal wakes the **Hollow Beacon** on the floating island (violet/gold beam): the camera pans to it,
+the Wayfinder's completion line follows (+80 XP), then a **Chapter I complete** card with a teaser toward the Hollow
+Beacon and the sea. Headless QA: `node tools/qa-run.cjs` plays the full four-seal run and Menu → Reset progress.
+
+Performance: grass uses a dense near disc plus a sparse far ring and is excluded from the AO pass; AO and the creek
+mirror cull beyond 110 m / 150 m; small flora skips the mirror. Typical triangles: High ≈ 2.7–2.9M, Lite ≈ 0.6M.

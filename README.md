@@ -204,3 +204,11 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - **Phone HUD:** portrait quest panel is a compact one-line objective + XP; tap it to expand the secondary lines. Keyboard hint
   ("E / Action …") hidden on touch devices and narrow portrait.
 - **Lite coast haze:** fog density 0.005 → 0.0042 to match High (the horizon washed out on phones).
+
+## G1 — coast / cliff realism
+- **Sea stacks, boulders and cliff slopes:** triplanar Poly Haven `rock_face_03` (CC0; albedo + GL normal + ARM, WebP 1k on High,
+  512 on Lite), procedural strata bands, and a dark, glossy, algae-tinted wet foot that follows the tide and the receding high-water mark.
+- **Foam:** every rock breaking the surface (sea stacks, cave-arch flanks, each causeway stone) gets an animated foam collar in the sea
+  shader; centres/radii are measured from the real geometry at the waterline. Stone collars fade with the stone's height above water.
+- **Wet sand:** a damp band above the waterline that lags the ebb (`uWetTop` recedes ~1.2 cm/s), darker and glossier than dry sand.
+- **Causeway stones:** wider algae band with streaky variation, glossier, more and longer weed strips (16 High / 10 Lite).

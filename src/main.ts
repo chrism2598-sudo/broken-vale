@@ -328,7 +328,8 @@ async function main() {
   let inCoast = false, coast: Coast | null = null;
   async function ensureCoast() {
     if (coast) return coast; caveLoading = true; const tx = await ruinTex();
-    coast = makeCoast(HIGH, { grass, pebble: bed, rock: tx.cliff, blocks: tx.blocks }, waterNormals, scene.environment); caveLoading = false; return coast;
+    const sr = await loadSet(HIGH ? 'rock_face_03' : 'rock_face_03_lite'); // G1: CC0 Poly Haven rock_face_03, 1k High / 512 Lite
+    coast = makeCoast(HIGH, { grass, pebble: bed, rock: sr, blocks: tx.blocks }, waterNormals, scene.environment); caveLoading = false; return coast;
   }
   const setScene = (sc: THREE.Scene) => { sc.add(player.root); if (renderPass) renderPass.scene = sc; if (gtao) (gtao as unknown as { scene: THREE.Scene }).scene = sc; };
   async function enterCoast(instant = false) {

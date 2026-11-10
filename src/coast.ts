@@ -113,14 +113,16 @@ export function makeCoast(high: boolean, t: { grass: GroundTex; pebble: GroundTe
   const tg = new THREE.PlaneGeometry(SIZE, SIZE, N, N); tg.rotateX(-Math.PI / 2); tg.translate(15, 0, 0);
   { const p = tg.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) p.setY(i, coastH(p.getX(i), p.getZ(i))); tg.computeVertexNormals(); }
   for (const s of [t.grass, t.pebble, t.rock]) { for (const tx of [s.diff, s.nor, s.arm]) { tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.anisotropy = 8; } s.diff.colorSpace = THREE.SRGBColorSpace; }
-  const uTide = { value: 0.2 };
+  const uTide = { value: 0.2 }, uWetTop = { value: 0.2 }; // uWetTop: the last high-water mark, receding slowly (damp sand / rock lag the tide)
+  const STRATA = `float strata(vec3 p){ float s=p.y*1.35+p.x*.07+sin(p.z*.13+p.x*.05)*1.4; float n=sin(p.x*.9+p.z*.6)*.5; return (.86+.14*sin(s*1.7+n))*mix(.72,1.,smoothstep(.08,.22,abs(fract(s*.42+n*.1)-.5))); }`;
   const gm = new THREE.MeshStandardMaterial({ roughness: 1 });
   gm.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, { tGd: { value: t.grass.diff }, tGn: { value: t.grass.nor }, tPd: { value: t.pebble.diff }, tPn: { value: t.pebble.nor }, tRd: { value: t.rock.diff }, tRn: { value: t.rock.nor }, tRa: { value: t.rock.arm }, uTide, uO: { value: new THREE.Vector2(COAST_O.x, COAST_O.z) } });
+    Object.assign(sh.uniforms, { tGd: { value: t.grass.diff }, tGn: { value: t.grass.nor }, tPd: { value: t.pebble.diff }, tPn: { value: t.pebble.nor }, tRd: { value: t.rock.diff }, tRn: { value: t.rock.nor }, tRa: { value: t.rock.arm }, uTide, uWetTop, uO: { value: new THREE.Vector2(COAST_O.x, COAST_O.z) } });
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWP=(modelMatrix*vec4(transformed,1.)).xyz; vWN=normalize(mat3(modelMatrix)*objectNormal);');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-varying vec3 vWP; varying vec3 vWN; uniform sampler2D tGd,tGn,tPd,tPn,tRd,tRn,tRa; uniform float uTide; uniform vec2 uO;
+varying vec3 vWP; varying vec3 vWN; uniform sampler2D tGd,tGn,tPd,tPn,tRd,tRn,tRa; uniform float uTide,uWetTop; uniform vec2 uO;
 ${SH}
+${STRATA}
 float vn2(vec2 p){return sin(p.x*1.3+sin(p.y*.7))*sin(p.y*1.1+sin(p.x*.9))*.5+.5;}
 vec3 WG; vec2 TP;`)
       .replace('#include <map_fragment>', `
@@ -128,12 +130,15 @@ vec3 WG; vec2 TP;`)
   float rk=smoothstep(.38,.62,slope+.12*(vn2(L*.3)-.5)); float gr=smoothstep(8.,12.,d+3.*(vn2(L*.17)-.5))*(1.-rk); float pb=max(0.,1.-rk-gr);
   WG=vec3(gr,pb,rk);
   vec3 W3=pow(abs(normalize(vWN)),vec3(4.)); W3/=dot(W3,vec3(1.)); vec3 P=vWP/5.;
-  vec3 cr=(texture2D(tRd,P.zy)*W3.x+texture2D(tRd,P.xz)*W3.y+texture2D(tRd,P.xy)*W3.z).rgb; cr=mix(vec3(dot(cr,vec3(.3,.55,.15))),cr,.45)*vec3(.92,.9,.86);
+  vec3 cr=(texture2D(tRd,P.zy)*W3.x+texture2D(tRd,P.xz)*W3.y+texture2D(tRd,P.xy)*W3.z).rgb; cr=mix(vec3(dot(cr,vec3(.3,.55,.15))),cr,.6)*vec3(.92,.9,.86)*strata(vWP);
   vec3 cg=texture2D(tGd,vWP.xz/3.2).rgb*mix(vec3(1.05,1.,.72),vec3(.9,1.,.8),vn2(L*.09));
   vec3 cp=texture2D(tPd,vWP.xz/2.2).rgb*vec3(1.02,.98,.92);
   vec3 c=cg*gr+cp*pb+cr*rk;
-  float wet=1.-smoothstep(uTide+.05,uTide+.9,hh); c*=mix(1.,.55,wet); c=mix(c,c*vec3(.75,.85,.9),smoothstep(uTide,uTide-1.5,hh));
-  diffuseColor.rgb=c; TP=vec2(wet,rk); }`)
+  float wet=1.-smoothstep(uTide+.05,uTide+.9,hh);
+  float dn0=vn2(L*.8+vec2(0.,hh*3.)); float damp=(1.-smoothstep(uWetTop+.05,uWetTop+.45+.25*dn0,hh))*(1.-wet); // band the ebbing sea leaves behind
+  c*=mix(1.,.55,wet)*mix(1.,.74,damp); c=mix(c,c*vec3(.75,.85,.9),smoothstep(uTide,uTide-1.5,hh));
+  c=mix(c,c*vec3(.62,.72,.58),smoothstep(.9,-.2,hh-uWetTop)*rk*.6); // wet, algae-dark cliff foot
+  diffuseColor.rgb=c; TP=vec2(max(wet,damp*.6),rk); }`)
       .replace('#include <roughnessmap_fragment>', `float roughnessFactor = mix(mix(.95,.82,WG.y),.35,TP.x);`)
       .replace('#include <normal_fragment_maps>', `{ vec3 W3=pow(abs(normalize(vWN)),vec3(4.)); W3/=dot(W3,vec3(1.)); vec3 P=vWP/5.;
   vec3 tr=(texture2D(tRn,P.zy)*W3.x+texture2D(tRn,P.xz)*W3.y+texture2D(tRn,P.xy)*W3.z).xyz*2.-1.;
@@ -143,14 +148,28 @@ vec3 WG; vec2 TP;`)
   };
   gm.customProgramCacheKey = () => 'coastground';
   const ground = new THREE.Mesh(tg, gm); ground.receiveShadow = true; ground.castShadow = true; g.add(ground);
-  const rockMat = triplanar(t.rock, 7.5, '#a9a59d', { rough: 0.92, sat: 0.4 }), blockMat = triplanar(t.blocks, 2.4, '#cbbca5', { sat: 0.55 }), darkBlock = triplanar(t.blocks, 2.4, '#8f8576', { sat: 0.5 });
+  // G1 sea-stack / boulder rock: triplanar rock_face_03 with strata, a dark wet algae foot that follows the tide and glossy wet rock.
+  const rockMat = triplanar(t.rock, 6.0, '#c4c0b8', { rough: 0.95, sat: 0.45, gain: 1.05 });
+  { const base = rockMat.onBeforeCompile; rockMat.onBeforeCompile = (sh, r) => { base.call(rockMat, sh, r); sh.uniforms.uTide = uTide; sh.uniforms.uWetTop = uWetTop;
+      sh.fragmentShader = sh.fragmentShader.replace('varying vec3 vTW;', 'uniform float uTide,uWetTop; ' + STRATA + '\nvarying vec3 vTW;')
+        .replace('diffuseColor.rgb *= mix(1., a.r, .8); }', `diffuseColor.rgb *= mix(1., a.r, .8); }
+  { diffuseColor.rgb *= strata(vTW); float st=sin(vTW.x*1.9+sin(vTW.z*1.1)*2.)*.5+.5; float hb=vTW.y-uWetTop;
+    float wet=1.-smoothstep(-.2,1.1+st*1.6,hb); float sub=smoothstep(.15,-.6,vTW.y-uTide);
+    diffuseColor.rgb *= mix(vec3(1.), vec3(.5,.56,.47), wet) * mix(1., .8, sub); roughnessFactor *= mix(1., .38, wet*(1.-sub*.5)); }`); };
+    rockMat.customProgramCacheKey = () => 'coastrock'; }
+  const blockMat = triplanar(t.blocks, 2.4, '#cbbca5', { sat: 0.55 }), darkBlock = triplanar(t.blocks, 2.4, '#8f8576', { sat: 0.5 });
   // ---------- sea stacks, the sea-cave stack and beach boulders ----------
   const stackGeos: THREE.BufferGeometry[] = [];
-  const stack = (x: number, z: number, r: number, h: number) => { const b = blob(r, rnd, 1, h / r / 2, 1, high ? 5 : 4); b.translate(x, h / 2 - 10, z); stackGeos.push(b); };
+  // Foam rings (G1): every rock that breaks the surface gets an animated foam collar in the sea shader. Centre + radius are measured
+  // from the real geometry around the waterline so the ring hugs the rock.
+  const rings: THREE.Vector4[] = [];
+  const ringOf = (b: THREE.BufferGeometry) => { const p = b.attributes.position as THREE.BufferAttribute; let cx = 0, cz = 0, n = 0; for (let i = 0; i < p.count; i++) if (Math.abs(p.getY(i) + 0.4) < 1.2) { cx += p.getX(i); cz += p.getZ(i); n++; }
+    if (!n) return b; cx /= n; cz /= n; let r = 0; for (let i = 0; i < p.count; i++) if (Math.abs(p.getY(i) + 0.4) < 1.2) r += Math.hypot(p.getX(i) - cx, p.getZ(i) - cz); rings.push(new THREE.Vector4(cx, cz, r / n, 1)); return b; };
+  const stack = (x: number, z: number, r: number, h: number) => { const b = blob(r, rnd, 1, h / r / 2, 1, high ? 5 : 4); b.translate(x, h / 2 - 10, z); stackGeos.push(ringOf(b)); };
   stack(-27, -33, 4.6, 34); stack(-58, -14, 6.5, 40); stack(-31, 46, 5.2, 30); stack(-70, 30, 5, 26);
   // Sea-cave stack: two flanks, a lintel and a back mass leave a dark arch facing the shore.
   const CAVE = { x: -38.2, z: 20 };
-  stackGeos.push(blob(7.2, rnd, 1, 2.6, 1, 3).translate(-45, 7, 11.5), blob(7.2, rnd, 1, 2.4, 1, 3).translate(-45, 6, 28.5), blob(6.4, rnd, 1.1, 0.7, 0.85, 3).translate(-43.5, 10.5, 20), blob(8.5, rnd, 1, 2.2, 1.3, 3).translate(-54, 8, 20), blob(7, rnd, 1, 1.6, 1.25, 3).translate(-53, 13, 20));
+  stackGeos.push(ringOf(blob(7.2, rnd, 1, 2.6, 1, 3).translate(-45, 7, 11.5)), ringOf(blob(7.2, rnd, 1, 2.4, 1, 3).translate(-45, 6, 28.5)), blob(6.4, rnd, 1.1, 0.7, 0.85, 3).translate(-43.5, 10.5, 20), blob(8.5, rnd, 1, 2.2, 1.3, 3).translate(-54, 8, 20), blob(7, rnd, 1, 1.6, 1.25, 3).translate(-53, 13, 20));
   const stacks = new THREE.Mesh(mergeGeometries(stackGeos), rockMat); stacks.castShadow = stacks.receiveShadow = true; g.add(stacks);
   // The throat beyond the arch: a tapering tunnel whose vertex colour falls from wet rock to black, a glistening lip, and a faint teal glow far inside.
   { const len = 8, x0 = -39.4; const tg = new THREE.CylinderGeometry(1.5, 2.7, len, 28, 8, true); tg.rotateZ(Math.PI / 2); tg.scale(1, 1.5, 1); tg.translate(x0 - len / 2, 2.4, 20);
@@ -196,7 +215,7 @@ vec3 WG; vec2 TP;`)
   const stones = new THREE.Group(); g.add(stones);
   // Weathered custodian stones: a lathed, rounded profile (domed walkable top, softened rim, flared foot) pushed out of round by
   // per-stone periodic noise, darker wet tops with a slick dark-green band at the low-water line, and kelp/weed strips hanging there.
-  stoneMat.vertexColors = true; stoneMat.roughness = 0.62;
+  stoneMat.vertexColors = true; stoneMat.roughness = 0.5;
   const weedMat = new THREE.MeshStandardMaterial({ color: '#4a5524', roughness: 0.5, side: THREE.DoubleSide });
   const WATER = -0.95 - TOP; const srnd = rnd0(97); // own stream: keeps the rest of the coast layout unchanged // held low-water line in stone-local Y
   for (let i = 1; i < path.length; i++) {
@@ -209,12 +228,12 @@ vec3 WG; vec2 TP;`)
       const n = 1 + amp[0] * Math.sin(2 * a + ph[0]) + amp[1] * Math.sin(3 * a + ph[1] + py * 1.3) + amp[2] * Math.sin(5 * a + ph[2] - py * 2.1);
       const tilt = py > -0.08 ? (px * 0.03 + Math.sin(a * 2 + ph[2]) * 0.012) : 0; // slightly uneven, never steep
       pos.setXYZ(v, px * n * rx, py + tilt, pz * n * rz);
-      const wet = py > -0.04 ? 0.74 : 1, band = Math.max(0, 1 - Math.abs(py - WATER) / 0.28), below = py < WATER ? 0.82 : 1;
-      col[v * 3] = wet * below * (1 - 0.42 * band); col[v * 3 + 1] = wet * below * (1 - 0.3 * band); col[v * 3 + 2] = wet * below * (1 - 0.48 * band); }
+      const wet = py > -0.04 ? 0.74 : 1, band = Math.max(0, 1 - Math.abs(py - WATER - 0.08) / 0.42), below = py < WATER ? 0.72 : 1;
+      const alg = band * (0.75 + 0.25 * Math.sin(a * 7 + py * 9 + ph[1])); col[v * 3] = wet * below * (1 - 0.55 * alg); col[v * 3 + 1] = wet * below * (1 - 0.36 * alg); col[v * 3 + 2] = wet * below * (1 - 0.62 * alg); }
     b.setAttribute('color', new THREE.BufferAttribute(col, 3)); b.computeVertexNormals();
-    const m = new THREE.Mesh(b, stoneMat); m.position.set(x, TOP, z); m.rotation.y = Math.atan2(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]) + (rnd() - 0.5) * 0.35; m.castShadow = m.receiveShadow = true; m.userData.k = i; stones.add(m);
-    const wg: THREE.BufferGeometry[] = []; const nW = high ? 11 : 7;
-    for (let k = 0; k < nW; k++) { const a = (k / nW) * 6.28 + srnd() * 0.5, len = 0.22 + srnd() * 0.25; const w = new THREE.PlaneGeometry(0.1 + srnd() * 0.08, len, 1, 2); w.translate(0, -len / 2, 0);
+    const m = new THREE.Mesh(b, stoneMat); m.position.set(x, TOP, z); m.rotation.y = Math.atan2(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]) + (rnd() - 0.5) * 0.35; m.castShadow = m.receiveShadow = true; m.userData.k = i; stones.add(m); m.userData.ring = rings.length; rings.push(new THREE.Vector4(x, z, (rx + rz) * 0.53, 0));
+    const wg: THREE.BufferGeometry[] = []; const nW = high ? 16 : 10;
+    for (let k = 0; k < nW; k++) { const a = (k / nW) * 6.28 + srnd() * 0.5, len = 0.3 + srnd() * 0.35; const w = new THREE.PlaneGeometry(0.1 + srnd() * 0.08, len, 1, 2); w.translate(0, -len / 2, 0);
       w.rotateX(-0.35 - srnd() * 0.3); w.rotateY(-a + Math.PI / 2); const rr = 1.04 * (1 + amp[0] * Math.sin(2 * a + ph[0]));
       w.translate(Math.cos(a) * rr * rx, WATER + 0.12 + srnd() * 0.1, Math.sin(a) * rr * rz); wg.push(w); }
     const wm = new THREE.Mesh(mergeGeometries(wg), weedMat); wm.receiveShadow = true; m.add(wm); }
@@ -244,8 +263,8 @@ vec3 WG; vec2 TP;`)
   waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
   const fogD = (scene.fog as THREE.FogExp2).density;
   const seaMat = new THREE.ShaderMaterial({ transparent: true, fog: false,
-    uniforms: { uTime: { value: 0 }, uTide, uSunDir: uSun, uNor: { value: waterNormals }, uO: { value: new THREE.Vector2(COAST_O.x, COAST_O.z) }, uFogD: { value: fogD }, uSunCol: { value: new THREE.Color().setRGB(1.0, 0.78, 0.58, THREE.LinearSRGBColorSpace) } },
-    defines: { WAVES: high ? 4 : 2 },
+    uniforms: { uTime: { value: 0 }, uTide, uSunDir: uSun, uNor: { value: waterNormals }, uO: { value: new THREE.Vector2(COAST_O.x, COAST_O.z) }, uFogD: { value: fogD }, uSunCol: { value: new THREE.Color().setRGB(1.0, 0.78, 0.58, THREE.LinearSRGBColorSpace) }, uRings: { value: rings } },
+    defines: { WAVES: high ? 4 : 2, NR: rings.length },
     vertexShader: `uniform float uTime,uTide; uniform vec2 uO; varying vec3 vW; varying vec3 vN; varying float vCrest;
 ${SH}
 void wave(vec2 p, vec2 dir, float wl, float st, float att, inout vec3 P, inout vec3 T, inout vec3 B){
@@ -262,7 +281,7 @@ void main(){ vec3 w=(modelMatrix*vec4(position,1.)).xyz; vec2 L=w.xz-uO; float d
   #endif
   vN=normalize(cross(B,T)); vW=P; vCrest=(P.y-uTide)/(.6*att+.05);
   gl_Position=projectionMatrix*viewMatrix*vec4(P,1.); }`,
-    fragmentShader: `uniform float uTime,uTide,uFogD; uniform vec2 uO; uniform sampler2D uNor; uniform vec3 uSunCol; varying vec3 vW; varying vec3 vN; varying float vCrest;
+    fragmentShader: `uniform float uTime,uTide,uFogD; uniform vec2 uO; uniform vec4 uRings[NR]; uniform sampler2D uNor; uniform vec3 uSunCol; varying vec3 vW; varying vec3 vN; varying float vCrest;
 ${SH}
 ${SKY}
 void main(){ vec2 L=vW.xz-uO; float depth=uTide-coastH(L); float dist=distance(vW,cameraPosition);
@@ -290,6 +309,9 @@ void main(){ vec2 L=vW.xz-uO; float depth=uTide-coastH(L); float dist=distance(v
   #if WAVES > 2
   foam+=smoothstep(.72,1.05,vCrest)*smoothstep(.55,.8,fn)*.55*det;
   #endif
+  if(dist<70.){ float rf=0.; for(int i=0;i<NR;i++){ vec4 R=uRings[i]; if(R.w<.01) continue; float dd=length(L-R.xy)-R.z; if(dd>2.2) continue;
+      float w=1.-smoothstep(0.,.5+.9*fn,dd); float lap=.5+.5*sin(dd*8.-uTime*2.4+fn*6.+R.x); rf=max(rf,R.w*(w*w*.9+w*smoothstep(.35,.9,lap*.75+fn*.4)*.7)); }
+    foam+=rf*det; }
   foam=clamp(foam,0.,1.); vec3 lit=vec3(.95,.93,.9)*(.6+.4*max(uSunDir.y+.3,0.)); col=mix(col,lit,foam*.92);
   float a=max(smoothstep(-.03,.45,depth),foam*.9);
   float ff=1.-exp(-uFogD*uFogD*dist*dist);
@@ -333,8 +355,9 @@ void main(){ vec2 L=vW.xz-uO; float depth=uTide-coastH(L); float dist=distance(v
     update(time: number, dt: number, cam: THREE.Camera, focus: THREE.Vector3) {
       tideT += dt; if (held) holdK = Math.min(1, holdK + dt / 4); rise += (riseWant - rise) * Math.min(1, dt * 0.8); if (riseWant && rise > 0.995) rise = 1;
       uTide.value = level(); seaMat.uniforms.uTime.value = time;
+      uWetTop.value = Math.max(uTide.value, uWetTop.value - dt * 0.012); // the damp band lags the ebb
       const s = 2; sea.position.set(Math.round(cam.position.x / s) * s, 0, Math.round(cam.position.z / s) * s); sky.position.copy(cam.position);
-      stones.visible = rise > 0.004; for (const st of stones.children) { st.position.y = TOP - (1 - rise) * (2.4 + (st.userData.k % 3) * 0.2); } // fully sunk (and hidden) until revealed: no edges through high water
+      stones.visible = rise > 0.004; for (const st of stones.children) { st.position.y = TOP - (1 - rise) * (2.4 + (st.userData.k % 3) * 0.2); rings[st.userData.ring].w = stones.visible ? Math.min(1, Math.max(0, (st.position.y - uTide.value + 0.25) / 0.3)) : 0; } // fully sunk (and hidden) until revealed: no edges through high water
       shrineMat.emissiveIntensity = 0.05 + glow * (0.6 + 0.2 * Math.sin(time * 3)) + (held ? 0.25 : 0);
       sun.target.position.copy(focus); { const tx = 90 / sun.shadow.mapSize.x, tp = sun.target.position; const u = SNU.crossVectors(COAST_SUN, SNY).normalize(), v = SNV.crossVectors(u, COAST_SUN).normalize(); tp.addScaledVector(u, Math.round(tp.dot(u) / tx) * tx - tp.dot(u)).addScaledVector(v, Math.round(tp.dot(v) / tx) * tx - tp.dot(v)); } sun.position.copy(sun.target.position).addScaledVector(COAST_SUN, 150); // texel-snapped: no shadow crawl while running
       for (const gl of gulls) { const a = gl.ph + time * gl.s; gl.o.position.set(gl.c[0] + Math.cos(a) * gl.r, gl.h + Math.sin(time * 0.7 + gl.ph) * 1.2, gl.c[1] + Math.sin(a) * gl.r); gl.o.rotation.y = -a + (gl.s > 0 ? 0 : Math.PI); gl.o.rotation.z = gl.s > 0 ? -0.25 : 0.25; const f = Math.sin(time * 5 + gl.ph) * (Math.sin(time * 0.3 + gl.ph) > 0.3 ? 0.08 : 0.55); gl.wl.rotation.z = f; gl.wr.rotation.z = -f; }

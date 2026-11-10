@@ -155,6 +155,7 @@ log('lose → safe recovery',{intro:introDlg,recovery:recov,playerHp:kp.playerHp
 await off(0);t0=Date.now();let ang=0,dodges=0,climbs=0,reveals=0,strikes=0,minHp=3,winD=[];let lastSt='';
 while(Date.now()-t0<300000){const q=await Q();if(q.talking){if(/last blow/i.test(q.dlg)){winD.push(q.dlg);for(let i=0;i<8&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);if((await Q()).talking)winD.push((await Q()).dlg);}break;}await closeDlg();continue;}
   kp=await KP();minHp=Math.min(minHp,kp.playerHp);
+  if(kp.state==='idle'||kp.state==='intro'||kp.state==='recover'){const pp3=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return{x:v.x,z:v.z,f:window.__vale.debug.aq.fading}});if(!pp3.f&&Math.hypot(pp3.x-kp.entry.x,pp3.z-kp.entry.z)<1.5){await off(ang);}} // a late recovery fade can drop Ilka back on the (safe) ledge
   if(kp.state==='windup'&&lastSt!=='windup'){ang+=0.75;await off(ang);dodges++;}
   else if(kp.state==='sweepWarn'&&lastSt!=='sweepWarn'){let b=kp.stones[0],bd=1e9;const pp2=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return{x:v.x,z:v.z}});for(const st of kp.stones){const dd=Math.hypot(st.x-pp2.x,st.z-pp2.z);if(dd<bd){bd=dd;b=st;}}await p.evaluate((x,z)=>window.__vale.warp(x,z),b.x,b.z);climbs++;}
   else if(kp.state==='low'){if(lastSt!=='low'){await off(ang,5.0);}if(!kp.revealed){await p.keyboard.press('KeyE');reveals++;}else if(kp.atkCd<=0){await p.keyboard.press('KeyE');strikes++;}}

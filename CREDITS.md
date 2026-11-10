@@ -34,3 +34,4 @@ Procedural (made in code, no external asset): the Drowned Keeper and its flooded
 Impostor cards for distant trees are rendered at load time from the same CC0 tree models.
 Each Poly Pizza model page above was checked on 2026-11-09 and shows "Public Domain (CC0)".
 - M15: causeway stones (lathed noise-displaced rock, wet band, weed strips) — procedural, original to this project (CC0).
+- G1: rock_face_03 by Poly Haven (polyhaven.com/a/rock_face_03), CC0 — coast sea stacks, boulders, cliff slopes.

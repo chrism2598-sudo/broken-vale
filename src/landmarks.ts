@@ -28,16 +28,24 @@ export function triplanar(set: GroundTex, scale: number, tint: string, o: { meta
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
 uniform sampler2D tD; uniform float uSat; uniform float uGain; uniform float uGround; uniform sampler2D tN; uniform sampler2D tA; varying vec3 vTW; varying vec3 vTN;
 vec3 W3; vec2 UX, UY, UZ;
-vec4 tri(sampler2D t){ return texture2D(t,UX)*W3.x + texture2D(t,UY)*W3.y + texture2D(t,UZ)*W3.z; }`)
+vec4 tri(sampler2D t){ return texture2D(t,UX)*W3.x + texture2D(t,UY)*W3.y + texture2D(t,UZ)*W3.z; }
+float tH(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float tVn(vec2 p){ vec2 i=floor(p),f=fract(p); vec2 u=f*f*(3.-2.*f); return mix(mix(tH(i),tH(i+vec2(1,0)),u.x),mix(tH(i+vec2(0,1)),tH(i+vec2(1,1)),u.x),u.y); }
+float tMac(vec3 w){ vec3 A=pow(abs(normalize(vTN)),vec3(4.)); A/=dot(A,vec3(1.)); return tVn(w.zy*.45)*A.x+tVn(w.xz*.45)*A.y+tVn(w.xy*.45)*A.z; }
+float MAC;`)
       .replace('#include <map_fragment>', `
   W3 = pow(abs(normalize(vTN)), vec3(4.)); W3 /= dot(W3, vec3(1.));
   vec3 P = vTW / ${scale.toFixed(2)}; UX = P.zy; UY = P.xz; UZ = P.xy;
   { vec3 td = tri(tD).rgb; diffuseColor.rgb *= mix(vec3(dot(td, vec3(.3, .59, .11))), td, uSat) * uGain;
+    // M22 · break the tiling: weathered macro patches (cooler/darker damp, warmer sun-bleached), and deeper mortar.
+    MAC = tMac(vTW) * .65 + tMac(vTW * 2.7 + 7.1) * .35;
+    diffuseColor.rgb *= mix(vec3(.80, .83, .86), vec3(1.07, 1.03, .96), smoothstep(.2, .8, MAC));
+    float tl = dot(td, vec3(.3, .59, .11)); diffuseColor.rgb *= mix(.72, 1.04, smoothstep(.06, .42, tl));
     float hb = vTW.y - uGround; float streak = .5 + .5 * sin(vTW.x * 2.1 + sin(vTW.z * 1.3) * 2.) * sin(vTW.z * 1.7 + vTW.x * .4);
     diffuseColor.rgb *= mix(vec3(.55, .58, .45), vec3(1.), smoothstep(0., 2.6, hb + streak * 1.4)); }`)
-      .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness; { vec3 a = tri(tA).rgb; roughnessFactor *= a.g; diffuseColor.rgb *= mix(1., a.r, .8); }`)
+      .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness; { vec3 a = tri(tA).rgb; roughnessFactor *= a.g; roughnessFactor *= mix(.82, 1.06, MAC); diffuseColor.rgb *= mix(1., a.r * a.r, .85); }`)
       .replace('#include <normal_fragment_maps>', `{ vec3 tn = tri(tN).xyz * 2. - 1.; vec3 wn = normalize(vTN);
-  vec3 pert = normalize(wn + (vec3(tn.x, 0., tn.y) * W3.y + vec3(0., tn.y, tn.x) * W3.x + vec3(tn.x, tn.y, 0.) * W3.z) * .6);
+  vec3 pert = normalize(wn + (vec3(tn.x, 0., tn.y) * W3.y + vec3(0., tn.y, tn.x) * W3.x + vec3(tn.x, tn.y, 0.) * W3.z) * .85);
   normal = normalize((viewMatrix * vec4(pert, 0.)).xyz); }`);
   };
   m.customProgramCacheKey = () => 'tri' + scale;

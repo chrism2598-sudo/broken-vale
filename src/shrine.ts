@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { SHRINE, heightAt } from './world';
 import { addRimFill } from './shading';
+import { triplanar } from './landmarks';
 import type { GroundTex } from './terrain';
 
 /** Wind Shrine puzzle (ported from the Page): 0 Still ○ · 1 Rise ▲ · 2 Gale ✕ — West Rise, North Still, East Gale. */
@@ -90,10 +91,10 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
 
   // Runes: mossy standing stones with a glowing glyph plate that cycles ○ ▲ ✕.
   const texes = RUNE_GLYPHS.map(glyphTex);
-  const moss = new THREE.MeshStandardMaterial({ map: rock.diff, normalMap: rock.nor, roughnessMap: rock.arm, color: '#b9c2a0', roughness: 1 }); addRimFill(moss, { fill: 0.25, rim: 0.2 });
+  const moss = triplanar(rock, 1.4, '#aab48e', { sat: 0.55, gain: 1.35 }); // M22: world-space rock (was one stretched UV wrap = flat olive boxes)
   const runeObjs = RUNES.map((r, i) => {
     const o = new THREE.Group();
-    const geo = new THREE.CylinderGeometry(0.55, 0.85, 2.6, 7, 3); const p = geo.attributes.position;
+    const geo = new THREE.CylinderGeometry(0.55, 0.85, 2.6, 9, 6); const p = geo.attributes.position;
     for (let k = 0; k < p.count; k++) { const y = p.getY(k); p.setX(k, p.getX(k) * (1 + 0.08 * Math.sin(k * 1.7))); p.setZ(k, p.getZ(k) * (0.75 + 0.06 * Math.cos(k * 2.3))); if (y > 1.2) p.setY(k, y + 0.15 * Math.sin(k)); }
     geo.computeVertexNormals();
     const st = new THREE.Mesh(geo, moss); st.position.y = 1.2; st.castShadow = true;

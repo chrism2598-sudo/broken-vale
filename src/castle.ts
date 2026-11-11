@@ -105,7 +105,13 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   const floorM = triplanar(t.blocks, 2.4, az ? '#7f8894' : '#9a8f80', { sat: 0.5, gain: 1.2 });
   const woodFloorM = t.wood ? triplanar(t.wood, 2.4, '#b08a62', { sat: 0.9, gain: 1.15 }) : mat('#6a4a30', 0.75); const ceilM = mat(az ? '#3a3f48' : '#3f342a', 0.9);
   const beamM = mat('#4a3322', 0.8), woodM = t.wood ? triplanar(t.wood, 1.2, '#b08a62', { sat: 0.9, gain: 1.1 }) : mat('#7a5634', 0.7), darkWoodM = t.wood ? triplanar(t.wood, 1.2, '#6a4a34', { sat: 0.8, gain: 0.9 }) : mat('#4b3424', 0.75), ironM = mat('#2e2a27', 0.55, 0.7), stoneM = triplanar(t.sand, 2.0, az ? '#a4abb4' : '#b8b0a2', { sat: 0.25, gain: 1.2 }); // M21a: trim/stairs/frames were flat untextured grey
-  const clothM = mat(az ? '#2e5a94' : '#8a2f2a', 0.95), cloth2M = mat(az ? '#c9b26a' : '#c9a24a', 0.9), rugM = mat(az ? '#24406a' : '#6d2a22', 1);
+  const clothM = mat(az ? '#2e5a94' : '#8a2f2a', 0.95), cloth2M = mat(az ? '#c9b26a' : '#c9a24a', 0.9), rugM = mat('#ffffff', 1, 0, { map: canvasTex(256, 512, (x) => { // M22: a woven runner — field, lattice, borders, worn centre — not a flat red sheet
+    const [f, f2, b1, b2] = az ? ['#1f3a62', '#2a4c7c', '#b89a52', '#13233c'] : ['#6a2118', '#7d2c1e', '#c89a4a', '#2a120c'];
+    x.fillStyle = f; x.fillRect(0, 0, 256, 512);
+    x.strokeStyle = f2; x.lineWidth = 6; for (let i = -16; i < 40; i++) { x.beginPath(); x.moveTo(i * 22, 0); x.lineTo(i * 22 + 256, 512); x.stroke(); x.beginPath(); x.moveTo(i * 22, 512); x.lineTo(i * 22 + 256, 0); x.stroke(); }
+    x.fillStyle = b1; for (let y = 60; y < 460; y += 44) { x.beginPath(); x.moveTo(128, y - 14); x.lineTo(142, y); x.lineTo(128, y + 14); x.lineTo(114, y); x.fill(); }
+    x.strokeStyle = b2; x.lineWidth = 26; x.strokeRect(13, 13, 230, 486); x.strokeStyle = b1; x.lineWidth = 6; x.strokeRect(32, 32, 192, 448); x.strokeRect(8, 8, 240, 496);
+    const id = x.getImageData(0, 0, 256, 512), d = id.data; for (let i = 0; i < d.length; i += 4) { const px = (i / 4) % 256, py = (i / 4 / 256) | 0; const wv = ((px + py) % 3 === 0 ? 0.9 : 1) * (0.92 + Math.random() * 0.12); const wear = 1 - 0.18 * Math.exp(-(((px - 128) / 70) ** 2)) * (0.6 + 0.4 * Math.sin(py * 0.02)); for (let k = 0; k < 3; k++) d[i + k] *= wv * wear; } x.putImageData(id, 0, 0); }) });
   const books = canvasTex(256, 128, (x) => { const cols = ['#6b2a22', '#2f4a6a', '#5a4a2a', '#3c5a34', '#7a6a4a', '#4a2a4a']; for (let r = 0; r < 4; r++) { let px = 0; while (px < 256) { const w = 6 + ((px * 7 + r * 13) % 11); x.fillStyle = cols[(px + r * 3) % cols.length]; x.fillRect(px, r * 32 + 4 + ((px * 3) % 5), w - 1, 28 - ((px * 3) % 5)); px += w; } x.fillStyle = '#3a281a'; x.fillRect(0, r * 32 + 30, 256, 2); } });
   const bookM = mat('#ffffff', 0.9, 0, { map: books });
   const geos = new Map<THREE.Material, THREE.BufferGeometry[]>();
@@ -183,6 +189,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   const winM = new THREE.MeshBasicMaterial({ color: az ? '#cfe2ff' : '#ffe9c4' });
   const shaftTex = canvasTex(64, 256, (x) => { const gr = x.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.6, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 256); const h = x.createLinearGradient(0, 0, 64, 0); h.addColorStop(0, 'rgba(0,0,0,1)'); h.addColorStop(0.25, 'rgba(0,0,0,0)'); h.addColorStop(0.75, 'rgba(0,0,0,0)'); h.addColorStop(1, 'rgba(0,0,0,1)'); x.globalCompositeOperation = 'destination-out'; x.fillStyle = h; x.fillRect(0, 0, 64, 256); });
   const shaftM = new THREE.MeshBasicMaterial({ map: shaftTex, color: az ? '#9fc4ff' : '#ffd9a0', transparent: true, opacity: high ? 0.32 : 0.26, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  shaftM.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vSD;').replace('#include <project_vertex>', '#include <project_vertex>\nvSD = -mvPosition.z;'); sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vSD;').replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.rgb *= smoothstep(1.2, 4.5, vSD);'); }; shaftM.customProgramCacheKey = () => 'shaft22'; // M22: a god-ray seen from inside it was a white smear; fade it near the eye
   const shafts = new THREE.Group(); g.add(shafts);
   for (const [wx, wz, dir] of [[8.98, -4, -1], [8.98, 0.5, -1], [-8.98, -7.5, 1]] as const) {
     const wn = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 2.2), winM); wn.position.set(wx, 6.6, wz); wn.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2; g.add(wn);
@@ -251,7 +258,9 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     box(stoneM, 0.72, 2.6, 0.5, -14.48, 0, -8.35); box(stoneM, 0.72, 2.6, 0.5, -14.48, 0, -5.65);
     box(stoneM, 0.72, 0.55, 2.3, -14.48, 2.05, -7); box(stoneM, 1.1, 0.4, 3.6, -14.4, 2.6, -7);
     box(stoneM, 0.5, 0.14, 2.4, -14.05, 0, -7); block(-15, -13.6, -8.8, -5.2, 0);
-    box(sootM, 0.06, 1.85, 2.15, -14.66, 0.14, -7); box(sootM, 0.55, 1.85, 0.06, -14.4, 0.14, -8.08); box(sootM, 0.55, 1.85, 0.06, -14.4, 0.14, -5.92);
+    // M22: the firebox was a black hole — its soot-black back and cheeks now glow with the fire from below.
+    const fireBackM = mat('#16100c', 0.95, 0, { emissive: '#ff6a22', emissiveIntensity: 0.42, emissiveMap: canvasTex(4, 128, (x) => { const gr = x.createLinearGradient(0, 128, 0, 0); gr.addColorStop(0, '#ff9a48'); gr.addColorStop(0.12, '#a83c10'); gr.addColorStop(0.4, '#2a0e04'); gr.addColorStop(0.75, '#000000'); x.fillStyle = gr; x.fillRect(0, 0, 4, 128); }) });
+    box(fireBackM, 0.06, 1.85, 2.15, -14.66, 0.14, -7); box(fireBackM, 0.55, 1.85, 0.06, -14.4, 0.14, -8.08); box(fireBackM, 0.55, 1.85, 0.06, -14.4, 0.14, -5.92); void sootM;
     const coal = mat('#c45a12', 0.7, 0, { emissive: '#c24a10', emissiveIntensity: 1.15 });
     const bed = new THREE.PlaneGeometry(0.55, 1.5); bed.rotateX(-Math.PI / 2); put(coal, bed, -14.35, 0.16, -7);
     for (const [z, ry] of [[-7.3, 0.28], [-6.8, -0.4], [-7.05, 0.08]] as const) { const log = new THREE.CylinderGeometry(0.07, 0.08, 0.62, 8); log.rotateZ(Math.PI / 2); log.rotateY(ry); put(woodM, log, -14.28, 0.24, z); }

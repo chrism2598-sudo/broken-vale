@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { OUTPOSTS, outpostPad, type Outpost } from './world';
 import { triplanar, type BuildTex } from './landmarks';
 import { flameTex, makeFlame } from './cave';
@@ -37,6 +38,12 @@ export function makeOutposts(t: BuildTex, high: boolean) {
   const g = new THREE.Group(); g.name = 'outposts';
   const stone = triplanar(t.brick, 2.4, '#a49a8a', { sat: 0.35, gain: 1.05 }), rough = triplanar(t.rock, 2.0, '#8c8478');
   const wood = new THREE.MeshStandardMaterial({ color: '#4a3424', roughness: 0.85 }), dark = new THREE.MeshBasicMaterial({ color: '#050403' });
+  /** M22 · a weathered standing stone: tapered, rounded crown, lumpy faces (was a sharp-edged box). Base at y=0. */
+  const menhir = (w: number, h: number, d: number, seed: number, crown = true) => { const gq = mergeVertices(new THREE.BoxGeometry(w, h, d, 3, 7, 2).deleteAttribute('normal').deleteAttribute('uv')); const p = gq.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) { let x = p.getX(i), y = p.getY(i) + h / 2, z = p.getZ(i); const u = y / h; const tp = 1 - 0.28 * u * u; x *= tp; z *= tp;
+      const ex = Math.abs(x) / (w / 2) , ez = Math.abs(z) / (d / 2); if (crown && u > 0.8) y -= (ex * ex + ez * ez * 0.5) * h * 0.08 * (u - 0.8) / 0.2;
+      const n = 0.06 * Math.sin(x * 7 + y * 3.1 + seed) * Math.cos(z * 6 - y * 2.3) + 0.03 * Math.sin(y * 11 + seed * 2); x += Math.sign(x) * n * w; z += Math.sign(z) * n * d; p.setXYZ(i, x, y, z); }
+    gq.computeVertexNormals(); return gq; };
   const mesh = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, ry = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.y = ry; o.castShadow = high; o.receiveShadow = true; g.add(o); return o; };
   let seed = 77; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const spots: Spot[] = []; const flames: THREE.Object3D[] = []; const ft = flameTex();
@@ -81,10 +88,10 @@ export function makeOutposts(t: BuildTex, high: boolean) {
     const mound = mesh(new THREE.SphereGeometry(7, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), triplanar(t.rock, 3, '#6f7a5a', { sat: 0.5 }), o.x - Math.sin(face) * 4, y0 - 0.4, o.z - Math.cos(face) * 4); mound.scale.set(1, 0.55, 1);
     STANDS.push({ x: o.x - Math.sin(face) * 4, z: o.z - Math.cos(face) * 4, r: 6.2, top: y0 + 9, tag: 'mound' });
     const dx = o.x + Math.sin(face) * 1.8, dz = o.z + Math.cos(face) * 1.8;
-    for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.7, 2.6, 0.8).translate(0, 1.3, 0), stone, dx + Math.cos(face) * s * 1.25, y0, dz - Math.sin(face) * s * 1.25, face);
+    for (const s of [-1, 1]) mesh(menhir(0.7, 2.62, 0.8, s * 5.1, false), stone, dx + Math.cos(face) * s * 1.25, y0, dz - Math.sin(face) * s * 1.25, face);
     mesh(new THREE.BoxGeometry(3.3, 0.6, 0.9).translate(0, 0.3, 0), stone, dx, y0 + 2.6, dz, face);
     mesh(new THREE.PlaneGeometry(1.8, 2.6), dark, dx + Math.sin(face) * 0.05, y0 + 1.3, dz + Math.cos(face) * 0.05, face);
-    for (let i = 0; i < 3; i++) { const a = face + (i - 1) * 0.9, r = 6.5, h = 1.8 + rnd() * 1.2; const sx = o.x + Math.sin(a) * r, sz = o.z + Math.cos(a) * r; mesh(new THREE.BoxGeometry(0.6, h, 0.35).translate(0, h / 2, 0), rough, sx, y0, sz, a); STANDS.push({ x: sx, z: sz, r: 0.45, top: y0 + h, tag: 'stone' }); }
+    for (let i = 0; i < 3; i++) { const a = face + (i - 1) * 0.9, r = 6.5, h = 1.8 + rnd() * 1.2; const sx = o.x + Math.sin(a) * r, sz = o.z + Math.cos(a) * r; mesh(menhir(0.6, h, 0.35, i * 3.7), rough, sx, y0, sz, a); STANDS.push({ x: sx, z: sz, r: 0.45, top: y0 + h, tag: 'stone' }); }
     spots.push({ id: 'barrow-door', x: dx + Math.sin(face) * 1.4, z: dz + Math.cos(face) * 1.4, y: y0, r: 1.8 }); }
   // ---- viewpoints: a stacked cairn with a carved marker ----
   for (const id of ['bluff', 'cairn']) { const o = O[id], y0 = outpostPad(o);
@@ -92,6 +99,21 @@ export function makeOutposts(t: BuildTex, high: boolean) {
     STANDS.push({ x: o.x, z: o.z, r: 0.75, top: y0 + 1.0, tag: 'cairn' });
     mesh(new THREE.BoxGeometry(0.25, 1.4, 0.25).translate(0, 0.7, 0), wood, o.x + 1.4, y0, o.z + 0.6);
     spots.push({ id: `view-${id}`, x: o.x, z: o.z, y: y0, r: 3.2 }); }
+  // ---- M22 · Greycrown Outlook: a ruined watch-platform on the north ridge, at the top of the switchback trail ----
+  { const o = O.crown, y0 = outpostPad(o), face = Math.atan2(0 - o.x, 0 - o.z); // the parapet faces back down the vale
+    const sg: THREE.BufferGeometry[] = [], wg: THREE.BufferGeometry[] = []; const P = (gq: THREE.BufferGeometry, x: number, y: number, z: number, ry = 0) => { gq.rotateY(ry); gq.translate(x, y, z); sg.push(gq.index ? gq.toNonIndexed() : gq); };
+    const flag = new THREE.CylinderGeometry(5.2, 5.6, 0.5, 18); P(flag, o.x, y0 - 0.32, o.z); // flagged stone floor
+    const gap = Math.atan2(2 - o.x, -254 - o.z); for (let i = 0; i < 9; i++) { const a = face + (i - 4) * 0.27; if (Math.abs(Math.atan2(Math.sin(a - gap), Math.cos(a - gap))) < 0.3) continue; /* the trail comes in through a gap */ const h = 0.9 + 0.25 * Math.sin(i * 2.3); P(menhir(1.05, h, 0.55, i * 1.9, false), o.x + Math.sin(a) * 5.0, y0 - 0.1, o.z + Math.cos(a) * 5.0, a); } // low parapet arc
+    for (const s2 of [-1, 1]) { const a = face + Math.PI + s2 * 0.9; P(menhir(0.8, 2.4 + s2 * 0.3, 0.7, s2 * 4.4), o.x + Math.sin(a) * 4.6, y0 - 0.1, o.z + Math.cos(a) * 4.6, a); } // two old gate-stones behind
+    for (let k = 0; k < 4; k++) { const s3 = 0.7 - k * 0.13; P(new THREE.DodecahedronGeometry(s3, 0), o.x - 2.6, y0 + 0.25 + k * 0.38, o.z - 1.4, k * 1.3); }
+    const cx = o.x + Math.sin(face + 0.9) * 2.4, cz = o.z + Math.cos(face + 0.9) * 2.4; // the cache: an iron-bound box under a slab
+    const cb = new THREE.BoxGeometry(0.9, 0.5, 0.6); cb.translate(0, 0.25, 0); cb.rotateY(face); cb.translate(cx, y0, cz); wg.push(cb.toNonIndexed());
+    P(new THREE.BoxGeometry(1.3, 0.14, 0.95), cx, y0 + 0.57, cz, face + 0.12);
+    for (const gq of [...sg, ...wg]) for (const a of Object.keys(gq.attributes)) if (a !== 'position' && a !== 'normal') gq.deleteAttribute(a);
+    // one merged stone mesh (the cache box is stone too) inside a LOD: past 150 m it is a speck in the haze, so it costs no draw call from the vale
+    const om = mesh(mergeGeometries([...sg, ...wg])!, rough, 0, 0, 0); g.remove(om); const lod = new THREE.LOD(); lod.addLevel(om, 0); lod.addLevel(new THREE.Object3D(), 150); lod.position.set(o.x, 0, o.z); om.position.set(-o.x, 0, -o.z); g.add(lod);
+    STANDS.push({ x: o.x - 2.6, z: o.z - 1.4, r: 0.7, top: y0 + 1.2, tag: 'cairn' });
+    spots.push({ id: 'view-crown', x: o.x, z: o.z, y: y0, r: 4.2 }, { id: 'crown-cache', x: cx, z: cz, y: y0, r: 1.6 }); }
   let open = false;
   return {
     group: g, spots,

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, creekX, creekHalf, pathX } from './world';
+import { heightAt, creekX, creekHalf, pathX, TRAIL } from './world';
 
 export type GroundTex = { diff: THREE.Texture; nor: THREE.Texture; arm: THREE.Texture };
 
@@ -31,12 +31,14 @@ float creekHalf(float z){return 2.6+.9*sin(z/13.+2.1)+.5*sin(z/5.3);}
 float pathX(float z){float t=max(0.,-z);return 1.2*sin(z/9.)*smoothstep(0.,10.,t)-.0105*t*t-.25*t;}
 float pathM(vec2 p){if(p.y>22.)return 0.;float d=abs(p.x-pathX(p.y));float w=1.25+.35*sin(p.y*.37)+(p.y< -40.?.4:0.);w*=.85+.3*vn(p*.6);
  w*=.85+.35*vn(p*.35); return (1.-smoothstep(w*.3,w*1.6,d))*smoothstep(26.,16.,p.y)*(p.y< -70.?smoothstep(-90.,-70.,p.y):1.);}
+float trailM(vec2 p){ float d=1e4; ${TRAIL.slice(1).map((b, i) => { const a = TRAIL[i]; return `{ vec2 a=vec2(${a.x.toFixed(1)},${a.z.toFixed(1)}), b=vec2(${b.x.toFixed(1)},${b.z.toFixed(1)}); vec2 ab=b-a; float u=clamp(dot(p-a,ab)/dot(ab,ab),0.,1.); d=min(d,length(p-a-ab*u)); }`; }).join(' ')}
+  return 1.-smoothstep(1.1+.5*vn(p*.4),2.6,d); }
 vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
 `)
       .replace('#include <map_fragment>', `
 { vec2 p=vWP.xz; float slope=1.-clamp(vWN.y,0.,1.);
   float dc=abs(p.x-creekX(p.y)); float bed=1.-smoothstep(creekHalf(p.y)*.9,creekHalf(p.y)+1.6,dc);
-  float pm=pathM(p);
+  float pm=max(pathM(p),trailM(p)*.92); // M22: the Greycrown trail reads as trodden earth
   float alt=vWP.y; float macro=vn(p*.011), macro2=vn(p*.043+3.1);
   float rock=smoothstep(.2,.42,slope+.14*(macro2-.5)+smoothstep(18.,45.,alt)*.22*(.6+.8*macro));
   float n=vn(p*.08);
@@ -52,6 +54,10 @@ vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
   tone=mix(tone,vec3(.2,.27,.12),smoothstep(12.,40.,alt)); // cooler alpine meadow
   float far=smoothstep(18.,90.,dist);
   cg=mix(cg*mix(vec3(1.),tone/vec3(.24,.33,.11),.35),tone*(.8+.4*vn(p*.9))*(.85+.3*n),far*.8);
+  // M22 · break up the mid-distance lawn: dark grass clumps, sun-dried tussock patches and bare trodden earth.
+  float clump=vn(p*.55)*.6+vn(p*1.7)*.4; cg*=mix(.7,1.14,clump);
+  cg=mix(cg,cg*vec3(1.32,1.12,.55),smoothstep(.6,.82,vn(p*.09+5.))*.55);
+  cg=mix(cg,vec3(.26,.2,.13)*(.8+.4*n),smoothstep(.74,.9,vn(p*.06+11.))*smoothstep(.45,.75,vn(p*.7))*.6);
   // Rock: de-tiled (rotated second sample + macro breakup).
   vec2 rp=mat2(.8,-.6,.6,.8)*p/11.+.5;
   vec3 cr=mix(texture2D(tRd,UVr).rgb,texture2D(tRd,rp).rgb,smoothstep(.3,.7,vn(p*.07)))*mix(.75,1.15,macro2);

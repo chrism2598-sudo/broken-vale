@@ -78,6 +78,7 @@ export const OUTPOSTS: Outpost[] = [
   { id: 'barrow', name: 'The Old Barrow', x: -152, z: -108, r: 7, flat: 10, kind: 'barrow' },
   { id: 'bluff', name: 'Sunfall Bluff', x: 128, z: 150, r: 4, flat: 6, kind: 'view' },
   { id: 'cairn', name: 'North Cairn', x: 8, z: -196, r: 4, flat: 6, kind: 'view' },
+  { id: 'crown', name: 'Greycrown Outlook', x: 0, z: -263, r: 4, flat: 7, kind: 'view' }, // M22: up the switchback trail past the North Cairn
 ];
 const padCache = new Map<string, number>();
 export function outpostPad(o: Outpost): number { let v = padCache.get(o.id); if (v === undefined) { v = baseHeight(o.x, o.z) + (o.kind === 'view' ? 0.6 : 0); padCache.set(o.id, v); } return v; }
@@ -86,7 +87,27 @@ export function heightAt(x: number, z: number): number {
   for (const o of OUTPOSTS) { const d = Math.hypot(x - o.x, z - o.z); if (d < o.flat * 1.6) h += (outpostPad(o) - h) * (1 - smoothstep(o.flat * 0.75, o.flat * 1.6, d)); }
   return h;
 }
+/** M22 · the Greycrown trail: a graded switchback from the North Cairn up the north ridge to the outlook. */
+export const TRAIL: { x: number; z: number }[] = [{ x: 6, z: -201 }, { x: -12, z: -226 }, { x: 12, z: -244 }, { x: 2, z: -254 }];
+const TRAIL_LEN: number[] = []; { let a = 0; TRAIL_LEN.push(0); for (let i = 1; i < TRAIL.length; i++) { a += Math.hypot(TRAIL[i].x - TRAIL[i - 1].x, TRAIL[i].z - TRAIL[i - 1].z); TRAIL_LEN.push(a); } }
+/** Distance to the trail centreline and the 0..1 position along it. */
+export function trailAt(x: number, z: number): { d: number; t: number } {
+  let bd = 1e9, bt = 0; const L = TRAIL_LEN[TRAIL_LEN.length - 1];
+  for (let i = 1; i < TRAIL.length; i++) { const a = TRAIL[i - 1], b = TRAIL[i], dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz; const u = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / l2)); const d = Math.hypot(x - a.x - dx * u, z - a.z - dz * u); if (d < bd) { bd = d; bt = (TRAIL_LEN[i - 1] + u * Math.sqrt(l2)) / L; } }
+  return { d: bd, t: bt };
+}
+let trailH: [number, number] | null = null;
+/** True where the walk boundary opens up for the trail and the outlook (beyond the vale's 235 m ring). */
+export function onTrail(x: number, z: number): boolean { return trailAt(x, z).d < 4.2 || Math.hypot(x - 0, z + 263) < 7.5; }
 function baseHeight(x: number, z: number): number {
+  const h0 = baseHeight0(x, z);
+  if (z > -190 || z < -275 || Math.abs(x) > 40) return h0;
+  const tr = trailAt(x, z); if (tr.d > 10) return h0;
+  trailH ??= [baseHeight0(TRAIL[0].x, TRAIL[0].z), baseHeight0(0, -263) + 0.6];
+  const ty = trailH[0] + (trailH[1] - trailH[0]) * tr.t; // an even ~37% grade
+  return h0 + (ty - h0) * (1 - smoothstep(3.2, 10, tr.d));
+}
+function baseHeight0(x: number, z: number): number {
   const r = Math.hypot(x - SPAWN.x, z - SPAWN.z);
   const dc = Math.abs(x - creekX(z));
   let h = 2.2 * fbm(x * 0.018, z * 0.018) + 0.35 * fbm(x * 0.09, z * 0.09);

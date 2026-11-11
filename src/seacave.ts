@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { triplanar } from './landmarks';
+import { addRimFill } from './shading';
 import type { GroundTex } from './terrain';
 
 /** The Listening Pools: the sea cave beyond the Tidewrack Coast's cave mouth (Chapter II, part 3). Its own scene at a far origin. */
@@ -74,16 +75,28 @@ export function rockBlob(r: number, rnd: () => number, sx = 1, sy = 1, sz = 1, d
   for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const k = 1 + 0.18 * Math.sin(x * 1.3 + o) * Math.sin(y * 1.7 - o) + 0.07 * Math.sin(z * 3.1 + y * 2.3); p.setXYZ(i, x * k * sx, y * k * sy, z * k * sz); }
   g.computeVertexNormals(); return g;
 }
-/** A short hexagonal prism with a pointed cap — reads as a crystal, not a party-hat cone. */
-function crystalGeo(h: number, r: number, lean = 0) {
-  const shaft = new THREE.CylinderGeometry(r * 0.55, r, h * 0.68, 6).toNonIndexed(); shaft.translate(0, h * 0.34, 0);
-  const cap = new THREE.ConeGeometry(r * 0.55, h * 0.36, 6).toNonIndexed(); cap.translate(0, h * 0.68 + h * 0.18, 0);
-  const g = mergeGeometries([shaft, cap])!; if (lean) g.rotateZ(lean); return g;
+/** M22 · a real crystal: an irregular six-sided prism (uneven faces), an off-centre faceted termination, a darker
+ *  cloudy root fading to a clear bright tip (vertex colour), flat-shaded so every facet catches the light differently. */
+function crystalGeo(h: number, r: number, lean = 0, seed = 1) {
+  let sd = Math.floor(seed * 9973) % 2147483646 + 1; const rr = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+  const n = 6, rad: number[] = [], ang: number[] = []; for (let i = 0; i < n; i++) { rad.push(r * (0.72 + rr() * 0.42)); ang.push((i + (rr() - 0.5) * 0.35) / n * Math.PI * 2); }
+  const hs = h * (0.6 + rr() * 0.14), ax = (rr() - 0.5) * r * 0.5, az = (rr() - 0.5) * r * 0.5;
+  const pos: number[] = [], col: number[] = [];
+  const v = (x: number, y: number, z: number) => { pos.push(x, y, z); const k = Math.min(1, Math.max(0, y / h)); const c = 0.38 + 0.62 * k * k; col.push(c, c, c); };
+  const ring = (i: number, y: number, s: number) => [Math.cos(ang[i % n]) * rad[i % n] * s, y, Math.sin(ang[i % n]) * rad[i % n] * s] as const;
+  for (let i = 0; i < n; i++) {
+    const a0 = ring(i, -0.05, 1.08), a1 = ring(i + 1, -0.05, 1.08), b0 = ring(i, hs, 0.86), b1 = ring(i + 1, hs, 0.86);
+    v(...a0); v(...b1); v(...a1); v(...a0); v(...b0); v(...b1); // side
+    const tip = [ax, h, az] as const; // a facet per side up to an off-centre apex
+    v(...b0); v(...tip); v(...b1);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals(); if (lean) g.rotateZ(lean); return g;
 }
 /** Boxed body, rounded lid, iron bands and a hasp — a chest, not a slab on a crate. */
-function seaChest(scale = 1) {
-  const wood = new THREE.MeshStandardMaterial({ color: '#8a5a30', roughness: 0.7, metalness: 0.03, emissive: '#4a2a14', emissiveIntensity: 0.16 });
-  const band = new THREE.MeshStandardMaterial({ color: '#9a8458', roughness: 0.4, metalness: 0.72 });
+function seaChest(scale = 1, woodM?: THREE.Material) {
+  const wood = woodM ?? new THREE.MeshStandardMaterial({ color: '#6a4426', roughness: 0.78, metalness: 0.03, emissive: '#2a1608', emissiveIntensity: 0.12 }); // M22: sea-darkened planks, not toy orange
+  const band = new THREE.MeshStandardMaterial({ color: '#5e5446', roughness: 0.55, metalness: 0.7 }); // M22: tarnished iron
   const dark = new THREE.MeshStandardMaterial({ color: '#3a2818', roughness: 0.82 });
   const cg = new THREE.Group();
   const foot = 0.07 * scale;
@@ -111,34 +124,44 @@ function seaChest(scale = 1) {
   cg.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = m.receiveShadow = true; });
   return cg;
 }
-/** Incised tide-runes on pale stone; paired color + bump canvases. */
+/** M22 · tide-runes cut into weathered stone: colour (lichen-mottled stone, soot/silt in the grooves) and a soft
+ *  V-groove height mask that the face mesh is actually displaced by — real carving, not a printed plaque. */
 function runeTabletTex() {
-  const w = 512, h = 768; const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d')!;
-  x.fillStyle = '#c9c0ae'; x.fillRect(0, 0, w, h);
-  for (let i = 0; i < 2200; i++) { x.fillStyle = `rgba(70,60,45,${0.03 + Math.random() * 0.07})`; x.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 3); }
-  x.strokeStyle = '#4a4032'; x.lineWidth = 12; x.strokeRect(26, 30, w - 52, h - 60);
-  x.strokeStyle = '#8a7e6a'; x.lineWidth = 3; x.strokeRect(42, 46, w - 84, h - 92);
-  x.fillStyle = '#2a2218'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.font = '78px serif'; x.fillText('≈', 256, 112);
-  x.font = '46px serif';
-  const rows = ['◎  ⁘  ◇  △  ☽', '✶  ⊢  ◎  ⁘  ≈', '△  ☽  ✶  ◇  ⊢', '◎  ≈  ⁘  ☽  △', '✶  ⊢  ◇  ◎  ≈'];
-  rows.forEach((ln, i) => x.fillText(ln, 256, 220 + i * 86));
-  x.strokeStyle = '#2a2218'; x.lineWidth = 7; x.beginPath(); x.moveTo(110, 690); x.lineTo(400, 690); x.stroke();
-  x.beginPath(); x.moveTo(110, 690); x.lineTo(150, 668); x.moveTo(110, 690); x.lineTo(150, 712); x.stroke();
+  const w = 256, h = 384; const glyphs = document.createElement('canvas'); glyphs.width = w; glyphs.height = h; const gx = glyphs.getContext('2d')!;
+  gx.fillStyle = '#000'; gx.fillRect(0, 0, w, h); gx.fillStyle = '#fff'; gx.strokeStyle = '#fff'; gx.textAlign = 'center'; gx.textBaseline = 'middle';
+  gx.lineWidth = 7; gx.strokeRect(16, 16, w - 32, h - 32);
+  gx.font = 'bold 44px serif'; gx.fillText('≈', 128, 62);
+  gx.font = 'bold 26px serif';
+  const rows = ['◎ ⁘ ◇ △ ☽', '✶ ⊢ ◎ ⁘ ≈', '△ ☽ ✶ ◇ ⊢', '◎ ≈ ⁘ ☽ △', '✶ ⊢ ◇ ◎ ≈'];
+  rows.forEach((ln, i) => gx.fillText(ln, 128, 118 + i * 43));
+  gx.lineWidth = 5; gx.beginPath(); gx.moveTo(60, 345); gx.lineTo(196, 345); gx.moveTo(60, 345); gx.lineTo(80, 333); gx.moveTo(60, 345); gx.lineTo(80, 357); gx.stroke();
+  const hc = document.createElement('canvas'); hc.width = w; hc.height = h; const hx = hc.getContext('2d')!;
+  hx.filter = 'blur(2px)'; hx.drawImage(glyphs, 0, 0); hx.filter = 'none';
+  const hid = hx.getImageData(0, 0, w, h).data; const cut = new Float32Array(w * h); for (let i = 0; i < w * h; i++) cut[i] = hid[i * 4] / 255;
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d')!;
+  const id = x.createImageData(w, h), d = id.data; let sd = 7; const rr = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+  const blot = new Float32Array(w * h); for (let k = 0; k < 60; k++) { const cx = rr() * w, cy = rr() * h, R = 8 + rr() * 30, a = rr(); for (let yy = Math.max(0, cy - R | 0); yy < Math.min(h, cy + R); yy++) for (let xx = Math.max(0, cx - R | 0); xx < Math.min(w, cx + R); xx++) { const q = 1 - Math.hypot(xx - cx, yy - cy) / R; if (q > 0) blot[yy * w + xx] += q * a; } }
+  for (let i = 0; i < w * h; i++) {
+    const yy = (i / w) | 0, n = (rr() - 0.5) * 22, b = Math.min(1, blot[i]), k = cut[i], damp = Math.max(0, (yy / h - 0.7) / 0.3);
+    let r = 150 + n - 18 * b - 30 * damp, g = 146 + n - 8 * b - 22 * damp, bl = 132 + n - 22 * b - 18 * damp; // grey-buff stone, green-grey lichen blots, damp foot
+    r = r * (1 - 0.72 * k) + 30 * k * 0.4; g = g * (1 - 0.7 * k) + 32 * k * 0.4; bl = bl * (1 - 0.68 * k) + 28 * k * 0.4; // silt and soot settle in the cuts
+    d[i * 4] = r; d[i * 4 + 1] = g; d[i * 4 + 2] = bl; d[i * 4 + 3] = 255;
+  }
+  x.putImageData(id, 0, 0);
   const map = new THREE.CanvasTexture(c); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 8;
-  const b = document.createElement('canvas'); b.width = w; b.height = h; const bx = b.getContext('2d')!;
-  bx.fillStyle = '#888'; bx.fillRect(0, 0, w, h);
-  bx.drawImage(c, 0, 0);
-  const id = bx.getImageData(0, 0, w, h), d = id.data;
-  for (let i = 0; i < d.length; i += 4) { const lum = 0.3 * d[i] + 0.5 * d[i + 1] + 0.2 * d[i + 2]; const v = lum < 120 ? 40 : 200; d[i] = d[i + 1] = d[i + 2] = v; }
-  bx.putImageData(id, 0, 0);
-  const bump = new THREE.CanvasTexture(b); bump.anisotropy = 8;
-  return { map, bump };
+  return { map, cut, w, h };
+}
+/** The tablet face: a dense grid pushed back into the stone wherever a rune is cut (~1.4 cm deep, soft V profile). */
+function carvedFace(fw: number, fh: number, t: { cut: Float32Array; w: number; h: number }, depth = 0.014) {
+  const g = new THREE.PlaneGeometry(fw, fh, 88, 132); const p = g.attributes.position as THREE.BufferAttribute, uv = g.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) { const u = uv.getX(i), vv = uv.getY(i); const px = Math.min(t.w - 1, Math.round(u * (t.w - 1))), py = Math.min(t.h - 1, Math.round((1 - vv) * (t.h - 1)));
+    const k = t.cut[py * t.w + px]; const edge = Math.min(u, 1 - u, vv, 1 - vv); p.setZ(i, -depth * Math.min(1, k * 1.3) - Math.max(0, 0.02 - edge) * 0.25); }
+  g.computeVertexNormals(); return g;
 }
 export const gradTex = (stops: [number, string][], w = 4, h = 128, radial = false) => { const c = document.createElement('canvas'); c.width = radial ? 128 : w; c.height = h; const x = c.getContext('2d')!;
   const gr = radial ? x.createRadialGradient(64, 64, 0, 64, 64, 64) : x.createLinearGradient(0, 0, 0, h); for (const [o, col] of stops) gr.addColorStop(o, col); x.fillStyle = gr; x.fillRect(0, 0, c.width, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
 
-export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex; blocks: GroundTex }, waterNormals: THREE.Texture, env: THREE.Texture | null) {
+export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex; blocks: GroundTex; wood?: GroundTex }, waterNormals: THREE.Texture, env: THREE.Texture | null) {
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#020607');
   scene.fog = new THREE.FogExp2('#04100f', high ? 0.034 : 0.04);
   if (env) { scene.environment = env; scene.environmentIntensity = 0.1; }
@@ -157,6 +180,8 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
     const ix = d.index!.array as Uint16Array | Uint32Array; for (let i = 0; i < ix.length; i += 3) { const t0 = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t0; }
     cutHoles(d, (x, y, z) => GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 0.9 && gr.side * z > mouthOf(gr) - 1.2 && y < 3.9)); d.computeVertexNormals();
     const m = new THREE.Mesh(d, rock); m.receiveShadow = true; g.add(m); }
+  const chestWood = t.wood ? triplanar(t.wood, 0.9, '#7a5a3c', { sat: 0.75, gain: 0.95, rough: 0.85 }) : undefined; // M22
+  let sd2 = 913; const rnd2 = () => { sd2 = (sd2 * 16807) % 2147483647; return sd2 / 2147483647; }; // M22 dressing: own stream, layout rnd untouched
   const lichenMats = [new THREE.MeshBasicMaterial({ color: '#2fe0c8', fog: true }), new THREE.MeshBasicMaterial({ color: '#4aa8ff', fog: true })];
   const vaultM = triplanar(t.rock, 2.2, '#5a5752', { rough: 0.6, sat: 0.45 }), bronzeM = new THREE.MeshStandardMaterial({ color: '#7a5a2e', metalness: 0.75, roughness: 0.45, emissive: '#0c2a26', emissiveIntensity: 0.4, side: THREE.DoubleSide }), kelpM = new THREE.MeshStandardMaterial({ color: '#2c3a22', roughness: 0.8 }), crateM = new THREE.MeshStandardMaterial({ color: '#5a4026', roughness: 0.85 });
   // M20b · the grottoes: a passage vault + floor, a domed side cave with its own lichen glow and a small cold light.
@@ -198,23 +223,41 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
       // a quay-like stone ledge: thick face down into the basin, back butted into the wall, flat walkable top.
       const platTop = 0.2, platH = 1.55, platW = 3.6, platD = 3.0;
       const platZ = gr.z + gr.side * 4.35;
-      const plat = new THREE.Mesh(new THREE.BoxGeometry(platW, platH, platD), wetRock);
-      plat.position.set(gr.x + 0.15, platTop - platH / 2, platZ); plat.receiveShadow = plat.castShadow = true; g.add(plat);
-      const face = new THREE.Mesh(new THREE.BoxGeometry(platW + 0.1, platH, 0.38), wetRock);
-      face.position.set(gr.x + 0.15, platTop - platH / 2, platZ - gr.side * (platD / 2 - 0.05)); face.receiveShadow = face.castShadow = true; g.add(face);
+      // M22 · a natural rock shelf, not a box: rounded plan, bulging weathered faces, a ragged lip; the walkable top stays flat.
+      { const qg = mergeVertices(new THREE.BoxGeometry(platW + 0.1, platH, platD, 12, 6, 10).deleteAttribute('normal').deleteAttribute('uv')); const p = qg.attributes.position as THREE.BufferAttribute;
+        const hw = (platW + 0.1) / 2, hd = platD / 2, hh = platH / 2;
+        for (let i = 0; i < p.count; i++) { let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+          const ux = x / hw, uz = z / hd, cr = Math.pow(Math.pow(Math.abs(ux), 4) + Math.pow(Math.abs(uz), 4), 0.25); // superellipse corners
+          const side = Math.max(Math.abs(ux), Math.abs(uz)) > 0.999; const top = y > hh - 1e-3;
+          { const k = cr > 1e-3 ? Math.max(Math.abs(ux), Math.abs(uz)) / cr : 1; x *= k; z *= k; }
+          const depthK = (hh - y) / platH; // 0 at top, 1 at bottom
+          const bul = 0.13 * Math.sin(x * 2.3 + y * 3.1) * Math.cos(z * 1.9 - y * 2.2) + 0.06 * Math.sin(x * 7.1 + z * 5.3 + y * 6.0);
+          if (!top) { const r = Math.hypot(x, z) || 1; x += x / r * (bul + depthK * 0.22); z += z / r * (bul + depthK * 0.22); }
+          else if (side) { y -= 0.03 + 0.05 * (0.5 + 0.5 * Math.sin(x * 9.0 + z * 7.0)); }
+          p.setXYZ(i, x, y, z); }
+        qg.computeVertexNormals();
+        const plat = new THREE.Mesh(qg, wetRock); plat.position.set(gr.x + 0.15, platTop - platH / 2, platZ); plat.receiveShadow = plat.castShadow = true; g.add(plat);
+        // a few fallen blocks and pebbles at its foot so it grows out of the basin
+        const fb: THREE.BufferGeometry[] = []; for (let i = 0; i < 6; i++) { const a = rnd2() * Math.PI * 2, rr = 0.18 + rnd2() * 0.32; const ex = Math.cos(a) * (hw + 0.25), ez = Math.sin(a) * (hd + 0.25);
+          if (gr.side * ez > hd * 0.6) continue; fb.push(rockBlob(rr, rnd2, 1.2, 0.6, 1, 1).translate(gr.x + 0.15 + ex, -0.95 + rr * 0.3, platZ + ez)); }
+        if (fb.length) { const fm = new THREE.Mesh(mergeGeometries(fb), wetRock); fm.receiveShadow = true; g.add(fm); } }
       // one corner boulder in the water (same rnd count as the old boulder); kept below the walkable top.
       const lip = new THREE.Mesh(rockBlob(0.7, rnd, 1.0, 0.7, 0.9, 2), wetRock);
       lip.position.set(gr.x + 1.45, -0.55, platZ - gr.side * (platD / 2 + 0.15)); lip.receiveShadow = lip.castShadow = true; g.add(lip);
-      const chest = seaChest(0.92); chest.position.set(gr.x + 0.4, platTop, platZ - gr.side * 0.35); chest.rotation.y = -0.45; g.add(chest);
+      const chest = seaChest(0.92, chestWood); chest.position.set(gr.x + 0.4, platTop, platZ - gr.side * 0.35); chest.rotation.y = -0.45; g.add(chest);
       gl.intensity = 11; gl.distance = 16; gl.position.set(gr.x, fy + 2.6, gr.z);
       const gl2 = new THREE.PointLight('#7ec8b8', 4.2, 11, 1.6); gl2.position.set(gr.x - 1.4, 1.8, gr.z + gr.side * 1.2); g.add(gl2);
       const warm = new THREE.PointLight('#ffd7a0', 4.4, 7, 1.8); warm.position.set(gr.x + 0.4, 1.55, gr.z + gr.side * 3.2); g.add(warm);
     } else if (gr.kind === 'crystal') {
       // opaque amber / teal clusters (pointed hexagonal shafts, not cones) and a standing carved tablet.
-      const am = new THREE.MeshStandardMaterial({ color: '#e8a84a', roughness: 0.22, metalness: 0.15, emissive: '#a86410', emissiveIntensity: 0.7 }), tm = new THREE.MeshStandardMaterial({ color: '#5ad4cc', roughness: 0.18, metalness: 0.2, emissive: '#146a66', emissiveIntensity: 0.85 });
+      // M22: flat-shaded facets, cloudy dark roots to bright clear tips (vertex colour), inner glow strongest at the tips.
+      const am = new THREE.MeshStandardMaterial({ color: '#f0b45a', roughness: 0.14, metalness: 0.1, emissive: '#b06a12', emissiveIntensity: 0.55, vertexColors: true, flatShading: true, envMapIntensity: 1.6 }), tm = new THREE.MeshStandardMaterial({ color: '#6ae0d8', roughness: 0.12, metalness: 0.12, emissive: '#18786f', emissiveIntensity: 0.7, vertexColors: true, flatShading: true, envMapIntensity: 1.6 });
+      for (const cm of [am, tm]) { cm.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vColor.r * vColor.r * 1.5;'); }; cm.customProgramCacheKey = () => 'crystal22'; addRimFill(cm, { fill: 0.1, rim: 0.55, rimColor: cm === am ? '#ffe2a8' : '#b8fff4' }); }
       const amber: THREE.BufferGeometry[] = [], teal: THREE.BufferGeometry[] = [];
       const tabX = gr.x + 0.15, tabZ = gr.z + gr.side * 0.6;
-      const plant = (list: THREE.BufferGeometry[], x: number, z: number, h: number, r: number) => { const c = crystalGeo(h, r, (rnd() - 0.5) * 0.22); c.rotateY(rnd() * 6); c.translate(x, fy, z); list.push(c); };
+      const plant = (list: THREE.BufferGeometry[], x: number, z: number, h: number, r: number) => { const c = crystalGeo(h, r, (rnd() - 0.5) * 0.22 + (rnd2() - 0.5) * 0.5, rnd2()); c.rotateY(rnd() * 6); c.translate(x, fy, z); list.push(c);
+        // M22: each shard is the heart of a druse — 2–3 smaller shards splay out from its root.
+        const nk = 2 + (rnd2() < 0.5 ? 1 : 0); for (let k = 0; k < nk; k++) { const a = rnd2() * Math.PI * 2, s2 = 0.35 + rnd2() * 0.3; const e = crystalGeo(h * s2, r * (0.45 + rnd2() * 0.25), 0.45 + rnd2() * 0.4, rnd2()); e.rotateY(a); e.translate(x + Math.cos(a) * r * 0.6, fy - 0.02, z - Math.sin(a) * r * 0.6); list.push(e); } };
       for (let i = 0; i < (high ? 16 : 11); i++) {
         const a = rnd() * Math.PI * 2, rr = 2.0 + rnd() * (gr.rx - 2.8), h = 0.45 + rnd() * 0.7;
         const x = gr.x + Math.cos(a) * rr, z = gr.z + Math.sin(a) * (gr.rz - 1.6) * (0.5 + rnd() * 0.5);
@@ -224,21 +267,25 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
         if (rnd() < 0.4) plant(i % 3 === 0 ? teal : amber, x + (rnd() - 0.5) * 0.3, z + (rnd() - 0.5) * 0.3, h * (0.45 + rnd() * 0.3), 0.09 + rnd() * 0.06);
       }
       // a dense cluster at the back wall, behind the tablet
-      for (let i = 0; i < 7; i++) { const h = 0.8 + rnd() * 1.15; plant(i < 3 ? teal : amber, gr.x + (rnd() - 0.5) * 1.6, gr.z + gr.side * 2.8 + (rnd() - 0.5) * 0.8, h, 0.15 + rnd() * 0.08); }
+      for (let i = 0; i < 7; i++) { const h = 0.8 + rnd() * 1.15; plant(i < 3 ? teal : amber, gr.x + (rnd() - 0.5) * 1.6, gr.z + gr.side * 2.8 + (rnd() - 0.5) * 0.8, h * 0.82, 0.19 + rnd() * 0.08); }
       for (const [list, mat] of [[amber, am], [teal, tm]] as const) if (list.length) { const xm = new THREE.Mesh(mergeGeometries(list), mat); xm.castShadow = xm.receiveShadow = true; g.add(xm); }
       const tabG = new THREE.Group(); tabG.position.set(tabX, fy, tabZ); tabG.rotation.set(-0.04, gr.side * 0.2, 0.02); g.add(tabG);
-      const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.22, 0.44), wetRock); plinth.position.y = 0.11; plinth.castShadow = plinth.receiveShadow = true; tabG.add(plinth);
-      const plinthCap = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.07, 0.5), wetRock); plinthCap.position.y = 0.235; plinthCap.receiveShadow = true; tabG.add(plinthCap);
+      // M22: the stele is socketed in a rough, half-buried boulder rather than standing on two stacked boxes.
+      const plinth = new THREE.Mesh(rockBlob(0.5, rnd2, 1.15, 0.5, 0.7, 2), wetRock); plinth.position.y = 0.04; plinth.castShadow = plinth.receiveShadow = true; tabG.add(plinth);
       const rune = runeTabletTex();
-      const slabM = new THREE.MeshStandardMaterial({ color: '#c9c0ae', roughness: 0.62, metalness: 0.04, emissive: '#2a3834', emissiveIntensity: 0.18 });
-      const slab = new THREE.Mesh(new THREE.BoxGeometry(0.74, 1.16, 0.12), slabM); slab.position.y = 0.27 + 0.58; slab.castShadow = high; tabG.add(slab);
-      const faceM = new THREE.MeshStandardMaterial({ map: rune.map, bumpMap: rune.bump, bumpScale: 0.035, roughness: 0.58, metalness: 0.04, emissive: '#1c2a26', emissiveIntensity: 0.22 });
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 1.08), faceM); face.position.set(0, slab.position.y, 0.062); tabG.add(face);
-      const back = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 1.08), faceM); back.position.set(0, slab.position.y, -0.062); back.rotation.y = Math.PI; tabG.add(back);
-      const cr = seaChest(0.68); cr.position.set(gr.x + 2.2, fy, gr.z + gr.side * 0.4); cr.rotation.y = 0.55; g.add(cr);
+      // M22 · a weathered stele: arched top, bevelled edges, buff-grey stone; the rune face is displaced geometry.
+      const slabM = triplanar(t.rock, 0.9, '#e6c9a6', { sat: 0.2, gain: 1.9, rough: 0.8 });
+      const st = new THREE.Shape(); const sw = 0.37, sh0 = 0.0, sh1 = 1.0; st.moveTo(-sw, sh0); st.lineTo(sw, sh0); st.lineTo(sw, sh1); st.absarc(0, sh1, sw, 0, Math.PI, false); st.lineTo(-sw, sh0);
+      const sg = new THREE.ExtrudeGeometry(st, { depth: 0.13, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 2, curveSegments: 14 }); sg.translate(0, 0, -0.065);
+      { const p = sg.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const chip = 0.012 * Math.sin(x * 31 + y * 17) * Math.sin(y * 23 - x * 11); p.setXYZ(i, x + (Math.abs(x) > sw - 0.01 ? chip : 0), y + (y > sh1 ? chip : 0), z); } sg.computeVertexNormals(); }
+      const slab = new THREE.Mesh(sg, slabM); slab.position.y = 0.27; slab.castShadow = high; slab.receiveShadow = true; tabG.add(slab);
+      const faceM = new THREE.MeshStandardMaterial({ map: rune.map, color: '#d6bea0', roughness: 0.86, metalness: 0, emissive: '#141a18', emissiveIntensity: 0.12 });
+      addRimFill(faceM, { fill: 0.12, rim: 0.12, rimColor: '#e9e2cf' });
+      const face = new THREE.Mesh(carvedFace(0.6, 0.9, rune, 0.024), faceM); face.position.set(0, 0.27 + 0.56, 0.117); face.receiveShadow = true; tabG.add(face);
+      const cr = seaChest(0.68, chestWood); cr.position.set(gr.x + 2.2, fy, gr.z + gr.side * 0.4); cr.rotation.y = 0.55; g.add(cr);
       gl.intensity = 10; gl.distance = 16;
       const gl2 = new THREE.PointLight('#3fe0d4', 6, 12, 1.4); gl2.position.set(gr.x - 1.6, fy + 2.0, gr.z - gr.side * 1.6); g.add(gl2);
-      const tabFill = new THREE.PointLight('#ffe8c0', 2.8, 6, 1.8); tabFill.position.set(tabX, fy + 1.4, tabZ + 0.9); g.add(tabFill);
+      const tabFill = new THREE.PointLight('#ffe8c0', 2.2, 6, 1.8); tabFill.position.set(tabX + 0.6, fy + 1.9, tabZ + 0.7); // M22: raking light from above-side so the cuts throw shadow g.add(tabFill);
     }
     const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.07, 0), lichenMats[gr.kind === 'crystal' ? 1 : 0], high ? 160 : 90); const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
     // sit flecks in the wall (e > 1 buries them when the shell bulges out); same rnd-call count as before.

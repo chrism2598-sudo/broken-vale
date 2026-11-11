@@ -60,12 +60,14 @@ export function bakeKinds(g: GLTF, opts: { autumnLeaves?: boolean } = {}): Kind[
       if (!geo.attributes.normal) geo.computeVertexNormals();
       const e = byMat.get(src.name) ?? { geos: [], src }; e.geos.push(geo); byMat.set(src.name, e);
     });
-    const box = new THREE.Box3().setFromObject(sc);
+    const box = new THREE.Box3().setFromObject(sc); const kh = Math.max(0.3, box.max.y - box.min.y);
     const parts: Kind['parts'] = [];
     for (const [name, e] of byMat) {
       const leaf = /leaves|leaf|flower/i.test(name);
-      let mat = matCache.get(name);
-      if (!mat) { mat = makeFoliageMaterial(e.src, leaf, false); matCache.set(name, mat); }
+      // M22: leaf materials are per kind (same shader program) so canopy depth shading knows the plant's height.
+      const ck = leaf ? name + '|' + kh.toFixed(2) : name;
+      let mat = matCache.get(ck);
+      if (!mat) { mat = makeFoliageMaterial(e.src, leaf, false, kh); matCache.set(ck, mat); }
       parts.push({ geo: mergeGeometries(e.geos), mat, leaf });
     }
     out.push({ parts, height: box.max.y - box.min.y });
@@ -78,22 +80,22 @@ const autumnCache = new Map<THREE.Material, THREE.Material>();
 /** Gold/amber recolour of a leaf material (keeps the alpha cut-out). */
 export function autumnOf(mat: THREE.Material): THREE.Material {
   let a = autumnCache.get(mat);
-  if (!a) { a = makeFoliageMaterial(mat as THREE.MeshStandardMaterial, true, true); autumnCache.set(mat, a); }
+  if (!a) { a = makeFoliageMaterial(mat as THREE.MeshStandardMaterial, true, true, (mat.userData.kh as number) ?? 6); autumnCache.set(mat, a); }
   return a;
 }
 
-function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, autumn: boolean): THREE.Material {
+function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, autumn: boolean, kh = 6): THREE.Material {
   const m = new THREE.MeshStandardMaterial({
     map: src.map, normalMap: leaf ? null : src.normalMap, color: src.color.clone(), roughness: leaf ? 0.82 : 0.95, metalness: 0,
     alphaTest: leaf ? 0.32 : 0, transparent: false, side: leaf ? THREE.DoubleSide : THREE.FrontSide,
   });
-  m.name = src.name + (autumn ? '_autumn' : '');
+  m.name = src.name + (autumn ? '_autumn' : ''); m.userData.kh = kh;
   if (!leaf) { if (m.map) m.map.anisotropy = 8; return m; }
   applyLeafAlpha(m);
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = foliageUniforms.uTime; sh.uniforms.uGlow = foliageUniforms.uGlow;
-    sh.fragmentShader = 'uniform float uGlow;\n' + sh.fragmentShader;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
+    sh.uniforms.uTime = foliageUniforms.uTime; sh.uniforms.uGlow = foliageUniforms.uGlow; sh.uniforms.uKH = { value: kh };
+    sh.fragmentShader = 'uniform float uGlow;\nvarying float vAo; varying vec3 vTint;\n' + sh.fragmentShader;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uKH; varying float vAo; varying vec3 vTint;')
       .replace('#include <begin_vertex>', `vec3 transformed=vec3(position);
   #ifdef USE_INSTANCING
   vec3 ip=instanceMatrix[3].xyz;
@@ -102,12 +104,21 @@ function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, aut
   #endif
   float hh=max(0.,position.y);
   float sw=sin(uTime*1.3+ip.x*.13+ip.z*.11)*.5+sin(uTime*2.9+position.x*2.+position.z*1.7)*.18;
-  transformed.x+=sw*.025*hh; transformed.z+=sw*.018*hh;`)
-      .replace('#include <beginnormal_vertex>', 'vec3 objectNormal=normalize(normal+vec3(0.,.6,0.));');
+  transformed.x+=sw*.025*hh; transformed.z+=sw*.018*hh;
+  // M22 · canopy depth: leaves low and near the trunk sit in the crown's own shade; outer/top leaves catch the light.
+  float hr=clamp(position.y/uKH,0.,1.), rr=clamp(length(position.xz)/(uKH*.32),0.,1.);
+  vAo=mix(.42,1.,smoothstep(.12,.95,hr*.62+rr*.5));
+  float hs=fract(sin(dot(ip.xz,vec2(12.9898,78.233)))*43758.5453);
+  vTint=mix(vec3(.86,.95,.8),vec3(1.1,1.05,.88),hs);
+  #ifndef USE_INSTANCING
+  vTint=vec3(1.);
+  #endif`)
+      .replace('#include <beginnormal_vertex>', 'vec3 objectNormal=normalize(normal+vec3(0.,.35,0.));');
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-${autumn ? 'float L=dot(diffuseColor.rgb,vec3(.3,.59,.11)); L=mix(.36,L,smoothstep(.12,.6,diffuseColor.a)); vec3 au=mix(vec3(.36,.07,.02),vec3(.78,.27,.04),smoothstep(.08,.45,L));au=mix(au,vec3(.90,.50,.08),smoothstep(.45,.85,L));diffuseColor.rgb=au*(.58+.42*L);' : ''}`)
+${autumn ? 'float L=dot(diffuseColor.rgb,vec3(.3,.59,.11)); L=mix(.36,L,smoothstep(.12,.6,diffuseColor.a)); vec3 au=mix(vec3(.36,.07,.02),vec3(.78,.27,.04),smoothstep(.08,.45,L));au=mix(au,vec3(.90,.50,.08),smoothstep(.45,.85,L));diffuseColor.rgb=au*(.58+.42*L);' : ''}
+diffuseColor.rgb*=vTint*vAo;`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.05,.022,.004)' : 'vec3(.07,.1,.03)'}*uGlow;`)
+totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.05,.022,.004)' : 'vec3(.07,.1,.03)'}*uGlow*vAo;`)
       .replace('#include <alphatest_fragment>', leafAlpha());
   };
   m.customProgramCacheKey = () => (autumn ? 'leafA' : 'leafG') + (useA2C ? 'c' : '');
@@ -160,7 +171,7 @@ function impostorMaterial(tex: THREE.Texture): THREE.MeshBasicMaterial {
   const m = new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.32, transparent: false, side: THREE.DoubleSide });
   applyLeafAlpha(m);
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uLit = foliageUniforms.uLit; sh.fragmentShader = 'uniform vec3 uLit;\n' + sh.fragmentShader; // unlit cards follow the day/night light
+    sh.uniforms.uLit = foliageUniforms.uLit; sh.fragmentShader = 'uniform vec3 uLit;\nvarying vec3 vTintI;\n' + sh.fragmentShader; // unlit cards follow the day/night light
     sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `
   vec4 cW = modelMatrix * instanceMatrix * vec4(0.,0.,0.,1.);
   float sW = length((modelMatrix * instanceMatrix * vec4(1.,0.,0.,0.)).xyz);
@@ -168,9 +179,10 @@ function impostorMaterial(tex: THREE.Texture): THREE.MeshBasicMaterial {
   vec3 rightV = vec3(toC.z, 0., -toC.x);
   vec3 wp = cW.xyz + rightV * position.x * sW + vec3(0.,1.,0.) * position.y * sW;
   vec4 mvPosition = viewMatrix * vec4(wp, 1.);
-  gl_Position = projectionMatrix * mvPosition;`);
+  gl_Position = projectionMatrix * mvPosition;
+  float hsI=fract(sin(dot(cW.xz,vec2(12.9898,78.233)))*43758.5453); vTintI=mix(vec3(.86,.95,.8),vec3(1.1,1.05,.88),hsI);`).replace('#include <common>', '#include <common>\nvarying vec3 vTintI;');
     // Darken the card bottom a touch (ground occlusion) so impostors sit in the meadow.
-    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= mix(.8, 1.05, smoothstep(0., .5, vMapUv.y)) * uLit;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= mix(.8, 1.05, smoothstep(0., .5, vMapUv.y)) * uLit * vTintI;')
       .replace('#include <alphatest_fragment>', leafAlpha());
   };
   m.customProgramCacheKey = () => 'impostor' + (useA2C ? 'c' : '');

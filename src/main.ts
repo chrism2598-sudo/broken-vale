@@ -16,7 +16,7 @@ import { makeLandmarks, keepFrame, KEEP_D, KEEP_W, KEEP_LOOK_PILLAR, walkY } fro
 import { makeWarden, WARDEN, W_WAKE, W_SLEEP, W_MELEE, W_STRIKE_R, W_TELE, W_RECOVER, PLAYER_ATK_CD, HP_MAX, WARDEN_XP, RECOVERY_LINES, recoveryPoint } from './warden';
 import { makeWindShrine, RUNES, TABLET, TABLET_LINES, SOLVED_LINES, RUNE_GLYPHS, RUNE_LABELS, SHRINE_XP, WIND_BLESS, runesMatch } from './shrine';
 import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP, CHAPTER_TEASER } from './quest';
-import { addRimFill, styleHeroMaterial, heroKindFor } from './shading';
+import { addRimFill, styleHeroMaterial, heroKindFor, GRADE_GLSL } from './shading';
 import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
 import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, configureFoliage, type Kind, type TreeInst } from './nature';
 import { makeFloatingIsland, makeLanternStaff, ISLAND_POS, islandTopY } from './island';
@@ -37,7 +37,7 @@ import { DAY_LEN, MORNING, skyAt, clockText, makeNightSky } from './daynight';
 import { makeRoam, FIRES } from './roam';
 import { GameAudio, type Region, type Surface } from './audio';
 import { ENNA_LINES, ENNA_NAME, LAMP_XP, LAMP_TOAST, FINAL_TITLE, FINAL_KICKER, FINAL_LINES, FINAL_REWARD, finalStats, CREDITS, sefaLines, dovLines, ressLines, nextUncharted } from './finale';
-import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep, OUTPOSTS, outpostPad } from './world';
+import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep, OUTPOSTS, outpostPad, onTrail, trailAt } from './world';
 import { makeOutposts, STANDS, standY, standPush, inStand, O as OP, type Loc } from './outposts';
 import { makeBarrow, BAR_O, type Barrow } from './barrow';
 import { SQ_XP, sq, stage, sketched, sketchesLeft, sefaTale, dovTale, ressTale, makeLocs, sideJournal } from './sidequests';
@@ -67,6 +67,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = HIGH ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
 app.appendChild(renderer.domElement);
+if (!HIGH) { const vg = document.createElement('div'); vg.id = 'vig'; vg.style.cssText = 'position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse 85% 75% at 50% 46%,rgba(0,0,0,0) 55%,rgba(8,6,4,.34) 100%)'; app.appendChild(vg); } // M22: Lite gets the same soft vignette High's post pass draws
 
 const scene = new THREE.Scene();
 const fogColor = new THREE.Color('#a8bfd2'); // cool blue atmospheric haze
@@ -230,10 +231,10 @@ async function main() {
   const vignette = new ShaderPass({
     uniforms: { tDiffuse: { value: null }, uAmt: { value: 0.32 }, uTime: { value: 0 } },
     vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `uniform sampler2D tDiffuse;uniform float uAmt;uniform float uTime;varying vec2 vUv;
+    fragmentShader: `uniform sampler2D tDiffuse;uniform float uAmt;uniform float uTime;varying vec2 vUv;${GRADE_GLSL}
       float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
       void main(){vec4 c=texture2D(tDiffuse,vUv);vec2 d=vUv-.5;float v=1.-uAmt*smoothstep(.25,.85,dot(d,d)*2.2);
-      c.rgb*=v; c.rgb=mix(c.rgb,c.rgb*vec3(1.03,1.0,.96),.6); c.rgb+=(h(vUv*913.+uTime)-.5)*.012; gl_FragColor=c;}`,
+      c.rgb=pow(valeGrade(pow(c.rgb,vec3(2.2))),vec3(1./2.2)); c.rgb*=v; c.rgb+=(h(vUv*913.+uTime)-.5)*.012; gl_FragColor=c;}`,
   });
   if (HIGH) {
     composer = new EffectComposer(renderer);
@@ -354,7 +355,7 @@ async function main() {
   type Inter = { label: string; act: () => void; x?: number; z?: number; combat?: boolean };
   let camFocus: { x: number; z: number; t: number } | null = null;
   // ---------- M20b-2 · calm controls: joystick + Jump + one Action button until a fight starts ----------
-  let ctlT = 0, ctlCalm = false, ctlHp = -1, ctlLbl = '';
+  let ctlT = 0, ctlCalm = false, ctlHp = -1, ctlLbl = '', ctlIdle = false;
   const atkBtn = document.getElementById('b-atk')!; if (navigator.webdriver) document.body.classList.add('wd'); // QA/shots: no slide timing to wait on
   function hostileNear(): boolean {
     if (inBarrow) return !!nearestBarMob(12);
@@ -370,6 +371,7 @@ async function main() {
     const calm = ctlT <= 0; if (calm !== ctlCalm) { ctlCalm = calm; document.body.classList.toggle('calm', calm); }
     const it = calm ? nearestInteract() : null, lbl = it && !it.combat ? (/^Talk/.test(it.label) ? 'Talk' : 'Use') : 'Attack';
     if (lbl !== ctlLbl) { ctlLbl = lbl; atkBtn.querySelector('small')!.textContent = lbl; atkBtn.classList.toggle('use', lbl !== 'Attack'); }
+    const idle = calm && !it; if (idle !== ctlIdle) { ctlIdle = idle; atkBtn.classList.toggle('idle', idle); } // M22: no foe and nothing to use — a quiet stone button, not a lit ATTACK
   }
   function nearestInteract(): Inter | null {
     if (lift || dawnCine) return null;
@@ -493,6 +495,10 @@ async function main() {
     }
     if ((p = spotAt('tower-top')) && stage(save, 'sefa') === 1 && !sketched(save, 'tower')) return { label: 'Sketch the view from Greyhold', act: () => sketch('tower', 'Greyhold Watchtower'), x: p.x, z: p.z };
     if ((p = spotAt('tower-satchel')) && stage(save, 'ress') === 0) return { label: 'A weathered satchel · strapped shut', act: () => toast('Someone left this for someone else. A name is scratched on the buckle: “R.”', 3.5), x: p.x, z: p.z };
+    if ((p = spotAt('crown-cache'))) { const got = (save.views ?? []).includes('crown-cache');
+      if (!got) return { label: 'Lift the slab · an old cache', act: () => { (save.views ??= []).push('crown-cache'); player.play('Interact'); audio.pickup(); persist(); openDialog('The watch-cache', ['Under the slab, an iron-bound box gone green: a flint and steel, a twist of dried meat long past eating, and a ledger page in a careful hand.', '“Greycrown watch, last entry. From here you see it all — both keeps, the Dome, the glint of the sea. We lit the beacon twice. Nobody came the second time.”'], () => gainXp(40, 'Greycrown cache found')); }, x: p.x, z: p.z };
+      return { label: 'The watch-cache · empty', act: () => toast('Just the flint and steel now. You leave them for the next climber.', 2.5), x: p.x, z: p.z }; }
+    if ((p = spotAt('view-crown'))) return { label: `Look out · ${OP.crown.name}`, act: () => toast('The whole vale lies open below — both keeps, the Dome’s glint, the coast a grey line to the west. Wind, and nothing else.', 4.5), x: p.x, z: p.z };
     for (const v of ['bluff', 'cairn'] as const) if ((p = spotAt('view-' + v))) {
       if (v === 'bluff' && stage(save, 'ress') === 2) return { label: 'Look under the cairn stones', act: () => { q.ress = 3; player.play('Interact'); audio.pickup(); openDialog('Under the stones', ['An oilcloth bundle, wedged under the cairn’s base stones: a driftwood harpoon with iron barbs, and a letter addressed to Ress.', 'You leave the letter sealed. It’s hers to open.'], () => gainXp(SQ_XP.step, 'Teo’s bundle found')); }, x: p.x, z: p.z };
       if (stage(save, 'sefa') === 1 && !sketched(save, v)) return { label: `Sketch the view from ${OP[v].name}`, act: () => sketch(v, OP[v].name), x: p.x, z: p.z };
@@ -568,7 +574,7 @@ async function main() {
   document.getElementById('crbtn')!.onclick = () => { setMenu(false); openCredits(); };
   // ---------- The Listening Pools (sea cave interior) ----------
   let inSea = false, sea: SeaCave | null = null, seaMobs: Mob[] = [], seaDown = 0, seaPull = 0;
-  async function ensureSea() { if (sea) return sea; caveLoading = true; const tx = await ruinTex(); sea = makeSeaCave(HIGH, { rock: tx.cliff, bed, blocks: tx.blocks }, waterNormals, scene.environment); caveLoading = false;
+  async function ensureSea() { if (sea) return sea; caveLoading = true; const tx = await ruinTex(); const seaWood = await loadSet('wood_planks').catch(() => null); sea = makeSeaCave(HIGH, { rock: tx.cliff, bed, blocks: tx.blocks, wood: seaWood ?? undefined }, waterNormals, scene.environment); caveLoading = false;
     { const c = sea, avoid = [...c.shells, c.page, c.door, c.exit, c.entry]; let at = { x: c.page.x + 1, z: c.page.z + 1 };
       search: for (let r = 5; r < 16; r += 0.75) for (let a = 0; a < 6.28; a += 0.45) { const x = c.shells[2].x + Math.cos(a) * r, z = c.shells[2].z + Math.sin(a) * r, [cx, cz] = c.constrain(x, z);
         if (Math.hypot(cx - x, cz - z) > 0.01 || avoid.some((q) => Math.hypot(q.x - x, q.z - z) < 5.2)) continue; at = { x, z }; break search; }
@@ -635,7 +641,7 @@ async function main() {
       document.getElementById('chtease')!.textContent = SEA_LINES.card.tease; document.getElementById('chxp')!.textContent = `+${SEA_XP} XP · Level ${levelOf(save.xp)} · The round seal waits`; chapterEl.hidden = false; });
   }
   // ---------- M13 · The Drowned Keeper ----------
-  let inKeep = false, keep: Keeper | null = null, kHud = '', kPull = 0;
+  let inKeep = false, keep: Keeper | null = null, kHud = '', kPull = 0, olPull = 0;
   const kev: KeeperEvent[] = [];
   function openSeal() {
     if (!sea || save.sea >= 4) return; save.sea = 4; persist(); sea.setOpen(true); hudT = 0; shake = 0.25; camFocus = { x: sea.sealPos.x, z: sea.sealPos.z, t: 4 };
@@ -1524,7 +1530,7 @@ async function main() {
       let nx = state.px + Math.sin(state.facing) * state.speed * dt, nz = state.pz + Math.cos(state.facing) * state.speed * dt;
       for (const s of solids) { const dx = nx - s.x, dz = nz - s.z, dd = Math.hypot(dx, dz); if (dd < s.r) { nx = s.x + dx / dd * s.r; nz = s.z + dz / dd * s.r; } }
       [nx, nz] = standPush(nx, nz, airborne ? footY : lastGy); // M20b-2: rocks, low walls, ruined steps block until you hop above them
-      const R = 235; const rr = Math.hypot(nx, nz); if (rr > R) { nx *= R / rr; nz *= R / rr; }
+      const R = 235; const rr = Math.hypot(nx, nz); if (rr > R && !onTrail(nx, nz)) { if (onTrail(state.px, state.pz)) { nx = state.px; nz = state.pz; } else { nx *= R / rr; nz *= R / rr; } } // M22: the Greycrown trail leaves the ring
       // Wading: the creek is shallow — slow down instead of blocking.
       if (Math.abs(nx - creekX(nz)) < creekHalf(nz)) { nx = state.px + (nx - state.px) * 0.5; nz = state.pz + (nz - state.pz) * 0.5; }
       state.px = nx; state.pz = nz;
@@ -1582,7 +1588,8 @@ async function main() {
     // Portrait + close to the Keeper: ease the camera back and up so the coil doesn't fill the screen (damped on the fixed tick → interpolated, no jitter).
     { const want = inKeep && keep && innerHeight > innerWidth && Math.hypot(state.px - keep.center.x, state.pz - keep.center.z) < 10.5 ? 1 : 0; kPull = snapCam ? want : kPull + (want - kPull) * damp(2.2, dt); }
     { const want = inSea && sea && sea.inTight(state.px, state.pz) ? 1 : 0; seaPull = snapCam ? want : seaPull + (want - seaPull) * damp(2.6, dt); }
-    const pitchK = state.pitch + 0.06 * kPull + 0.12 * seaPull, distK = state.dist + 3.2 * kPull - 2.2 * seaPull;
+    { const want = vale() && Math.hypot(state.px - OP.crown.x, state.pz - OP.crown.z) < 6.5 ? 1 : 0; olPull = snapCam ? want : olPull + (want - olPull) * damp(1.6, dt); } // M22: open the vista on the outlook
+    const pitchK = state.pitch + 0.06 * kPull + 0.12 * seaPull + 0.1 * olPull, distK = state.dist + 3.2 * kPull - 2.2 * seaPull + 4.0 * olPull;
     const cp = Math.cos(pitchK), sp = Math.sin(pitchK);
     const back = backV.set(Math.sin(state.yaw) * cp, sp, Math.cos(state.yaw) * cp);
     const right = rightV.set(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
@@ -2008,6 +2015,11 @@ async function main() {
       stick.id = id; stick.x = stick.y = 0; for (let k = 0; k < 10; k++) { t += 1 / 30; update(1 / 30, t); }
       return { n, x: +(state.px - SEA_O.x).toFixed(2), z: +(state.pz - SEA_O.z).toFixed(2), y: +player.root.position.y.toFixed(2), chamber: sea.chamber(state.px, state.pz), near: nearestInteract()?.label ?? null }; },
     /** M21a QA · steer the touch stick toward a castle-local point frame by frame (real joystick speed), like a player would. */
+    /** M22 QA: steer the touch stick toward a world point like a player would (no warps). */
+    walkWorld(x: number, z: number, frames = 900, m = 1) { const id = stick.id; stick.id = 999; let t = clock.elapsedTime, n = 0;
+      for (; n < frames; n++) { const dx = x - state.px, dz = z - state.pz, L = Math.hypot(dx, dz); if (L < 0.5) break; const ux = dx / L, uz = dz / L, sn = Math.sin(state.yaw), cs = Math.cos(state.yaw); stick.x = (ux * cs - uz * sn) * m; stick.y = (ux * sn + uz * cs) * m; t += 1 / 30; update(1 / 30, t); }
+      stick.id = id; stick.x = stick.y = 0; for (let k = 0; k < 10; k++) { t += 1 / 30; update(1 / 30, t); }
+      return { n, px: +state.px.toFixed(2), pz: +state.pz.toFixed(2), foot: +player.root.position.y.toFixed(2), ground: +heightAt(state.px, state.pz).toFixed(2), cam: [+camera.position.x.toFixed(2), +camera.position.y.toFixed(2), +camera.position.z.toFixed(2)], camGround: +heightAt(camera.position.x, camera.position.z).toFixed(2), near: nearestInteract()?.label ?? null }; },
     walkTo(lx: number, lz: number, frames = 240, m = 1) { if (!castle) return null; const id = stick.id; stick.id = 999; let t = clock.elapsedTime, n = 0;
       for (; n < frames; n++) { const dx = castle.O.x + lx - state.px, dz = castle.O.z + lz - state.pz, L = Math.hypot(dx, dz); if (L < 0.3) break; const ux = dx / L, uz = dz / L, sn = Math.sin(state.yaw), cs = Math.cos(state.yaw); stick.x = (ux * cs - uz * sn) * m; stick.y = (ux * sn + uz * cs) * m; t += 1 / 30; update(1 / 30, t); }
       stick.id = id; stick.x = stick.y = 0; for (let k = 0; k < 10; k++) { t += 1 / 30; update(1 / 30, t); }
@@ -2283,7 +2295,7 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
   // Pines on the lower mountain slopes.
   for (let i = 0; i < (HIGH ? 220 : 110); i++) {
     const a = r() * Math.PI * 2, d = 150 + r() * 95, x = Math.cos(a) * d, z = Math.sin(a) * d;
-    if (heightAt(x, z) > 40 || normalAt(x, z)[1] < 0.72 || !okSpot(x, z)) continue;
+    if (heightAt(x, z) > 40 || normalAt(x, z)[1] < 0.72 || !okSpot(x, z) || trailAt(x, z).d < 5) continue; // M22: keep the Greycrown trail clear
     addTree(pick(pines), x, z, 1.0 + r() * 0.7, r() < 0.06);
   }
   // Distance LOD: full meshes near the player under a triangle budget (~400k High / 120k Lite), impostor cards beyond.

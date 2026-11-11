@@ -20,6 +20,16 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
 #endif`;
 
+// ---------- M22 · colour grade after ACES (Lite: every tone-mapped material; High: the final vignette pass) ----------
+// A gentle filmic look: a touch more saturation, a soft S-curve in display space, cool-teal shadows and warm highlights.
+export const GRADE_GLSL = `vec3 valeGrade(vec3 c){ c=max(c,vec3(0.)); float L=dot(c,vec3(.2126,.7152,.0722));
+  c=max(mix(vec3(L),c,1.12),vec3(0.)); // saturation can push a channel below 0: clamp before the sqrt (NaN = black leaves)
+  vec3 g=sqrt(c); g=mix(g,g*g*(3.-2.*g),.18); c=g*g;
+  float k=smoothstep(.02,.55,L); c*=mix(vec3(.97,1.,1.04),vec3(1.035,1.,.955),k);
+  return c; }`;
+THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment + '\n' + GRADE_GLSL;
+THREE.ShaderChunk.tonemapping_fragment = '#if defined( TONE_MAPPING )\n\tgl_FragColor.rgb = valeGrade( toneMapping( gl_FragColor.rgb ) );\n#endif';
+
 /**
  * Stylised fill + rim on a standard material: a hemisphere-tinted ambient fill (sky above, warm/violet bounce below)
  * and a Fresnel rim so silhouettes read against bright skies and inside shadows.

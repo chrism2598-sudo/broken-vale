@@ -149,6 +149,7 @@ body.blocking #b-blk{filter:brightness(1.4);border-color:#bff3ea!important}
 #b-hvy,#b-blk,#b-dge,#b-wpn,#stam{transition:opacity .2s ease,transform .2s ease,visibility 0s}
 body.calm #b-hvy,body.calm #b-blk,body.calm #b-dge,body.calm #b-wpn,body.calm #stam{opacity:0;visibility:hidden;pointer-events:none;transform:translateX(28px) scale(.8);transition:opacity .35s ease,transform .35s ease,visibility 0s linear .35s}
 body.wd #b-hvy,body.wd #b-blk,body.wd #b-dge,body.wd #b-wpn,body.wd #stam{transition:none!important}
+#b-atk.idle{background:radial-gradient(circle at 40% 32%,#6d6a64,#2f2c28)!important;border-color:rgba(230,215,185,.5)!important;opacity:.62;transition:opacity .4s ease,background .4s ease}#b-atk.idle small{opacity:0}
 #b-atk.use{background:radial-gradient(circle at 40% 32%,#d9b45e,#7a5418)!important;border-color:#fff0c0!important}
 body.calm #action{pointer-events:none;right:max(8px,env(safe-area-inset-right))!important;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 100px)!important;min-height:40px!important;font-size:14px!important;opacity:.95}
 #wpick{position:fixed;z-index:30;right:max(14px,env(safe-area-inset-right));top:calc(max(12px,env(safe-area-inset-top)) + 92px);max-height:calc(100vh - 330px);overflow:auto;width:min(320px,90vw);padding:8px;border-radius:14px;background:rgba(14,26,28,.94);border:1px solid rgba(214,186,120,.7);color:#f4ead2;font:13px Georgia,serif}

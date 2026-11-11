@@ -51,7 +51,8 @@ export function makeLocs(base: { id: string; name: string; x: number; z: number;
   const out: Loc[] = base.map((l) => ({ id: l.id, name: l.name, x: l.x, z: l.z, r: Math.max(14, l.r), xp: 5, reveal: 40 }));
   out.push({ id: 'tower', name: P.tower.name, x: P.tower.x, z: P.tower.z, r: 18, xp: 10, reveal: 46 }, { id: 'camp', name: P.camp.name, x: P.camp.x, z: P.camp.z, r: 22, xp: 10, reveal: 44 },
     { id: 'barrow', name: P.barrow.name, x: P.barrow.x, z: P.barrow.z, r: 16, xp: 10, reveal: 40 }, { id: 'bluff', name: P.bluff.name, x: P.bluff.x, z: P.bluff.z, r: 10, xp: 15, reveal: 80, view: true },
-    { id: 'cairn', name: P.cairn.name, x: P.cairn.x, z: P.cairn.z, r: 10, xp: 15, reveal: 80, view: true });
+    { id: 'cairn', name: P.cairn.name, x: P.cairn.x, z: P.cairn.z, r: 10, xp: 15, reveal: 80, view: true },
+    { id: 'crown', name: P.crown.name, x: P.crown.x, z: P.crown.z, r: 9, xp: 25, reveal: 120, view: true });
   return out;
 }
 

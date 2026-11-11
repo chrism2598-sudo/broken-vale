@@ -206,7 +206,7 @@ export type Pickup = ReturnType<typeof makePickup>;
 const SOCKET_Q = new THREE.Quaternion(0.000648100627586246, -1.27118431336726e-8, -0.712019681930542, 0.70215916633606);
 const SOCKET_P = new THREE.Vector3(-0.00000420987589677679, 0.000910800823476166, -0.000251135061262175);
 export function makeHolder(root: THREE.Object3D) {
-  const bone = root.getObjectByName('Middle1.R') ?? root.getObjectByName('Middle1R') ?? root.getObjectByName('Wrist.R') ?? root;
+  const bone = root.getObjectByName('Middle1.R') ?? root.getObjectByName('Middle1R') ?? root.getObjectByName('middle_01_r') ?? root.getObjectByName('Wrist.R') ?? root.getObjectByName('hand_r') ?? root;
   const holder = new THREE.Group(); holder.name = 'weapon-holder'; holder.position.copy(SOCKET_P); holder.quaternion.copy(SOCKET_Q); bone.add(holder);
   const models = new Map<WeaponId, THREE.Group>(); let cur: WeaponId | null = null;
   const v = new THREE.Vector3();

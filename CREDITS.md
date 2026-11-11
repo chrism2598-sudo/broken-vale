@@ -17,8 +17,11 @@ All third-party assets are free for commercial use. Files in `public/` are re-en
 | Boulder 01 | boulders | https://polyhaven.com/a/boulder_01 | CC0 |
 | Shrub 02 | shrubs | https://polyhaven.com/a/shrub_02 | CC0 |
 | Fern 02 | creek-bank ferns | https://polyhaven.com/a/fern_02 | CC0 |
-| "Hooded Adventurer" by Quaternius (rigged; Idle/Walk/Run/Wave…) | female hero (default Ilka Marr), recoloured navy/teal; sword hidden | https://poly.pizza/m/y9KWOVG21R (Ultimate Modular Women Pack) | CC0 (Public Domain) |
-| "Hoodie Character" by Quaternius (rigged; Idle/Walk/Run/Wave) | male hero (young, beardless), recoloured navy/teal | https://poly.pizza/m/gKLBoRsyKe (Ultimate Modular Men Pack) | CC0 (Public Domain) |
+| Universal Base Characters — Superhero Female/Male heads, Hair_Long, Hair_SimpleParted, eyebrows and eyes by Quaternius | player heads and hair (Ilka Marr and the male hero); chestnut-tinted hair | https://quaternius.com/packs/universalbasecharacters.html (Standard zip, via itch.io) | CC0 (Public Domain) |
+| Modular Character Outfits - Fantasy — Female_Ranger / Male_Ranger by Quaternius | player travel outfits (teal cloth, dark leather; hood omitted so the face reads on a phone) | https://quaternius.com/packs/modularcharacteroutfitsfantasy.html (Standard zip, via itch.io) | CC0 (Public Domain) |
+| Universal Animation Library — UAL1_Standard clips (Idle, Walk, Sprint, Sword_Attack, Roll, Interact, Hit_Chest, Punch_Cross, Idle_Talking) by Quaternius | player walk/run/idle/attack/react, retargeted onto the Universal rig (rotations + root/pelvis translation; no root-motion file) | https://quaternius.com/packs/universalanimationlibrary.html (Standard zip, via itch.io) | CC0 (Public Domain) |
+| "Hooded Adventurer" by Quaternius (rigged; Idle/Walk/Run/Wave…) | NPCs Enna and Sefa (and the previous female hero), recoloured; sword hidden | https://poly.pizza/m/y9KWOVG21R (Ultimate Modular Women Pack) | CC0 (Public Domain) |
+| "Hoodie Character" by Quaternius (rigged; Idle/Walk/Run/Wave) | NPC Ress (and the previous male hero), recoloured navy/teal | https://poly.pizza/m/gKLBoRsyKe (Ultimate Modular Men Pack) | CC0 (Public Domain) |
 | "King" by Quaternius (rigged; Idle/Walk/Run/Wave…) | the Wayfinder (crown hidden, armour recoloured to a plum travelling coat) | https://poly.pizza/m/I1gTjmuK2m (Ultimate Modular Men Pack) | CC0 (Public Domain) |
 | Stylized Nature MegaKit by Quaternius — Tree ×5, Pine ×2, Twisted Tree ×2 | broadleaf groves (some recoloured autumn-gold), pines on mountain flanks, golden twisted trees, floating-island trees | https://poly.pizza/bundle/Stylized-Nature-MegaKit-T34GZFA0fm (e.g. /m/qZtx0AHhcy, /m/79gmlLnweB, /m/GVTsMmuzv7) | CC0 (Public Domain) |
 | Stylized Nature MegaKit — Clover ×2, Flower Group ×2, Flower Single, Bush with Flowers | meadow clover carpets and wildflowers | same bundle (/m/u5SOgBFiut, /m/IQ9NVyVpUw, /m/LqTljN6Wg2, /m/hfPzQAedOe, /m/rHBoS64rRL, /m/U1ymDy8tbY) | CC0 (Public Domain) |
@@ -38,3 +41,5 @@ Each Poly Pizza model page above was checked on 2026-11-09 and shows "Public Dom
 - G2: hero skin wrap, fabric weave, hair sheen, leaf alpha coverage and grass root blend — procedural, original to this project (CC0).
 - M16: the Lowtide Lamp finale — lantern room, bronze lantern, beam and sky-seam shaders, final card and credits — procedural, original to this project (CC0).
 - M17: Enna Marr, Sefa Lune, Dov Hask and Ress reuse the CC0 Quaternius rigs listed above ("Hooded Adventurer" for Enna and Sefa, "Hoodie Character" for Ress, "King" with the crown hidden for Dov), recoloured.
+
+- M21b-3b: player character replaced with Quaternius Universal Base heads + Ranger outfits + Universal Animation Library clips (all CC0). License texts as shipped in the Standard zips are in `licenses/`. The live pack pages still stated CC0 on 2026-11-11.

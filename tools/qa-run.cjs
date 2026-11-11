@@ -102,7 +102,7 @@ await p.waitForFunction('window.__vale.cave().inCave&&window.__vale.ready',{time
 log('entered cave',{near:nS,fadeOn,inCave:c.inCave,stage:c.stage,fadeOff:!(await p.$eval('#fade',e=>e.classList.contains('on'))),qline:await p.$eval('#qline',e=>e.textContent),near2:(await Q()).near});
 await p.evaluate((x,z)=>window.__vale.warp(x,z+1.2),c.doorAt.x,c.doorAt.z);await sleep(700);log('near door',(await Q()).near);await p.keyboard.press('KeyE');await sleep(500);const hint=(await Q()).dlg;await closeDlg();log('door hint',hint);
 const atB=async(i)=>{await p.evaluate((x,z)=>window.__vale.warp(x,z+1.2),c.braziers[i].x,c.braziers[i].z);await sleep(600);const n=(await Q()).near;await p.keyboard.press('KeyE');await sleep(400);return {near:n,toast:await toastTxt(),lit:(await C()).lit};};
-const w=await atB(0);await sleep(2000);log('puzzle wrong (Ford first)',{...w,litAfter:(await C()).lit,stage:(await C()).stage,xpUnchanged:(await Q()).save.xp===xpC0});
+const w=await atB(0);await p.waitForFunction('window.__vale.cave().lit.length===0',{timeout:30000});log('puzzle wrong (Ford first)',{...w,litAfter:(await C()).lit,stage:(await C()).stage,xpUnchanged:(await Q()).save.xp===xpC0});
 for(const i of c.order){log('light '+c.names[i],await atB(i));}
 await p.waitForFunction('window.__vale.cave().door',{timeout:180000});c=await C();log('door open',{stage:c.stage,door:c.door,xpUnchanged:(await Q()).save.xp===xpC0});
 // Coast gate: the west passage stays choked until Enna's carving is read
@@ -159,15 +159,19 @@ await sleep(200);kp=await KP();await closeDlg();
 log('lose → safe recovery',{intro:introDlg,recovery:recov,playerHp:kp.playerHp,keeperHp:kp.hp,state:kp.state,onLedge:Math.hypot((await p.evaluate(()=>window.__vale.debug.player.position.x))-kp.entry.x,(await p.evaluate(()=>window.__vale.debug.player.position.z))-kp.entry.z)<1.5,xpKept:(await Q()).save.xp===xpB,stage:(await S()).stage,secs:+((Date.now()-t0)/1000).toFixed(0)});
 // win: dodge spouts, climb stones for sweeps, reveal + strike at low water
 await off(0);t0=Date.now();let ang=0,dodges=0,climbs=0,reveals=0,strikes=0,minHp=3,winD=[];let lastSt='';
-while(Date.now()-t0<300000){const q=await Q();if(q.talking){if(/last blow/i.test(q.dlg)){winD.push(q.dlg);for(let i=0;i<8&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);if((await Q()).talking)winD.push((await Q()).dlg);}break;}await closeDlg();continue;}
+while(Date.now()-t0<600000){ // M21b-3b: heavier hero, swiftshader needs more wall-clock for 3 reveal windows
+const q=await Q();if(q.talking){if(/last blow/i.test(q.dlg)){winD.push(q.dlg);for(let i=0;i<8&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);if((await Q()).talking)winD.push((await Q()).dlg);}break;}await closeDlg();continue;}
   kp=await KP();minHp=Math.min(minHp,kp.playerHp);
-  if(kp.state==='idle'||kp.state==='intro'||kp.state==='recover'){const pp3=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return{x:v.x,z:v.z,f:window.__vale.debug.aq.fading}});if(!pp3.f&&Math.hypot(pp3.x-kp.entry.x,pp3.z-kp.entry.z)<1.5){await off(ang);}} // a late recovery fade can drop Ilka back on the (safe) ledge
+  // The fight is paused while Ilka stands on the entrance ledge. A late recovery fade can drop her
+  // back there in any state, not only intro/recover — warp off whenever she's on it.
+  {const pp3=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return{x:v.x,z:v.z,f:window.__vale.debug.aq.fading}});if(!pp3.f&&Math.hypot(pp3.x-kp.entry.x,pp3.z-kp.entry.z)<1.5){await off(ang);}}
   if(kp.state==='windup'&&lastSt!=='windup'){ang+=0.75;await off(ang);dodges++;}
   else if(kp.state==='sweepWarn'&&lastSt!=='sweepWarn'){let b=kp.stones[0],bd=1e9;const pp2=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return{x:v.x,z:v.z}});for(const st of kp.stones){const dd=Math.hypot(st.x-pp2.x,st.z-pp2.z);if(dd<bd){bd=dd;b=st;}}await p.evaluate((x,z)=>window.__vale.warp(x,z),b.x,b.z);climbs++;}
-  else if(kp.state==='low'){if(lastSt!=='low'){await off(ang,5.0);}if(!kp.revealed){await p.keyboard.press('KeyE');reveals++;}else{await p.keyboard.press('KeyK');strikes++;}}
+  else if(kp.state==='low'){if(lastSt!=='low'){await off(ang,5.0);}if(!kp.revealed){await p.keyboard.press('KeyE');reveals++;await p.waitForFunction('window.__vale.keeper().revealed||window.__vale.keeper().state!=="low"',{timeout:2000}).catch(()=>{});}else{await p.waitForFunction('!window.__vale.combat().act',{timeout:4000}).catch(()=>{});await p.keyboard.press('KeyK');strikes++;}}
   else if(lastSt==='low'&&kp.state!=='low'){await off(ang);}
   lastSt=kp.state;await sleep(120);}
 await sleep(500);kp=await KP();
+if(kp.state!=='dead'){const diag=await p.evaluate(()=>{const v=window.__vale.debug.player.position,k=window.__vale.keeper(),q=window.__vale.quest();return{x:+v.x.toFixed(2),z:+v.z.toFixed(2),d:+Math.hypot(v.x-k.center.x,v.z-k.center.z).toFixed(2),entryD:+Math.hypot(v.x-k.entry.x,v.z-k.entry.z).toFixed(2),onStone:k.onStone,hp:k.hp,state:k.state,revealed:k.revealed,near:q.near,talking:q.talking,dlg:q.dlg,sea:q.save.sea};});throw new Error('Keeper still '+kp.state+' after fight loop '+JSON.stringify(diag));}
 log('Keeper defeated',{secs:+((Date.now()-t0)/1000).toFixed(0),dodges,climbs,reveals,strikes,minPlayerHp:minHp,winLines:winD.length,enna:winD.some(t=>/Enna/.test(t)),notAlone:winD.some(t=>/not open the door alone/.test(t)),xpGain:(await Q()).save.xp-xpB,stage:(await S()).stage,state:kp.state,bar:kp.bar,chapter:await p.$eval('#chapter',e=>e.hidden?null:e.innerText.replace(/\n+/g,' | '))});
 await p.screenshot({path:'shots/chapter2-complete.png'});await p.click('#chok').catch(()=>{});await sleep(400);
 await off(0.3,5.0);const nK=(await Q()).near;await p.keyboard.press('KeyE');await sleep(500);const dK=(await Q()).dlg;await closeDlg();log('sleeping Keeper (no farming)',{near:nK,dialog:dK,xpGain:(await Q()).save.xp-xpB,state:(await KP()).state});

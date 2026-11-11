@@ -85,7 +85,7 @@ export function styleHeroMaterial(mat: THREE.MeshStandardMaterial, kind: HeroKin
   if (kind === 'gold') { mat.roughness = 0.32; mat.metalness = 0.75; mat.envMapIntensity = 1.0; addRimFill(mat, { fill: 0.14, rim: 0.25, rimColor: '#f0e0b0' }); return; }
   if (kind === 'metal') { mat.roughness = 0.38; mat.metalness = 0.55; mat.envMapIntensity = 1.05; addRimFill(mat, { fill: 0.16, rim: 0.28, rimColor: '#e8eef2' }); return; }
   if (kind === 'skin') { mat.roughness = 0.54; mat.metalness = 0; mat.envMapIntensity = 0.45; }
-  else if (kind === 'hair') { mat.roughness = 0.38; mat.metalness = 0; mat.envMapIntensity = 0.7; }
+  else if (kind === 'hair') { mat.roughness = 0.38; mat.metalness = 0; mat.envMapIntensity = 0.7; mat.side = THREE.FrontSide; }
   else if (kind === 'leather') { mat.roughness = 0.72; mat.metalness = 0.04; mat.envMapIntensity = 0.4; }
   else { mat.roughness = 0.76; mat.metalness = 0; mat.envMapIntensity = 0.5; }
   const { rough, emit } = heroBody(kind);
@@ -103,14 +103,17 @@ export function styleHeroMaterial(mat: THREE.MeshStandardMaterial, kind: HeroKin
   mat.needsUpdate = true;
 }
 
-/** Classify a Quaternius hero material (female Hooded Adventurer / male Hoodie Character). */
+/** Classify a hero material: Universal Ranger outfits, or the older Ultimate Modular NPC rigs. */
 export function heroKindFor(meshName: string, matName: string, colorKey?: string): HeroKind {
   if (colorKey === 'Casual_Legs/Skin') return 'leather';
-  if (matName === 'Eye') return 'eye';
+  if (matName === 'Eye' || matName === 'MI_Eyes' || meshName === 'Eyes' || meshName === 'Face.001') return 'eye';
   if (matName === 'Gold') return 'gold';
   if (matName === 'Metal') return 'metal';
-  if (matName === 'Hair' || matName === 'Eyebrows' || (matName === 'White' && /Head/i.test(meshName))) return 'hair';
-  if (matName === 'Skin') return 'skin';
+  if (matName === 'Hair' || matName === 'Eyebrows' || matName === 'MI_Hair_1' || matName === 'MI_Hair_2'
+    || /Hair|Eyebrow|^Face$/.test(meshName) || (matName === 'White' && /Head/i.test(meshName))) return 'hair';
+  if (matName === 'Skin' || matName === 'MI_Superhero_Female' || matName === 'MI_Superhero_Male'
+    || matName === 'MI_Regular_Female' || matName === 'MI_Regular_Male') return 'skin';
   if (matName === 'Black' || matName === 'Brown' || matName === 'White') return 'leather';
+  if (matName === 'MI_Ranger') return /Feet|Boot|Leg|Belt|Bracer|Pauldron/i.test(meshName) ? 'leather' : 'cloth';
   return 'cloth';
 }

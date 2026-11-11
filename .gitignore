@@ -4,3 +4,5 @@ raw/
 shots/
 .DS_Store
 *.log
+
+tools/__pycache__/

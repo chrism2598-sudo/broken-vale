@@ -99,12 +99,12 @@ const errors: string[] = [];
 window.addEventListener('error', (e) => errors.push(String(e.message)));
 
 async function main() {
-  const [brick, roofT, sandT, metalT, hdr, grass, path, rock, bed, waterNormals, heroFG, heroMG, wayG, treesG, plantsG, rocksG, boulderG, shrubG, fernG] = await Promise.all([
+  const [brick, roofT, sandT, metalT, hdr, grass, path, rock, bed, waterNormals, heroFG, heroMG, npcFG, npcMG, wayG, treesG, plantsG, rocksG, boulderG, shrubG, fernG] = await Promise.all([
     loadSet('castle_brick_02_white'), loadSet('grey_roof_tiles'), loadSet('large_sandstone_blocks'), loadSet('rusty_metal_02'),
     new HDRLoader(manager).loadAsync('./hdr/sky_2k.hdr'),
     loadSet('leafy_grass'), loadSet('stony_dirt_path'), loadSet('mossy_rock'), loadSet('river_small_rocks'),
     loadTex('waternormals'),
-    loadGltf('hero_f'), loadGltf('hero_m'), loadGltf('wayfinder'), loadGltf('nature_trees'), loadGltf('nature_plants'), loadGltf('rock_moss_set_01'), loadGltf('boulder_01'), loadGltf('shrub_02'), loadGltf('fern_02'),
+    loadGltf('hero_f'), loadGltf('hero_m'), loadGltf('npc_f'), loadGltf('npc_m'), loadGltf('wayfinder'), loadGltf('nature_trees'), loadGltf('nature_plants'), loadGltf('rock_moss_set_01'), loadGltf('boulder_01'), loadGltf('shrub_02'), loadGltf('fern_02'),
   ]);
   // HDRI image-based lighting + sky background.
   hdr.mapping = THREE.EquirectangularReflectionMapping;
@@ -175,12 +175,11 @@ async function main() {
   scene.add(rift);
 
   // Characters.
-  // Player heroes (both CC0 Quaternius, recoloured with leather, a brown travel-cloak and teal accents); the creation screen picks one.
+  // Player heroes: CC0 Quaternius Universal Base heads + Ranger outfits (teal cloth, dark leather), chestnut hair.
+  // Bind-pose heights are the packed GLB bounding boxes (feet to hair crown).
   const heroes = {
-    // Hooded Adventurer: warm skin, chestnut hair (the model's 'White' is her hair), brown travel-cloak, leather trousers, teal sash, natural chestnut hair.
-    female: makeCharacter(heroFG, 1.66 / 1.877, { Skin: '#e1a67a', LightBrown: '#2c8f8a', DarkBrown: '#3a2a22', Black: '#6a4530', Brown: '#4a2a1c', White: '#6b3e24', Gold: '#d9b35c', Metal: '#c5d0d4' }, ['Sword']),
-    // Hoodie Character (young, beardless): brown travel-hoodie, teal trim, leather leggings, brown boots.
-    male: makeCharacter(heroMG, 1.74 / 1.866, { Skin: '#dba47c', Purple: '#3a2a22', LightBlue: '#2c8f8a', 'Casual_Legs/Skin': '#6a4530', White: '#6b4a32', Hair: '#4a2e1c', Eyebrows: '#2a1a12' }, []),
+    female: makeCharacter(heroFG, 1.66 / 1.781, {}, []),
+    male: makeCharacter(heroMG, 1.74 / 1.844, {}, []),
   };
   for (const h of Object.values(heroes)) { h.root.visible = false; h.root.position.set(SPAWN.x, heightAt(SPAWN.x, SPAWN.z), SPAWN.z); scene.add(h.root); }
   let profile = loadProfile();
@@ -201,9 +200,9 @@ async function main() {
   // M17 · the people of the vale (CC0 Quaternius rigs, recoloured): Sefa Lune the mapmaker, Dov Hask the old Dome smith and, after the ending, Enna by the crossing.
   const ENNA_COL = { Skin: '#d39a70', LightBrown: '#b98a3c', DarkBrown: '#2e2620', Black: '#3b3029', Brown: '#8d867c', White: '#8c8175', Gold: '#c9a24a', Metal: '#aab4b8' }; // Brown = hair: ash-streaked, matches her braid
   const SEFA = { x: 12, z: -15 }, DOV = { x: 31.9, z: 23.0 }, ENNA_V = { x: WAYFINDER.x - 3.2, z: WAYFINDER.z + 1.6 };
-  const sefa = makeCharacter(heroFG, 1.62 / 1.877, { Skin: '#c98d64', LightBrown: '#c9a24a', DarkBrown: '#2a2230', Black: '#3a2f2a', Brown: '#4b3b66', White: '#d9d4cc', Gold: '#d9b35c', Metal: '#c5d0d4' }, ['Sword']);
+  const sefa = makeCharacter(npcFG, 1.62 / 1.877, { Skin: '#c98d64', LightBrown: '#c9a24a', DarkBrown: '#2a2230', Black: '#3a2f2a', Brown: '#4b3b66', White: '#d9d4cc', Gold: '#d9b35c', Metal: '#c5d0d4' }, ['Sword']);
   const dov = makeCharacter(wayG, 1.70 / 1.903, { Metal: '#4a4540', Metal_Dark: '#2a2622', Blue: '#6a3b22', Beige: '#8f7a5a', Hair_White: '#8c8580', DarkBrown: '#2a1f18' }, ['mat:Gold']);
-  const ennaV = makeCharacter(heroFG, 1.68 / 1.877, ENNA_COL, ['Sword']); dressEnna(ennaV.root);
+  const ennaV = makeCharacter(npcFG, 1.68 / 1.877, ENNA_COL, ['Sword']); dressEnna(ennaV.root);
   const valeNpcs = [sefa, dov, ennaV].map((c, i) => { const p = [SEFA, DOV, ENNA_V][i]; c.root.position.set(p.x, heightAt(p.x, p.z), p.z); c.root.rotation.y = Math.atan2(SPAWN.x - p.x, SPAWN.z - p.z); scene.add(c.root); const solid = { x: p.x, z: p.z, r: 0.7 }; SOLIDS.push(solid); return { c, p, solid }; });
   const setEnnaVale = (on: boolean) => { ennaV.root.visible = on; valeNpcs[2].solid.r = on ? 0.7 : 0; };
   setEnnaVale(save.lamp >= 2);
@@ -222,8 +221,8 @@ async function main() {
   });
   let seaPick: { x: number; z: number; p: Pickup } | null = null;
   // Coast cast: Enna (from the Keeper's chamber onward) and Ress, her hired guide. Added to the coast scene when it is first built.
-  const ennaC = makeCharacter(heroFG, 1.68 / 1.877, ENNA_COL, ['Sword']); dressEnna(ennaC.root);
-  const ressC = makeCharacter(heroMG, 1.78 / 1.866, { Skin: '#b07a55', Purple: '#2f4a44', LightBlue: '#c7a25a', 'Casual_Legs/Skin': '#3a2c22', White: '#5a4634', Hair: '#1e1610', Eyebrows: '#1a120c' }, []);
+  const ennaC = makeCharacter(npcFG, 1.68 / 1.877, ENNA_COL, ['Sword']); dressEnna(ennaC.root);
+  const ressC = makeCharacter(npcMG, 1.78 / 1.866, { Skin: '#b07a55', Purple: '#2f4a44', LightBlue: '#c7a25a', 'Casual_Legs/Skin': '#3a2c22', White: '#5a4634', Hair: '#1e1610', Eyebrows: '#1a120c' }, []);
 
   // ---------- post ----------
   let composer: EffectComposer | null = null, renderPass: RenderPass | null = null;

@@ -8,9 +8,9 @@ const W=()=>p.evaluate(()=>window.__vale.world());const ready=()=>p.waitForFunct
 const sim=(n,sx=0,sy=0)=>p.evaluate((n,sx,sy)=>{window.__vale.sim(Array(n).fill(1/30),sx,sy);},n,sx,sy);
 const G=(w,id)=>w.groups.find(g=>g.id===id);
 const OLD={v:1,started:true,done:false,xp:40,seals:{dawn:true},runes:[0,0,0],wind:false,warden:false,mirrors:[0,0,0,0],beacon:false,echo:false,charted:[false,false,false,false,false,false,false],cave:0,coast:0,sea:0,lamp:0,weapons:['rusty','maul'],weapon:'maul',whet:4};
-await p.goto('http://localhost:8090/?q=lite&qa=1&tod=0.42',{waitUntil:'load'});
+await p.goto('http://localhost:8090/?q=lite&qa=1&tod=0.42',{waitUntil:'load',timeout:180000});
 await p.evaluate((o)=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'Ilka',sex:'female'}));localStorage.setItem('vale3d-save',JSON.stringify(o));},OLD);
-await p.reload({waitUntil:'load'});await ready();await sleep(1200);
+await p.reload({waitUntil:'load',timeout:180000});await ready();await sleep(1200);
 let w=await W();ok('old save (no time fields) loads at the set hour',w.tod===0.42&&w.day===0&&!w.locked,{tod:w.tod,day:w.day,locked:w.locked});
 ok('day light',w.night===0&&w.sunI>2&&w.lantern===0,{night:w.night,sunI:w.sunI,lantern:w.lantern});
 // 1 · clock runs
@@ -50,9 +50,9 @@ for(let i=0;i<60&&!moved;i++){await sim(20);const s=await p.evaluate(()=>window.
 w=await W();ok('beaten at night → wake by the nearest fire, HP full',moved&&w.playerHp>=3,{hp:w.playerHp});
 // 7 · reload keeps the clock
 await p.evaluate(()=>window.__vale.setTime(0.6));await p.evaluate(()=>window.__vale.interact&&0);await p.evaluate(()=>{const s=JSON.parse(localStorage.getItem('vale3d-save'));s.tod=0.61;localStorage.setItem('vale3d-save',JSON.stringify(s));});
-await p.goto('http://localhost:8090/?q=lite&qa=1&cycle=1',{waitUntil:'load'});await ready();await sleep(800);w=await W();ok('reload restores the saved hour (cycle on)',Math.abs(w.tod-0.61)<0.02&&!w.frozen,{tod:w.tod,frozen:w.frozen});
+await p.goto('http://localhost:8090/?q=lite&qa=1&cycle=1',{waitUntil:'load',timeout:180000});await ready();await sleep(800);w=await W();ok('reload restores the saved hour (cycle on)',Math.abs(w.tod-0.61)<0.02&&!w.frozen,{tod:w.tod,frozen:w.frozen});
 // 8 · Listening Pools grottoes
-await p.goto('http://localhost:8090/?q=lite&shot=seal-open',{waitUntil:'load'});await ready();await sleep(2500);
+await p.goto('http://localhost:8090/?q=lite&shot=seal-open',{waitUntil:'load',timeout:180000});await ready();await sleep(2500);
 const SO=3000;const at=(x,z)=>p.evaluate((x,z)=>window.__vale.warp(x,z),SO+x,SO+z);const pos=()=>p.evaluate(()=>{const s=window.__vale.camInfo();return {x:s.st.px-3000,z:s.st.pz-3000,y:s.player[1]};});
 await at(-9.5,7);await p.evaluate(()=>window.__vale.view(0,Math.PI,0.2,5));await sim(90,0,-1);let q=await pos();
 ok('north passage leads into the Wrack grotto',q.z>17&&Math.abs(q.y-0.18)<0.15,q);
@@ -65,7 +65,7 @@ await at(-20,-19.8);await sim(3);nr=await p.evaluate(()=>window.__vale.world().n
 await p.evaluate(()=>window.__vale.interact());await sleep(300);x1=await p.evaluate(()=>window.__vale.quest().save);ok('bell: lore page',x1.lore&&x1.lore.includes('sea-bell'),{lore:x1.lore});
 for(let i=0;i<4;i++)await p.evaluate(()=>window.__vale.advance());
 // 9 · the bigger arena
-await p.goto('http://localhost:8090/?q=lite&shot=keeper',{waitUntil:'load'});await ready();await sleep(2500);
+await p.goto('http://localhost:8090/?q=lite&shot=keeper',{waitUntil:'load',timeout:180000});await ready();await sleep(2500);
 let K=await p.evaluate(()=>window.__vale.keeper());ok('seven custodian stones',K.stones.length===7,{n:K.stones.length});
 const ring=K.stones.map(s=>Math.hypot(s.x-K.center.x,s.z-K.center.z));ok('stones spread across the floor',Math.max(...ring)>15&&Math.min(...ring)>8,{ring});
 await p.evaluate((c)=>{window.__vale.warp(c.x-6,c.z);window.__vale.view(-Math.PI/2,Math.PI/2,0.2,7);},K.center);await sim(120,0,-1);

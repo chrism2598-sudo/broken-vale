@@ -2,13 +2,13 @@ import * as THREE from 'three';
 
 /** M19 · Combat: weapons, a light combo, a charged heavy, block/parry, dodge-roll, stamina and hit stop.
  *  Pure gameplay state — main.ts decides what a strike touches and feeds incoming hits through `incoming()`. */
-export type WeaponId = 'rusty' | 'spear' | 'maul' | 'tide' | 'knight' | 'halberd';
+export type WeaponId = 'rusty' | 'spear' | 'maul' | 'tide' | 'knight' | 'halberd' | 'ember' | 'harpoon';
 export type Weapon = {
   id: WeaponId; name: string; short: string; icon: string; desc: string; where: string;
   dmg: number; heavy: number; reach: number; swing: number; combo: number; stagger: number; keeperMul: number; heavyCost: number;
   style: 0 | 1 | 2; heavyMove: 'cleave' | 'lunge' | 'slam' | 'wave';
 };
-export const WEAPON_ORDER: WeaponId[] = ['rusty', 'spear', 'maul', 'tide', 'knight', 'halberd'];
+export const WEAPON_ORDER: WeaponId[] = ['rusty', 'spear', 'maul', 'tide', 'knight', 'halberd', 'ember', 'harpoon'];
 export const WEAPONS: Record<WeaponId, Weapon> = {
   rusty: { id: 'rusty', name: 'Rusty Sword', short: 'Sword', icon: '🗡', where: 'Enna’s old blade, from the start',
     desc: 'Quick three-cut combo · heavy is a wide cleave.', dmg: 1, heavy: 2.2, reach: 1, swing: 0.36, combo: 3, stagger: 0, keeperMul: 1, heavyCost: 30, style: 0, heavyMove: 'cleave' },
@@ -22,6 +22,11 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     desc: 'Bright steel, three long cuts · heavy is a sweeping cleave.', dmg: 1.4, heavy: 3, reach: 1.15, swing: 0.4, combo: 3, stagger: 0.25, keeperMul: 1, heavyCost: 30, style: 0, heavyMove: 'cleave' },
   halberd: { id: 'halberd', name: 'Azure Halberd', short: 'Halb', icon: '🪓', where: 'Hidden in the solar of Azure Keep',
     desc: 'Longest reach · every hit staggers · heavy is a driving lunge.', dmg: 1.3, heavy: 3.2, reach: 1.55, swing: 0.5, combo: 2, stagger: 0.9, keeperMul: 1, heavyCost: 34, style: 1, heavyMove: 'lunge' },
+  // M20b-2 · side-quest rewards
+  ember: { id: 'ember', name: 'Emberbrand', short: 'Ember', icon: '🔥', where: 'Forged by Dov Hask from barrow star-iron',
+    desc: 'Dome-forged star-iron, still warm · hardest-hitting blade · heavy is a burning cleave.', dmg: 1.8, heavy: 3.8, reach: 1.1, swing: 0.4, combo: 3, stagger: 0.45, keeperMul: 1.2, heavyCost: 32, style: 0, heavyMove: 'cleave' },
+  harpoon: { id: 'harpoon', name: 'Teo’s Harpoon', short: 'Harp', icon: '🎣', where: 'Ress’s brother’s, given at the Tidewrack Coast',
+    desc: 'Barbed whale-iron on driftwood · long, quick thrusts · heavy is a lunging skewer.', dmg: 1.3, heavy: 3.0, reach: 1.6, swing: 0.36, combo: 3, stagger: 0.35, keeperMul: 1.3, heavyCost: 26, style: 1, heavyMove: 'lunge' },
 };
 export const isWeapon = (s: unknown): s is WeaponId => typeof s === 'string' && s in WEAPONS;
 
@@ -156,6 +161,18 @@ export function makeWeaponModel(id: WeaponId): THREE.Group {
       const ax = new THREE.ExtrudeGeometry(sh, { depth: 0.012, bevelEnabled: false }); ax.translate(0.015, 0, -0.006); add(new THREE.Mesh(ax, steel), 0, -1.22, 0); }
     add(new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.12, 4), steel), -0.05, -1.2, 0).rotation.z = -Math.PI / 2;
     add(blade(0.28, 0.035, 0.01, steel), 0, -1.38, 0);
+  } else if (id === 'ember') {
+    const star = M('#3b3536', 0.9, 0.35, '#ff5a14', 0.65), brass = M('#b8843a', 0.85, 0.35);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.021, 0.2, 8), leather), 0, 0.03, 0);
+    add(new THREE.Mesh(new THREE.OctahedronGeometry(0.04, 0), brass), 0, 0.16, 0);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.05), brass), 0, -0.08, 0);
+    add(blade(0.9, 0.04, 0.011, star, 1), 0, -0.1, 0);
+  } else if (id === 'harpoon') {
+    const whale = M('#a7b0b2', 0.85, 0.35), drift = M('#9a8a72', 0, 0.85);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.023, 1.9, 7), drift), 0, -0.33, 0);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.023, 0.023, 0.22, 8), M('#2b4a52', 0, 0.8)), 0, 0.0, 0);
+    add(blade(0.34, 0.03, 0.01, whale), 0, -1.27, 0);
+    for (const sx of [-1, 1]) add(new THREE.Mesh(new THREE.ConeGeometry(0.016, 0.1, 4), whale), sx * 0.035, -1.36, 0).rotation.z = sx * 2.6;
   } else {
     const glass = M('#6fd6cc', 0.25, 0.18, '#1d7a72', 0.55), bone = M('#d9cdb4', 0, 0.6);
     add(new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.019, 0.17, 8), M('#1f4f52', 0.1, 0.7)), 0, 0.02, 0);

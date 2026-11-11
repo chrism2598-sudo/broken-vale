@@ -5,25 +5,30 @@ import * as THREE from 'three';
 export const MOB_HP = 4, MOB_XP = 12;
 export type MobHit = 'swing' | null;
 /** M20b · overworld variants: 'shade' (night wraith, quick), 'brute' (big night husk, two-HP blows), 'husk' (weak day roamer). */
-export type MobLook = 'sentinel' | 'shade' | 'brute' | 'husk';
+export type MobLook = 'sentinel' | 'shade' | 'brute' | 'husk' | 'cultist' | 'zealot' | 'barrow' | 'king';
 export type MobOpts = { look?: MobLook; hp?: number; speed?: number; notice?: number; windup?: number; dmg?: number; xp?: number; name?: string; ground?: (x: number, z: number) => number };
 const STATS: Record<MobLook, Required<Omit<MobOpts, 'ground' | 'look'>>> = {
   sentinel: { hp: MOB_HP, speed: 2.0, notice: 9, windup: 0.85, dmg: 1, xp: MOB_XP, name: 'Sentinel' },
   shade: { hp: 5, speed: 3.1, notice: 14, windup: 0.7, dmg: 1, xp: 9, name: 'Gloam Shade' },
   brute: { hp: 9, speed: 2.2, notice: 12, windup: 1.15, dmg: 2, xp: 22, name: 'Gloam Brute' },
   husk: { hp: 3, speed: 1.8, notice: 8, windup: 0.95, dmg: 1, xp: 5, name: 'Wayside Husk' },
+  // M20b-2 · Ashen Hollow cultists, the barrow dead and their king
+  cultist: { hp: 5, speed: 2.7, notice: 13, windup: 0.8, dmg: 1, xp: 12, name: 'Ashen Cultist' },
+  zealot: { hp: 12, speed: 2.3, notice: 14, windup: 1.05, dmg: 2, xp: 35, name: 'Ashen Zealot' },
+  barrow: { hp: 4, speed: 2.0, notice: 10, windup: 0.9, dmg: 1, xp: 10, name: 'Barrow Dead' },
+  king: { hp: 26, speed: 2.1, notice: 16, windup: 1.0, dmg: 2, xp: 90, name: 'Ossric, the Barrow-King' },
 };
 
 export function makeSentinel(id: string, x: number, z: number, y: number, face: number, tint = '#8d9196', opts: MobOpts = {}) {
   const look = opts.look ?? 'sentinel', S = { ...STATS[look], ...opts }; const HPM = S.hp, WINDUP = S.windup, SPEED = S.speed, NOTICE = S.notice, ground = opts.ground;
   const g = new THREE.Group(); g.position.set(x, ground ? ground(x, z) : y, z); g.rotation.y = face;
-  const shade = look === 'shade';
-  const plate = new THREE.MeshStandardMaterial({ color: shade ? '#1b1d2a' : tint, metalness: shade ? 0 : 0.55, roughness: shade ? 0.9 : 0.4, transparent: shade, opacity: shade ? 0.92 : 1 }), dark = new THREE.MeshStandardMaterial({ color: shade ? '#0c0d14' : '#2b2a2c', metalness: shade ? 0 : 0.6, roughness: 0.6 });
-  const eyeM = new THREE.MeshBasicMaterial({ color: shade ? '#b7a6ff' : look === 'brute' ? '#ffb15a' : '#7fd8ff' });
+  const shade = look === 'shade', robe = shade || look === 'cultist' || look === 'zealot', big = look === 'brute' || look === 'zealot' || look === 'king';
+  const plate = new THREE.MeshStandardMaterial({ color: shade ? '#1b1d2a' : tint, metalness: robe ? 0 : 0.55, roughness: robe ? 0.9 : 0.4, transparent: shade, opacity: shade ? 0.92 : 1 }), dark = new THREE.MeshStandardMaterial({ color: shade ? '#0c0d14' : '#2b2a2c', metalness: shade ? 0 : 0.6, roughness: 0.6 });
+  const EYE = shade ? '#b7a6ff' : look === 'brute' || robe || look === 'king' ? '#ffb15a' : look === 'barrow' ? '#9fe0b0' : '#7fd8ff'; const eyeM = new THREE.MeshBasicMaterial({ color: EYE });
   let homeX = x, homeZ = z;
   const add = (geo: THREE.BufferGeometry, m: THREE.Material, px: number, py: number, pz: number, parent: THREE.Object3D = g) => { const me = new THREE.Mesh(geo, m); me.position.set(px, py, pz); me.castShadow = true; parent.add(me); return me; };
   const body = new THREE.Group(); g.add(body);
-  if (shade) { // hooded wraith: a ragged robe cone, deep hood, two violet eyes; floats a hand above the ground
+  if (robe) { // hooded wraith (shade) / ash-robed cultist: a ragged robe cone, deep hood, two violet eyes; floats a hand above the ground
     add(new THREE.ConeGeometry(0.55, 1.7, 9, 3, true), plate, 0, 0.95, 0, body); add(new THREE.SphereGeometry(0.24, 10, 8), dark, 0, 1.82, 0.02, body).scale.set(1, 1.2, 1);
     add(new THREE.ConeGeometry(0.3, 0.55, 9, 1, true), plate, 0, 2.0, -0.04, body).rotation.x = -0.25;
     for (const s of [-1, 1]) add(new THREE.SphereGeometry(0.045, 6, 4), eyeM, s * 0.08, 1.84, 0.2, body);
@@ -34,14 +39,16 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
     add(new THREE.BoxGeometry(0.22, 0.04, 0.05), eyeM, 0, 1.87, 0.15, body);
     for (const s of [-1, 1]) { add(new THREE.SphereGeometry(0.15, 8, 6), plate, s * 0.4, 1.6, 0, body); add(new THREE.CylinderGeometry(0.1, 0.08, 0.8, 8), plate, s * 0.13, 0.4, 0, body); }
   }
-  if (look === 'brute') body.scale.setScalar(1.4); else if (look === 'husk') body.scale.set(0.95, 0.9, 0.95);
+  if (look === 'brute' || look === 'zealot') body.scale.setScalar(1.4); else if (look === 'king') body.scale.setScalar(1.65); else if (look === 'husk' || look === 'barrow') body.scale.set(0.95, 0.9, 0.95);
+  if (look === 'king') { const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.17, 0.12, 8, 1, true), new THREE.MeshStandardMaterial({ color: '#b08a3a', metalness: 0.85, roughness: 0.4, side: THREE.DoubleSide })); crown.position.y = 2.05; body.add(crown); }
+  if (look === 'cultist' || look === 'zealot') { const sash = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.05, 6, 16), new THREE.MeshStandardMaterial({ color: '#8a2a14', roughness: 0.8 })); sash.rotation.x = Math.PI / 2; sash.position.y = 1.05; body.add(sash); }
   const armL = new THREE.Group(); armL.position.set(-0.42, 1.55, 0); body.add(armL); add(new THREE.CylinderGeometry(0.08, 0.07, 0.7, 8), plate, 0, -0.35, 0, armL);
   const shield = add(new THREE.BoxGeometry(0.08, 0.7, 0.5), dark, -0.12, -0.55, 0.12, armL); shield.rotation.y = 0.3;
   const armR = new THREE.Group(); armR.position.set(0.42, 1.55, 0); body.add(armR); add(new THREE.CylinderGeometry(0.08, 0.07, 0.7, 8), plate, 0, -0.35, 0, armR);
   const sword = add(new THREE.BoxGeometry(0.06, 1.1, 0.02), new THREE.MeshStandardMaterial({ color: '#c8ccd0', metalness: 0.9, roughness: 0.3 }), 0, -1.15, 0.08, armR);
   const ringM = new THREE.MeshBasicMaterial({ color: '#ff6a3a', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-  const ring = new THREE.Mesh(new THREE.RingGeometry((look === 'brute' ? 2.6 : 2.1) - 0.15, look === 'brute' ? 2.6 : 2.1, 32, 1, -0.9, 1.8), ringM); ring.rotation.x = -Math.PI / 2; ring.rotation.z = -Math.PI / 2; ring.position.y = 0.05; g.add(ring);
-  const REACH = look === 'brute' ? 2.6 : 2.1, RECOVER = look === 'shade' ? 0.8 : 1.1;
+  const RR = look === 'king' ? 3.0 : big ? 2.6 : 2.1; const ring = new THREE.Mesh(new THREE.RingGeometry(RR - 0.15, RR, 32, 1, -0.9, 1.8), ringM); ring.rotation.x = -Math.PI / 2; ring.rotation.z = -Math.PI / 2; ring.position.y = 0.05; g.add(ring);
+  const REACH = RR, RECOVER = look === 'shade' ? 0.8 : 1.1;
   let bob = 0, hp = HPM, state: 'idle' | 'chase' | 'windup' | 'recover' | 'stagger' | 'dead' = 'idle', t = 0, flash = 0, deadT = 0; void sword;
   const m = {
     id, group: g, look, maxHp: HPM, dmg: S.dmg, xp: S.xp, name: S.name,
@@ -71,7 +78,8 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
         else { const hx = homeX - g.position.x, hz = homeZ - g.position.z, hd = Math.hypot(hx, hz); if (hd > 0.3) { const s = Math.min(SPEED * 0.6 * dt, hd); const nx = g.position.x + hx / hd * s, nz = g.position.z + hz / hd * s; if (walk(nx, nz)) g.position.set(nx, g.position.y, nz); g.rotation.y = Math.atan2(hx, hz); } } }
       else if (state === 'chase') {
         if (!sameFloor || d > NOTICE * 1.6 || playerDown) state = 'idle';
-        else { turn(3.2); if (d > REACH * 0.8) { const s = Math.min(SPEED * dt, d - REACH * 0.75); const nx = g.position.x + Math.sin(g.rotation.y) * s, nz = g.position.z + Math.cos(g.rotation.y) * s; if (walk(nx, nz)) g.position.set(nx, g.position.y, nz); else if (walk(nx, g.position.z)) g.position.x = nx; else if (walk(g.position.x, nz)) g.position.z = nz; }
+        else { turn(3.2); if (d > REACH * 0.8) { const s = Math.min(SPEED * dt, d - REACH * 0.75); const nx = g.position.x + Math.sin(g.rotation.y) * s, nz = g.position.z + Math.cos(g.rotation.y) * s; if (walk(nx, nz)) g.position.set(nx, g.position.y, nz); else if (walk(nx, g.position.z)) g.position.x = nx; else if (walk(g.position.x, nz)) g.position.z = nz;
+          else for (const k of [1.25, -1.25, 2.0, -2.0]) { const sx = g.position.x + Math.sin(g.rotation.y + k) * s, sz = g.position.z + Math.cos(g.rotation.y + k) * s; if (walk(sx, sz)) { g.position.set(sx, g.position.y, sz); break; } } } // M20b-2: edge round tents and fires
           if (d < REACH * 0.95) { state = 'windup'; t = WINDUP; } }
       } else if (state === 'windup') { turn(1.2); if (t <= 0) { state = 'recover'; t = RECOVER; let a = want - g.rotation.y; a = Math.atan2(Math.sin(a), Math.cos(a)); if (sameFloor && d < REACH + 0.35 && Math.abs(a) < 1.1) out = 'swing'; } }
       else if (state === 'recover' || state === 'stagger') { if (t <= 0) state = 'chase'; }
@@ -80,7 +88,7 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
       armR.rotation.x = state === 'windup' ? -2.4 * Math.min(1, k * 1.6) : state === 'recover' ? THREE.MathUtils.lerp(0.9, 0, 1 - Math.max(0, t) / RECOVER) : 0;
       body.rotation.z = state === 'stagger' ? Math.sin(t * 30) * 0.08 : 0; body.rotation.x = state === 'stagger' ? -0.15 : 0;
       armL.rotation.x = state === 'chase' || state === 'windup' ? -0.6 : 0;
-      ringM.opacity = state === 'windup' ? 0.25 + 0.55 * k : 0; eyeM.color.set(state === 'windup' ? '#ff7a4a' : '#7fd8ff');
+      ringM.opacity = state === 'windup' ? 0.25 + 0.55 * k : 0; eyeM.color.set(state === 'windup' ? '#ff7a4a' : EYE);
       if (ground) g.position.y = ground(g.position.x, g.position.z) + (shade ? 0.14 + 0.07 * Math.sin((bob += dt) * 2.6) : 0); return out;
     },
   };

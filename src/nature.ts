@@ -105,9 +105,9 @@ function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, aut
   transformed.x+=sw*.025*hh; transformed.z+=sw*.018*hh;`)
       .replace('#include <beginnormal_vertex>', 'vec3 objectNormal=normalize(normal+vec3(0.,.6,0.));');
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-${autumn ? 'float L=dot(diffuseColor.rgb,vec3(.3,.59,.11)); L=mix(.36,L,smoothstep(.12,.6,diffuseColor.a)); vec3 au=mix(vec3(.40,.12,.04),vec3(.80,.40,.08),smoothstep(.08,.45,L));au=mix(au,vec3(.93,.66,.18),smoothstep(.45,.8,L));diffuseColor.rgb=au*(.62+.62*L);' : ''}`)
+${autumn ? 'float L=dot(diffuseColor.rgb,vec3(.3,.59,.11)); L=mix(.36,L,smoothstep(.12,.6,diffuseColor.a)); vec3 au=mix(vec3(.36,.07,.02),vec3(.78,.27,.04),smoothstep(.08,.45,L));au=mix(au,vec3(.90,.50,.08),smoothstep(.45,.85,L));diffuseColor.rgb=au*(.58+.42*L);' : ''}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.08,.045,.01)' : 'vec3(.07,.1,.03)'}*uGlow;`)
+totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.05,.022,.004)' : 'vec3(.07,.1,.03)'}*uGlow;`)
       .replace('#include <alphatest_fragment>', leafAlpha());
   };
   m.customProgramCacheKey = () => (autumn ? 'leafA' : 'leafG') + (useA2C ? 'c' : '');

@@ -3,7 +3,7 @@ import { SEALS, heightAt, WAYFINDER, type SealDef } from './world';
 import { fill, type Profile } from './dialogue';
 
 /** Save format (localStorage 'vale3d-save'). */
-export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean; mirrors: number[]; beacon: boolean; echo: boolean; charted: boolean[]; cave: number; coast: number; sea: number; lamp: number; weapons?: string[]; weapon?: string; fog?: number[]; chests?: string[]; lore?: string[]; foes?: string[]; secrets?: string[]; views?: string[]; whet?: number; tod?: number; day?: number; rk?: Record<string, number> };
+export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean; mirrors: number[]; beacon: boolean; echo: boolean; charted: boolean[]; cave: number; coast: number; sea: number; lamp: number; weapons?: string[]; weapon?: string; fog?: number[]; chests?: string[]; lore?: string[]; foes?: string[]; secrets?: string[]; views?: string[]; whet?: number; tod?: number; day?: number; rk?: Record<string, number>; sq?: Record<string, number>; found?: string[]; hpUp?: number; fogV?: number; gone?: Record<string, number> };
 const KEY = 'vale3d-save';
 export const SEAL_XP = 25, QUEST_XP = 80;
 export const levelOf = (xp: number) => 1 + Math.floor(xp / 50);
@@ -13,19 +13,24 @@ export function loadSave(): Save {
   return { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0, sea: 0, lamp: 0, weapons: ['rusty'], weapon: 'rusty' };
 }
 /** M19 · gear: old saves (pre-weapons) migrate to the Rusty Sword; explored-map fog is kept as 48 row bitmasks (main.ts seeds it when absent). */
-const WIDS = ['rusty', 'spear', 'maul', 'tide', 'knight', 'halberd'];
+const WIDS = ['rusty', 'spear', 'maul', 'tide', 'knight', 'halberd', 'ember', 'harpoon'];
 function gear(s: { weapons?: unknown; weapon?: unknown; fog?: unknown }) {
   const w = Array.isArray(s.weapons) ? WIDS.filter((id) => (s.weapons as unknown[]).includes(id)) : []; if (!w.includes('rusty')) w.unshift('rusty');
   const cur = typeof s.weapon === 'string' && w.includes(s.weapon) ? s.weapon : 'rusty';
   const fog = Array.isArray(s.fog) && s.fog.length === 48 ? (s.fog as unknown[]).map((v) => (Number(v) >>> 0)) : undefined;
   const L = (v: unknown) => Array.isArray(v) ? (v as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 64) : undefined;
   const o = s as Record<string, unknown>; const ext: Record<string, unknown> = {};
-  for (const k of ['chests', 'lore', 'foes', 'secrets', 'views']) { const v = L(o[k]); if (v) ext[k] = v; }
+  for (const k of ['chests', 'lore', 'foes', 'secrets', 'views', 'found']) { const v = L(o[k]); if (v) ext[k] = v; }
   if (typeof o.whet === 'number') ext.whet = Math.max(0, Math.min(4, o.whet | 0));
   // M20b · time of day, day counter, cleared roaming groups (id → day cleared)
   if (typeof o.tod === 'number' && isFinite(o.tod)) ext.tod = ((o.tod % 1) + 1) % 1;
   if (typeof o.day === 'number') ext.day = Math.max(0, o.day | 0);
   if (o.rk && typeof o.rk === 'object' && !Array.isArray(o.rk)) { const rk: Record<string, number> = {}; for (const [k, v] of Object.entries(o.rk as Record<string, unknown>).slice(0, 64)) if (typeof v === 'number') rk[k] = v | 0; ext.rk = rk; }
+  // M20b-2 · side-quest stages (id → step), +max HP from quest rewards, map-fog layout version, cleared outposts (id → day)
+  const num = (v: unknown, n: number) => { if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined; const r: Record<string, number> = {}; for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 32)) if (typeof x === 'number' && isFinite(x)) r[k] = Math.max(0, Math.min(n, x | 0)); return r; };
+  { const v = num(o.sq, 9); if (v) ext.sq = v; const g = num(o.gone, 1e6); if (g) ext.gone = g; }
+  if (typeof o.hpUp === 'number') ext.hpUp = Math.max(0, Math.min(3, o.hpUp | 0));
+  if (o.fogV === 2) ext.fogV = 2;
   return { weapons: w, weapon: cur, ...(fog ? { fog } : {}), ...ext };
 }
 export function writeSave(s: Save) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode */ } }

@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { STANDS, inStand } from './outposts';
+/** M20b-2: foes walk round walls, tents, rocks (anything standable that rises above a shin). */
+const blockedAt = (x: number, z: number) => { for (const s of STANDS) if (inStand(s, x, z, 0.25) && s.top > heightAt(x, z) + 0.3) return true; return false; };
 import { makeSentinel, type Mob, type MobLook } from './mobs';
 import { flameTex, makeFlame } from './cave';
 import { heightAt, WATER_Y } from './world';
@@ -16,7 +19,7 @@ export const FIRES: Fire[] = [
   { id: 'dome', name: 'Dome-side camp', x: 20, z: 64 },
 ];
 export const SAFE_R = 13, VILLAGE = { x: 3, z: 1, r: 27 };
-type GroupDef = { id: string; night: boolean; x: number; z: number; mobs: MobLook[]; r: number };
+type GroupDef = { id: string; night: boolean; x: number; z: number; mobs: MobLook[]; r: number; camp?: boolean };
 export const GROUPS: GroupDef[] = [
   { id: 'n-road', night: true, x: -12, z: -32, mobs: ['shade', 'shade'], r: 14 },
   { id: 'n-shrine', night: true, x: -60, z: -38, mobs: ['shade', 'brute', 'shade'], r: 14 },
@@ -27,7 +30,10 @@ export const GROUPS: GroupDef[] = [
   { id: 'n-east', night: true, x: 86, z: -12, mobs: ['shade', 'shade'], r: 14 },
   { id: 'd-veil', night: false, x: -96, z: -58, mobs: ['husk', 'husk'], r: 10 },
   { id: 'd-south', night: false, x: 4, z: 96, mobs: ['husk', 'husk'], r: 10 },
+  // M20b-2 · Ashen Hollow: a cultist camp that holds its ground day and night; once broken it stays empty for a few days (main: save.gone)
+  { id: 'ashen', night: false, camp: true, x: -122, z: 148, mobs: ['cultist', 'cultist', 'zealot', 'cultist'], r: 7 },
 ];
+const TINT: Partial<Record<MobLook, string>> = { husk: '#8a7a66', brute: '#3a3540', cultist: '#4d4540', zealot: '#35282a' };
 const ACTIVE_R = 85;
 export const inSafe = (x: number, z: number, pad = 0) => Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.r + pad || FIRES.some((f) => Math.hypot(x - f.x, z - f.z) < SAFE_R + pad);
 
@@ -49,7 +55,7 @@ export function makeRoam(scene: THREE.Scene, high: boolean) {
   let seed = 1234; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const groups = GROUPS.map((d) => {
     const mobs = d.mobs.map((look, i) => { const a = (i / d.mobs.length) * Math.PI * 2, x = d.x + Math.cos(a) * 2.5, z = d.z + Math.sin(a) * 2.5;
-      const m = makeSentinel(`${d.id}-${i}`, x, z, 0, a, look === 'husk' ? '#8a7a66' : look === 'brute' ? '#3a3540' : '#8d9196', { look, ground }); m.kill(); scene.add(m.group); return m; });
+      const m = makeSentinel(`${d.id}-${i}`, x, z, 0, a, TINT[look] ?? '#8d9196', { look, ground }); m.kill(); scene.add(m.group); return m; });
     return { def: d, mobs, present: false, wpT: 0, wx: d.x, wz: d.z, near: false };
   });
   const byMob = new Map<Mob, (typeof groups)[number]>(); for (const g of groups) for (const m of g.mobs) byMob.set(m, g);
@@ -77,7 +83,7 @@ export function makeRoam(scene: THREE.Scene, high: boolean) {
         g.wpT -= dt; if (g.wpT <= 0) { g.wpT = 6 + rnd() * 5; for (let k = 0; k < 6; k++) { const a = rnd() * Math.PI * 2, r = rnd() * g.def.r; const x = g.def.x + Math.cos(a) * r, z = g.def.z + Math.sin(a) * r; if (!inSafe(x, z, 2)) { g.wx = x; g.wz = z; break; } } }
         g.mobs.forEach((m, i) => { if (!m.alive && !m.group.visible) return; const a = i * 2.1; m.setHome(g.wx + Math.cos(a) * 1.8, g.wz + Math.sin(a) * 1.8);
           const sees = !inSafe(px, pz) && !playerDown;
-          if (m.tick(dt, px, pz, py, (x, z) => !inSafe(x, z) && Math.hypot(x - g.def.x, z - g.def.z) < g.def.r + 26 && heightAt(x, z) > WATER_Y - 0.4, playerDown, sees) === 'swing') hits.push(m); });
+          if (m.tick(dt, px, pz, py, (x, z) => !inSafe(x, z) && Math.hypot(x - g.def.x, z - g.def.z) < g.def.r + 26 && heightAt(x, z) > WATER_Y - 0.4 && !blockedAt(x, z), playerDown, sees) === 'swing') hits.push(m); });
       }
       return hits;
     },

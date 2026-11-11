@@ -145,6 +145,12 @@ body.touch #hint{display:none}
 #stam i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#7fc96a,#d6e87a);transition:width .08s linear}#stam.full{opacity:.35}#stam.low i{background:linear-gradient(90deg,#d0562e,#e8a04a)}
 body.blocking #b-blk{filter:brightness(1.4);border-color:#bff3ea!important}
 #action{bottom:calc(max(16px,env(safe-area-inset-bottom)) + 252px)!important;min-height:52px!important;min-width:0!important;border-radius:26px!important;font-size:15px!important;max-width:min(62vw,300px)!important}
+/* M20b-2 · calm controls: out of combat only the joystick, Jump and the Action button; the fight cluster slides in when needed. */
+#b-hvy,#b-blk,#b-dge,#b-wpn,#stam{transition:opacity .2s ease,transform .2s ease,visibility 0s}
+body.calm #b-hvy,body.calm #b-blk,body.calm #b-dge,body.calm #b-wpn,body.calm #stam{opacity:0;visibility:hidden;pointer-events:none;transform:translateX(28px) scale(.8);transition:opacity .35s ease,transform .35s ease,visibility 0s linear .35s}
+body.wd #b-hvy,body.wd #b-blk,body.wd #b-dge,body.wd #b-wpn,body.wd #stam{transition:none!important}
+#b-atk.use{background:radial-gradient(circle at 40% 32%,#d9b45e,#7a5418)!important;border-color:#fff0c0!important}
+body.calm #action{pointer-events:none;right:max(8px,env(safe-area-inset-right))!important;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 100px)!important;min-height:40px!important;font-size:14px!important;opacity:.95}
 #wpick{position:fixed;z-index:30;right:max(14px,env(safe-area-inset-right));top:calc(max(12px,env(safe-area-inset-top)) + 92px);max-height:calc(100vh - 330px);overflow:auto;width:min(320px,90vw);padding:8px;border-radius:14px;background:rgba(14,26,28,.94);border:1px solid rgba(214,186,120,.7);color:#f4ead2;font:13px Georgia,serif}
 #wpick[hidden]{display:none}#wpick .wh{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#d5b977;margin:2px 4px 6px}
 #wpick button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;margin:3px 0;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(214,186,120,.25);color:inherit;font:inherit}
@@ -175,7 +181,7 @@ body.talking #cbt,body.sheet #cbt,body.creating #cbt,body.titled #cbt{display:no
 <div id="quest" aria-live="polite"><div id="qline"></div><div id="qstats"></div><div id="compass"><span id="carrow">➤</span><span id="ctext"></span></div><div id="wind"><span id="warrow">➤</span><span id="wtext"></span></div><div id="wdl"><span id="wdarrow">➤</span><span id="wdtext"></span></div></div>
 <div id="toast" aria-live="polite"></div>
 <div id="fade" aria-hidden="true"></div>
-<div id="bossbar" hidden><div class="bn">The Drowned Keeper <span id="kph"></span></div><div class="bw"><i id="kfill"></i></div><div id="kst"></div></div>
+<div id="bossbar" hidden><div class="bn"><span id="kname">The Drowned Keeper</span> <span id="kph"></span></div><div class="bw"><i id="kfill"></i></div><div id="kst"></div></div>
 <div id="combat" hidden aria-live="polite"><span class="lbl">HP</span> <span id="hp"></span><span class="sep">·</span><span class="lbl" id="foelbl">Warden</span> <span id="whp"></span></div>
 <div id="chapter" hidden role="dialog" aria-labelledby="chtitle"><div class="chin"><div class="chk">Chapter I complete</div><h2 id="chtitle">The Four Seals</h2><p id="chtease"></p><p class="chxp" id="chxp"></p><button id="chok">Continue</button></div></div>
 <div id="ending" hidden role="dialog" aria-labelledby="endtitle"><div class="chin endin"><div class="chk">The Unspent Morning</div><h2 id="endtitle"></h2><div id="endlines"></div><p class="chxp" id="endxp"></p><button id="endcred" hidden>Credits</button> <button id="endok">Continue</button></div></div>

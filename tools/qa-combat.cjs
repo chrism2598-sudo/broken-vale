@@ -12,7 +12,23 @@ await p.evaluate(()=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'I
 await p.reload({waitUntil:'load'});await ready();await sleep(1500);
 let c=await C();ok('old save migrates to Rusty Sword',c.owned.join()==='rusty'&&c.weapon==='rusty'&&c.inHand.every(x=>x==='rusty'),{owned:c.owned,weapon:c.weapon,inHand:c.inHand});
 // 2 · HUD: five thumb buttons on screen, no arrow / meters by default, Guidance setting brings them back
-ok('combat buttons visible (portrait)',c.ui.buttons.every(x=>x.vis&&x.w>=50&&x.x>=0&&x.x+x.w<=412&&x.y+x.h<=860),c.ui.buttons.map(x=>[x.id,x.x,x.y,x.w]));
+// M20b-2 · calm controls: joystick + Jump + Action only; the fight cluster slides in on attack / damage / a foe within ~12 m, hides ~4 s after
+const S=n=>p.evaluate(n=>window.__vale.sim(Array(n).fill(1/30),0,0),n);const vis=c=>Object.fromEntries(c.ui.buttons.map(x=>[x.id,x.vis]));
+await S(10);await sleep(500);c=await C();let v=vis(c);
+ok('calm: only Action (b-atk) and Jump shown, fight cluster hidden',c.ui.calm&&v['b-atk']&&v['b-jmp']&&!v['b-hvy']&&!v['b-blk']&&!v['b-dge']&&!v['b-wpn'],{calm:c.ui.calm,v});
+await p.keyboard.press('KeyK');await S(2);await sleep(450);c=await C();
+ok('attacking (key K works while calm) brings in the full cluster',!c.ui.calm&&c.ui.buttons.every(x=>x.vis&&x.w>=50&&x.x>=0&&x.x+x.w<=412&&x.y+x.h<=860),c.ui.buttons.map(x=>[x.id,x.x,x.y,x.w,x.vis]));
+await S(60);c=await C();ok('still shown 2 s after the swing',!c.ui.calm,{});
+await S(100);await sleep(500);c=await C();v=vis(c);ok('hidden again ~4 s after combat ends',c.ui.calm&&!v['b-hvy']&&v['b-atk'],{v});
+await p.evaluate(()=>window.__vale.hurt(1));await S(1);await sleep(150);c=await C();ok('taking damage shows the cluster',!c.ui.calm&&vis(c)['b-blk'],{});
+await p.evaluate(()=>window.__vale.heal());await S(130);await sleep(500);
+await p.keyboard.press('KeyC');await S(1);c=await C();ok('roll key (C) works while calm and shows the cluster',!c.ui.calm,{});
+await S(135);await sleep(500);
+const wdp=await p.evaluate(()=>window.__vale.warden());await p.evaluate((x,z)=>window.__vale.warp(x+9,z+3),wdp.x,wdp.z);await S(20);await sleep(150);
+const ct=await p.evaluate(()=>window.__vale.ctl());c=await C();ok('a waking foe within ~12 m shows the cluster',!c.ui.calm&&ct.hostile,ct);
+const bb=await p.evaluate(()=>{const r=document.getElementById('action').getBoundingClientRect(),j=document.getElementById('b-jmp').getBoundingClientRect();return {act:[r.x,r.y,r.width,r.height],jmp:[j.x,j.y,j.width,j.height]};});
+await p.evaluate(()=>{const s=window.__vale.warden();window.__vale.warp(s.x+60,s.z+60);window.__vale.heal();});await S(140);await sleep(500);c=await C();ok('calm again away from the foe',c.ui.calm,{});
+
 ok('no guide arrow or meters (Guidance off)',!c.guidance&&!c.ui.arrow&&!/\d+ m\b/.test(c.ui.ctext),{ctext:c.ui.ctext});
 await p.evaluate(()=>window.__vale.setGuidance(true));await sleep(500);c=await C();const gOn={arrow:c.ui.arrow,ctext:c.ui.ctext};
 await p.evaluate(()=>window.__vale.setGuidance(false));await sleep(400);c=await C();ok('Guidance On shows arrow + distance; Off hides again',gOn.arrow&&/( m|here)$/.test(gOn.ctext)&&!c.ui.arrow,{gOn,off:c.ui.ctext});

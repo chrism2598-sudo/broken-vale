@@ -82,7 +82,16 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
 }
 
 // ---------- Map (parchment, top-down) ----------
-export const MAPBOX = { x0: -140, x1: 126, z0: -166, z1: 112 };
+export const MAPBOX = { x0: -200, x1: 200, z0: -215, z1: 195 }; // M20b-2: widened to the vale's edges (watchtower, barrow, cairns)
+export const MAPBOX_V1 = { x0: -140, x1: 126, z0: -166, z1: 112 };
+/** Old (v1) fog bits → the widened box: each explored old cell marks the new cell under its centre. */
+export function migrateFog(old: number[]): number[] {
+  const f = new Array(FOG_R).fill(0), B = MAPBOX_V1, cw = (B.x1 - B.x0) / FOG_C, ch = (B.z1 - B.z0) / FOG_R, nw = (MAPBOX.x1 - MAPBOX.x0) / FOG_C, nh = (MAPBOX.z1 - MAPBOX.z0) / FOG_R;
+  for (let j = 0; j < Math.min(FOG_R, old.length); j++) for (let i = 0; i < FOG_C; i++) if (((old[j] >>> 0) >>> i) & 1) {
+    const X = B.x0 + (i + 0.5) * cw, Z = B.z0 + (j + 0.5) * ch, ni = Math.floor((X - MAPBOX.x0) / nw), nj = Math.floor((Z - MAPBOX.z0) / nh);
+    if (ni >= 0 && ni < FOG_C && nj >= 0 && nj < FOG_R) f[nj] = ((f[nj] >>> 0) | ((1 << ni) >>> 0)) >>> 0; }
+  return f;
+}
 let terrainCache: { w: number; h: number; c: HTMLCanvasElement } | null = null;
 function parchment(w: number, h: number): HTMLCanvasElement {
   if (terrainCache && terrainCache.w === w && terrainCache.h === h) return terrainCache.c;
@@ -107,7 +116,7 @@ function parchment(w: number, h: number): HTMLCanvasElement {
   x.putImageData(img, 0, 0);
   terrainCache = { w, h, c }; return c;
 }
-export type MapData = { player: { x: number; z: number; facing: number }; target: { x: number; z: number; name: string } | null; save: Save; onIsland: boolean; t: number; fog?: number[] };
+export type MapData = { player: { x: number; z: number; facing: number }; target: { x: number; z: number; name: string } | null; save: Save; onIsland: boolean; t: number; fog?: number[]; places?: { x: number; z: number; name: string; kind: string }[] };
 /** M19 · explored-map fog: 48 rows × 32 columns over MAPBOX, one bit per cell. */
 export const FOG_R = 48, FOG_C = 32;
 export function revealFog(fog: number[], x: number, z: number, r: number): boolean {
@@ -194,6 +203,8 @@ export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m
     label('Lamp', sxC(10), szC(-30) - 12, 'center', '#3a2814', fs - 2); }
   // Seals.
   for (const d of SEALS) { const X = sx(d.x), Y = sz(d.z), got = !!m.save.seals[d.id]; x.save(); x.translate(X, Y); x.rotate(Math.PI / 4); x.fillStyle = got ? d.color : 'rgba(0,0,0,0)'; x.strokeStyle = '#3a2814'; x.lineWidth = 1.4; x.fillRect(-4.5, -4.5, 9, 9); x.strokeRect(-4.5, -4.5, 9, 9); x.restore(); label(d.short, X + 9, Y, 'left', got ? '#3a2814' : '#6b4a26', fs - 1); }
+  // M20b-2 · places you have found at the edges.
+  for (const p of m.places ?? []) { const X = sx(p.x), Y = sz(p.z); x.fillStyle = p.kind === 'camp' ? '#7a2a14' : '#2e1e0e'; x.font = `${fs}px serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(({ tower: '♜', camp: '▲', barrow: '◒', view: '✶' } as Record<string, string>)[p.kind] ?? '•', X, Y); label(p.name, X, Y + fs, 'center', '#3a2814', fs - 2); }
   // Objective marker.
   if (m.target) { const X = sx(m.target.x), Y = sz(m.target.z), p = 0.5 + 0.5 * Math.sin(m.t * 4); x.strokeStyle = `rgba(200,60,20,${0.55 + 0.4 * p})`; x.lineWidth = 2.5; x.beginPath(); x.arc(X, Y, 10 + p * 3, 0, Math.PI * 2); x.stroke(); x.lineWidth = 1.2; x.beginPath(); x.arc(X, Y, 15 + p * 3, 0, Math.PI * 2); x.stroke(); }
   // Player arrow.

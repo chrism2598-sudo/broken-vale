@@ -70,7 +70,23 @@ function ridged(x: number, z: number): number {
   for (let i = 0; i < 4; i++) { const n = 1 - Math.abs(vnoise(x * f, z * f) * 2 - 1); s += a * n * n; f *= 2.1; a *= 0.5; }
   return s;
 }
+/** M20b-2 · optional places at the wide edges of the vale (ground is levelled around each one). */
+export type Outpost = { id: string; name: string; x: number; z: number; r: number; flat: number; kind: 'tower' | 'camp' | 'barrow' | 'view' };
+export const OUTPOSTS: Outpost[] = [
+  { id: 'tower', name: 'Greyhold Watchtower', x: 165, z: -40, r: 9, flat: 13, kind: 'tower' },
+  { id: 'camp', name: 'Ashen Hollow', x: -122, z: 148, r: 14, flat: 18, kind: 'camp' },
+  { id: 'barrow', name: 'The Old Barrow', x: -152, z: -108, r: 7, flat: 10, kind: 'barrow' },
+  { id: 'bluff', name: 'Sunfall Bluff', x: 128, z: 150, r: 4, flat: 6, kind: 'view' },
+  { id: 'cairn', name: 'North Cairn', x: 8, z: -196, r: 4, flat: 6, kind: 'view' },
+];
+const padCache = new Map<string, number>();
+export function outpostPad(o: Outpost): number { let v = padCache.get(o.id); if (v === undefined) { v = baseHeight(o.x, o.z) + (o.kind === 'view' ? 0.6 : 0); padCache.set(o.id, v); } return v; }
 export function heightAt(x: number, z: number): number {
+  let h = baseHeight(x, z);
+  for (const o of OUTPOSTS) { const d = Math.hypot(x - o.x, z - o.z); if (d < o.flat * 1.6) h += (outpostPad(o) - h) * (1 - smoothstep(o.flat * 0.75, o.flat * 1.6, d)); }
+  return h;
+}
+function baseHeight(x: number, z: number): number {
   const r = Math.hypot(x - SPAWN.x, z - SPAWN.z);
   const dc = Math.abs(x - creekX(z));
   let h = 2.2 * fbm(x * 0.018, z * 0.018) + 0.35 * fbm(x * 0.09, z * 0.09);

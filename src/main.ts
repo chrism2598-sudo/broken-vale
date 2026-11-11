@@ -21,7 +21,7 @@ import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
 import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, configureFoliage, type Kind, type TreeInst } from './nature';
 import { makeFloatingIsland, makeLanternStaff, ISLAND_POS, islandTopY } from './island';
 import { UPDRAFT, MIRRORS, MORNING_DIRS, DIR_ARROWS, BEACON_XP, BEACON_L, CLUE_L, RETURN_L, LANDING_L, ISLAND_WALK_R, CLUE_LINES, UPDRAFT_DORMANT, UPDRAFT_NEEDS_WIND, ENDING_TITLE, ENDING_LINES, ENDING_REWARD, WAYFINDER_BEACON, mirrorsMatch, makeHollowPuzzle, makeUpdraft, makeDawnSky } from './beacon';
-import { buildJournal, drawValeMap, MAPBOX, FOG_R, revealFog, fogExplored } from './journal';
+import { buildJournal, drawValeMap, MAPBOX, FOG_R, revealFog, fogExplored , migrateFog } from './journal';
 import { COAST_LINES, COAST_O, COAST_XP, makeCoast, type Coast } from './coast';
 import { SEA_LINES, SEA_XP, makeSeaCave, type SeaCave } from './seacave';
 import { KEEPER_LINES, KEEPER_XP, KEEPER_HP, makeKeeper, type Keeper, type KeeperEvent } from './keeper';
@@ -37,7 +37,10 @@ import { DAY_LEN, MORNING, skyAt, clockText, makeNightSky } from './daynight';
 import { makeRoam, FIRES } from './roam';
 import { GameAudio, type Region, type Surface } from './audio';
 import { ENNA_LINES, ENNA_NAME, LAMP_XP, LAMP_TOAST, FINAL_TITLE, FINAL_KICKER, FINAL_LINES, FINAL_REWARD, finalStats, CREDITS, sefaLines, dovLines, ressLines, nextUncharted } from './finale';
-import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep } from './world';
+import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep, OUTPOSTS, outpostPad } from './world';
+import { makeOutposts, STANDS, standY, standPush, inStand, O as OP, type Loc } from './outposts';
+import { makeBarrow, BAR_O, type Barrow } from './barrow';
+import { SQ_XP, sq, stage, sketched, sketchesLeft, sefaTale, dovTale, ressTale, makeLocs, sideJournal } from './sidequests';
 
 // ---------- quality ----------
 type Quality = 'high' | 'lite';
@@ -144,6 +147,7 @@ async function main() {
   const landmarks = makeLandmarks({ brick, roof: roofT, sand: sandT, metal: metalT, rock }, SOLIDS, { lights: HIGH });
   scene.add(landmarks.group);
   let save = loadSave();
+  const hpMax = () => HP_MAX + (save.hpUp ?? 0); // M20b-2: Sefa's heartstone adds a heart
   const plinthMat = new THREE.MeshStandardMaterial({ color: '#cfc3a8', roughness: 0.9 }); addRimFill(plinthMat, { fill: 0.2, rim: 0.2 });
   const shrine = makeWindShrine(rock, { runes: save.runes, solved: save.wind }); scene.add(shrine.group);
   const warden = makeWarden({ rock, metal: metalT }); scene.add(warden.group); SOLIDS.push({ x: WARDEN.x, z: WARDEN.z, r: 1.5 });
@@ -162,6 +166,8 @@ async function main() {
   for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5 + 0.3; SOLIDS.push({ x: ECHO.x + Math.cos(a) * 10, z: ECHO.z + Math.sin(a) * 10, r: 1.2 }); if (save.echo) grove.light(i); }
   if (save.echo) grove.memory(true, true);
   const stair = makeStairEntrance({ brick, rock }); scene.add(stair.group); stair.setLit(save.cave >= 1); SOLIDS.push(...stair.blocks);
+  const outposts = makeOutposts({ brick, roof: roofT, sand: sandT, metal: metalT, rock }, HIGH); scene.add(outposts.group);
+  const LOCS: Loc[] = makeLocs([...LANDMARKS.map((l) => ({ id: l.id, name: l.name, x: l.x, z: l.z, r: l.r })), { id: 'shrine', name: 'Wind Shrine', x: SHRINE.x, z: SHRINE.z, r: 14 }, { id: 'echo', name: 'Echo Grove', x: ECHO.x, z: ECHO.z, r: 16 }]);
   for (const k of [-1.6, -0.4, 0.8, 2.0]) SOLIDS.push({ x: STAIR.x + STAIR_DIR.x * k, z: STAIR.z + STAIR_DIR.z * k, r: 1.75 });
   for (const r of RUNES) SOLIDS.push({ x: r.x, z: r.z, r: 0.9 }); SOLIDS.push({ x: TABLET.x, z: TABLET.z, r: 1.2 });
   const seals = SEALS.map((d) => { const o = new SealObject(d, plinthMat, !!save.seals[d.id]); scene.add(o.group); SOLIDS.push({ x: d.x, z: d.z, r: 1.3 }); return o; });
@@ -348,19 +354,38 @@ async function main() {
   let finaleDelay = -1;
   type Inter = { label: string; act: () => void; x?: number; z?: number; combat?: boolean };
   let camFocus: { x: number; z: number; t: number } | null = null;
+  // ---------- M20b-2 · calm controls: joystick + Jump + one Action button until a fight starts ----------
+  let ctlT = 0, ctlCalm = false, ctlHp = -1, ctlLbl = '';
+  const atkBtn = document.getElementById('b-atk')!; if (navigator.webdriver) document.body.classList.add('wd'); // QA/shots: no slide timing to wait on
+  function hostileNear(): boolean {
+    if (inBarrow) return !!nearestBarMob(12);
+    if (inCastle) { const m = nearestMob(); return !!m && Math.hypot(m.x - state.px, m.z - state.pz) < 12; }
+    if (inKeep) return !!keep && keep.active && save.sea < 5;
+    if (!vale()) return false;
+    return !!nearestRoamer(12) || (!save.warden && wd.awake);
+  }
+  function tickControls(dt: number) {
+    if (hostileNear() || cb.act || cb.blocking || cb.charge > 0 || playerHp < ctlHp) ctlT = 4; // damage, a swing/block/roll, or a foe within ~12 m
+    ctlHp = playerHp; ctlT = Math.max(0, ctlT - dt);
+    const calm = ctlT <= 0; if (calm !== ctlCalm) { ctlCalm = calm; document.body.classList.toggle('calm', calm); }
+    const it = calm ? nearestInteract() : null, lbl = it && !it.combat ? (/^Talk/.test(it.label) ? 'Talk' : 'Use') : 'Attack';
+    if (lbl !== ctlLbl) { ctlLbl = lbl; atkBtn.querySelector('small')!.textContent = lbl; atkBtn.classList.toggle('use', lbl !== 'Attack'); }
+  }
   function nearestInteract(): Inter | null {
     if (lift || dawnCine) return null;
     if (onIsland) return islandInteract();
     if (perch) return perchInteract();
     if (inCastle && castle) return castleInteract();
+    if (inBarrow && barrow) return barrowInteract();
     if (inCave) return caveInteract();
     if (inKeep) return keeperInteract();
     if (inSea) return seaInteract();
     if (inCoast) return coastInteract();
     if (Math.hypot(state.px - stair.mouth.x, state.pz - stair.mouth.z) < 3.4) return { label: save.cave >= 1 ? 'Descend the collapsed stair ↓' : 'Collapsed stair · rubble and dark', act: useStair, x: STAIR.x, z: STAIR.z };
     if (ennaV.root.visible && Math.hypot(state.px - ENNA_V.x, state.pz - ENNA_V.z) < 2.0) return { label: 'Talk · Enna', act: () => { ennaV.play('Wave'); openDialog(ENNA_NAME, fillLines(ENNA_LINES.vale, profile)); }, x: ENNA_V.x, z: ENNA_V.z };
-    if (Math.hypot(state.px - SEFA.x, state.pz - SEFA.z) < 2.8) return { label: 'Talk · Sefa Lune (mapmaker)', act: () => { sefa.play('Wave'); openDialog('Sefa Lune', fillLines(sefaLines(save, nextUncharted(save, state.px, state.pz)), profile)); }, x: SEFA.x, z: SEFA.z };
-    if (Math.hypot(state.px - DOV.x, state.pz - DOV.z) < 2.8) return { label: 'Talk · Dov Hask (old smith)', act: () => { dov.play('Wave'); openDialog('Dov Hask', fillLines(dovLines(save), profile)); }, x: DOV.x, z: DOV.z };
+    if (Math.hypot(state.px - SEFA.x, state.pz - SEFA.z) < 2.8) return { label: 'Talk · Sefa Lune (mapmaker)', act: () => { sefa.play('Wave'); talkSefa(); }, x: SEFA.x, z: SEFA.z };
+    if (Math.hypot(state.px - DOV.x, state.pz - DOV.z) < 2.8) return { label: 'Talk · Dov Hask (old smith)', act: () => { dov.play('Wave'); talkDov(); }, x: DOV.x, z: DOV.z };
+    { const e = edgeInteract(); if (e) return e; }
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 3.8) return { label: !save.started ? 'Talk · begin quest' : save.beacon && save.cave === 0 ? 'Talk · word of Enna' : save.done ? 'Talk' : `Talk · seals ${sealCount(save)}/4`, act: talkWayfinder };
     for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return { label: `Claim ${o.def.name}`, act: () => claimSeal(o), x: o.def.x, z: o.def.z };
@@ -436,7 +461,66 @@ async function main() {
       toast('Quest: The Lowtide Lamp · climb with Enna · set the Tide-Glass when the tide turns', 5);
     });
   }
-  function talkRess() { ressC.play('Wave'); openDialog('Ress', fillLines(ressLines(save), profile)); }
+  function talkRess() { ressC.play('Wave'); const st = stage(save, 'ress');
+    if (st === 0 || st === 3) openDialog('Ress', fillLines([...(st === 0 ? ressLines(save) : []), ...ressTale(save)], profile), () => { if (st === 0) { sq(save).ress = 1; persist(); toast('New side tale · The Lights Teo Left (see Journal)', 3.5); } else { sq(save).ress = 4; gainXp(SQ_XP.ress, 'The Lights Teo Left complete'); takeWeapon('harpoon'); } });
+    else openDialog('Ress', fillLines(st === 4 ? ressLines(save) : ressTale(save), profile)); }
+  // ---------- M20b-2 · side tales (Sefa, Dov, Ress) and the edge places ----------
+  function gainXp(n: number, why: string) { const lv = levelOf(save.xp); save.xp += n; persist(); hudT = 0; toast(`${why} · +${n} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3.5); }
+  const campClear = () => (save.gone?.ashen ?? -99) + 3 > (save.day ?? 0);
+  function talkSefa() {
+    const st = stage(save, 'sefa'), old = fillLines(sefaLines(save, nextUncharted(save, state.px, state.pz)), profile);
+    if (!save.started) return openDialog('Sefa Lune', old);
+    if (st === 0) return openDialog('Sefa Lune', [...old, ...fillLines(sefaTale(save), profile)], () => { sq(save).sefa = 1; persist(); toast('New side tale · The Blank Corners (see Journal)', 3.5); });
+    if (st === 1 && !sketchesLeft(save).length) return openDialog('Sefa Lune', fillLines(sefaTale(save), profile), () => { sq(save).sefa = 2; save.hpUp = Math.min(3, (save.hpUp ?? 0) + 1); playerHp = hpMax(); audio.chime(); gainXp(SQ_XP.sefa, 'The Blank Corners complete · Enna’s heartstone: +1 heart'); });
+    openDialog('Sefa Lune', st === 1 ? [...fillLines(sefaTale(save), profile), ...old.slice(-1)] : old);
+  }
+  function talkDov() {
+    const st = stage(save, 'dov'), old = fillLines(dovLines(save), profile), q = sq(save);
+    if (!save.started || st === 1 || st === 3 || st === 5) return openDialog('Dov Hask', st === 5 || !save.started ? old : fillLines(dovTale(save), profile));
+    openDialog('Dov Hask', [...(st === 0 ? old : []), ...fillLines(dovTale(save), profile)], () => {
+      if (st === 0) { q.dov = q.tongs ? 2 : 1; persist(); toast('New side tale · The Dome’s Last Fire (see Journal)', 3.5); }
+      else if (st === 2) { q.dov = q.star ? 4 : 3; gainXp(SQ_XP.step, 'Tongs returned to Dov'); }
+      else if (st === 4) { q.dov = 5; gainXp(SQ_XP.dov, 'The Dome’s Last Fire complete'); takeWeapon('ember'); }
+    });
+  }
+  const footNow = () => player.root.position.y;
+  const spotAt = (id: string) => { const p = outposts.spots.find((q) => q.id === id)!; return Math.hypot(state.px - p.x, state.pz - p.z) < p.r && Math.abs(footNow() - p.y) < 1.4 ? p : null; };
+  function sketch(id: string, where: string) { (save.views ??= []).push('sk-' + id); player.play('Interact'); audio.pickup(); const left = sketchesLeft(save).length; gainXp(SQ_XP.step, `Sketched ${where} · ${left ? `${left} corner${left > 1 ? 's' : ''} left` : 'all three — back to Sefa'}`); }
+  function edgeInteract(): Inter | null {
+    const q = sq(save); let p;
+    if ((p = spotAt('tower-satchel'))) { const r = stage(save, 'ress');
+      if (r === 1) return { label: 'Open the weathered satchel', act: () => { q.ress = 2; player.play('Interact'); audio.pickup(); openDialog('Teo’s satchel', ['A watchman’s satchel, salt-stiff. Inside: a spyglass with a cracked lens, and a note in a careful hand.', '“Ress — if you climb up here, I’m gone to watch the sun fall from the bluff. I left the rest under the stones, like always. — T.”'], () => gainXp(SQ_XP.step, 'Teo’s note found')); }, x: p.x, z: p.z };
+    }
+    if ((p = spotAt('tower-top')) && stage(save, 'sefa') === 1 && !sketched(save, 'tower')) return { label: 'Sketch the view from Greyhold', act: () => sketch('tower', 'Greyhold Watchtower'), x: p.x, z: p.z };
+    if ((p = spotAt('tower-satchel')) && stage(save, 'ress') === 0) return { label: 'A weathered satchel · strapped shut', act: () => toast('Someone left this for someone else. A name is scratched on the buckle: “R.”', 3.5), x: p.x, z: p.z };
+    for (const v of ['bluff', 'cairn'] as const) if ((p = spotAt('view-' + v))) {
+      if (v === 'bluff' && stage(save, 'ress') === 2) return { label: 'Look under the cairn stones', act: () => { q.ress = 3; player.play('Interact'); audio.pickup(); openDialog('Under the stones', ['An oilcloth bundle, wedged under the cairn’s base stones: a driftwood harpoon with iron barbs, and a letter addressed to Ress.', 'You leave the letter sealed. It’s hers to open.'], () => gainXp(SQ_XP.step, 'Teo’s bundle found')); }, x: p.x, z: p.z };
+      if (stage(save, 'sefa') === 1 && !sketched(save, v)) return { label: `Sketch the view from ${OP[v].name}`, act: () => sketch(v, OP[v].name), x: p.x, z: p.z };
+      return { label: `Look out · ${OP[v].name}`, act: () => toast(v === 'bluff' ? 'The whole south of the vale falls away below — the Dome, the road, the sea-glint far west.' : 'Cold wind off the peaks. The crossing is a speck; the Sunspire a needle. Somewhere east, a tower.', 4), x: p.x, z: p.z }; }
+    if ((p = spotAt('camp-chest'))) {
+      if (q.campLoot) return { label: 'The strongbox · empty', act: () => toast('Nothing left but ash and a broken padlock.', 2.5), x: p.x, z: p.z };
+      if (!campClear()) return { label: 'The strongbox · guarded', act: () => toast('Not with the cult standing round it. Clear the hollow first.', 2.5), x: p.x, z: p.z };
+      return { label: 'Force the cult’s strongbox', act: () => { q.campLoot = 1; outposts.openChest(false); player.play('Interact'); audio.pickup(); save.whet = Math.min(4, (save.whet ?? 0) + 1);
+        const tongs = stage(save, 'dov') <= 1; if (tongs) { q.tongs = 1; if (stage(save, 'dov') === 1) q.dov = 2; }
+        gainXp(30, tongs ? 'Strongbox forced · Dov’s forge-tongs and a whetstone' : 'Strongbox forced · a whetstone'); }, x: p.x, z: p.z }; }
+    if ((p = spotAt('camp-orders'))) return { label: 'Read the nailed orders', act: () => openDialog('Ashen orders', ['A scorched sheet nailed to the effigy pole.', '“The sun that fell must not be lit again. Take the smith’s tongs. Seek the sky-iron where the Barrow-King sleeps — north-west, past the pale stones, the mound with the door. Wake nothing. Burn what you cannot carry.”']), x: p.x, z: p.z };
+    if ((p = spotAt('barrow-door'))) return { label: 'Enter the Old Barrow ↓', act: () => { void enterBarrow(); }, x: p.x, z: p.z };
+    return null;
+  }
+  function barrowInteract(): Inter | null {
+    const b = barrow!;
+    if (Math.hypot(state.px - b.exit.x, state.pz - b.exit.z) < 2.0) return { label: 'Climb out of the barrow ↑', act: () => { void exitBarrow(); }, x: b.exit.x, z: b.exit.z };
+    if (Math.hypot(state.px - b.chest.x, state.pz - b.chest.z) < 2.2 && stage(save, 'barrow') === 2) return { label: 'Open Ossric’s vault-chest', act: () => { const q = sq(save); q.barrow = 3; b.openChest(false); b.showGlow(false); player.play('Interact'); audio.pickup(); save.whet = Math.min(4, (save.whet ?? 0) + 1);
+      q.star = 1; if (stage(save, 'dov') === 3) q.dov = 4; gainXp(50, 'Vault-chest opened · a lump of warm star-iron and a whetstone'); }, x: b.chest.x, z: b.chest.z };
+    return null;
+  }
+  let discT = 0;
+  function tickDiscover(dt: number) {
+    discT -= dt; if (discT > 0 || !save.started || !vale()) return; discT = 0.4;
+    const f = save.found ??= [];
+    for (const l of LOCS) { if (f.includes(l.id) || Math.hypot(state.px - l.x, state.pz - l.z) > l.r) continue;
+      f.push(l.id); revealFog(fogNow(), l.x, l.z, l.reveal); fogDirty = true; audio.chime(); gainXp(l.xp, `Discovered: ${l.name}${l.view ? ' · a viewpoint' : ''} · added to your map`); break; }
+  }
   async function climbLamp(up: boolean) {
     if (!coast || fading) return; const c = coast; fading = true; state.speed = 0; setFade(true); await sleepMs(520);
     c.setTop(up); const p = up ? c.topArrive : c.towerDoor; state.px = p.x; state.pz = p.z;
@@ -533,14 +617,14 @@ async function main() {
   async function enterKeep(instant = false) {
     if (inKeep || fading) return; fading = true; state.speed = 0;
     if (!instant) { setFade(true); await sleepMs(520); }
-    const k = await ensureKeep(); k.reset(save.sea >= 5); inSea = false; inKeep = true; setScene(k.scene); playerHp = HP_MAX;
+    const k = await ensureKeep(); k.reset(save.sea >= 5); inSea = false; inKeep = true; setScene(k.scene); playerHp = hpMax();
     state.px = k.entry.x; state.pz = k.entry.z; state.facing = -Math.PI / 2; state.yaw = Math.PI / 2; state.pitch = 0.22; state.dist = 7.5; snapCam = true;
     hudT = 0; fading = false; if (!instant) { setFade(false); toast(save.sea >= 5 ? 'The drowned chamber · the Keeper sleeps' : KEEPER_LINES.enter, 3.6); }
   }
   async function leaveKeep() { if (!inKeep || fading) return; await enterSea(); }
   function keeperDefeatIlka() {
     if (!keep) return; const k = keep; state.px = k.entry.x; state.pz = k.entry.z; state.speed = 0; state.facing = -Math.PI / 2; state.yaw = Math.PI / 2; snapCam = true;
-    playerHp = HP_MAX; atkCd = 0; k.reset(false); hudT = 0; toast('The surge throws you clear · progress and XP kept', 4); openDialog('The drowned chamber', KEEPER_LINES.recovery);
+    playerHp = hpMax(); atkCd = 0; k.reset(false); hudT = 0; toast('The surge throws you clear · progress and XP kept', 4); openDialog('The drowned chamber', KEEPER_LINES.recovery);
   }
   function keeperWin() {
     if (save.sea >= 5) return; const lv = levelOf(save.xp); save.sea = 5; save.xp += KEEPER_XP; persist(); hudT = 0; shake = 0.4;
@@ -587,7 +671,7 @@ async function main() {
       if (r === 'dodged') { toast('Rolled clear of the spout!', 1.2); return; }
       if (r === 'parried') { audio.parry(); toast('Parried the spout!', 1.4); return; }
       if (r === 'blocked') { audio.clank(); toast('Blocked · stamina spent', 1.2); return; }
-      playerHp -= 1; player.play('HitRecieve'); if (playerHp <= 0) return keeperDefeatIlka(); toast(r === 'guardbreak' ? `Guard broken! HP ${playerHp}/${HP_MAX}` : `The tide strikes! HP ${playerHp}/${HP_MAX}`, 2, true);
+      playerHp -= 1; player.play('HitRecieve'); if (playerHp <= 0) return keeperDefeatIlka(); toast(r === 'guardbreak' ? `Guard broken! HP ${playerHp}/${hpMax()}` : `The tide strikes! HP ${playerHp}/${hpMax()}`, 2, true);
     }
   }
   function seaInteract(): Inter | null {
@@ -755,7 +839,7 @@ async function main() {
   let downT = 0;
   function tickMobs(dt: number) {
     if (!castle) return; downT = Math.max(0, downT - dt); const c = castle;
-    if (mobEngaged()) calmT = 0; else { calmT += dt; if (calmT > 5 && playerHp < HP_MAX) { playerHp = HP_MAX; hudT = 0; } }
+    if (mobEngaged()) calmT = 0; else { calmT += dt; if (calmT > 5 && playerHp < hpMax()) { playerHp = hpMax(); hudT = 0; } }
     for (const m of mobs) {
       const home = mobHome.get(m) ?? ''; const pr = c.roomAt(state.px, state.pz, c.y);
       if (m.tick(dt, state.px, state.pz, c.y, (x, z) => c.walkable(x, z, m.y) && c.roomAt(x, z, m.y) === home, downT > 0 || fading || talking, pr === home) !== 'swing') continue;
@@ -765,33 +849,86 @@ async function main() {
       else if (res === 'blocked') { audio.clank(); toast('Blocked · stamina spent', 1.2); }
       else { playerHp -= 1; player.play('HitRecieve'); shake = Math.max(shake, 0.2); audio.hurt();
         if (playerHp <= 0) { castleRecover(); return; }
-        toast(res === 'guardbreak' ? `Guard broken! HP ${playerHp}/${HP_MAX}` : `The Sentinel strikes! HP ${playerHp}/${HP_MAX}`, 2, true); }
+        toast(res === 'guardbreak' ? `Guard broken! HP ${playerHp}/${hpMax()}` : `The Sentinel strikes! HP ${playerHp}/${hpMax()}`, 2, true); }
     }
   }
   function castleRecover() {
-    const c = castle!; playerHp = HP_MAX; downT = 3; const [lx, lz] = ARRIVE.door; state.px = c.O.x + lx; state.pz = c.O.z + lz; c.place(state.px, state.pz, 0); state.facing = Math.PI; state.yaw = 0; state.speed = 0; snapCam = true;
+    const c = castle!; playerHp = hpMax(); downT = 3; const [lx, lz] = ARRIVE.door; state.px = c.O.x + lx; state.pz = c.O.z + lz; c.place(state.px, state.pz, 0); state.facing = Math.PI; state.yaw = 0; state.speed = 0; snapCam = true;
     for (const m of mobs) if (m.alive) m.reset(); toast('You stagger back to the entry hall · progress kept', 4); hudT = 0;
   }
+  // ---------- M20b-2 · the Old Barrow: hall of the dead → grate → Ossric's vault ----------
+  let inBarrow = false, barrow: Barrow | null = null, barCalm = 0, barDown = 0, kingRisen = false;
+  const barMobs = (): Mob[] => barrow ? [...barrow.hallMobs, barrow.king, ...barrow.risen] : [];
+  function ensureBarrow() {
+    if (barrow) return barrow; const b = makeBarrow({ brick, roof: roofT, sand: sandT, metal: metalT, rock }, HIGH);
+    b.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && !Array.isArray(m) && m.transparent && ((o as THREE.Mesh).isMesh || (o as THREE.Sprite).isSprite)) o.layers.set(1); });
+    barrow = b; return b;
+  }
+  function syncBarrow(b: Barrow) {
+    const st = stage(save, 'barrow'); for (const m of b.hallMobs) { if (st >= 1) m.kill(); else m.respawn(m.x, m.z); } if (st >= 2) b.king.kill(); else b.king.respawn(BAR_O.x, BAR_O.z + 39.5);
+    for (const m of b.risen) m.kill(); kingRisen = false; b.setGate(st >= 1, true); if (st >= 3) b.openChest(true); b.showGlow(st === 2);
+  }
+  async function enterBarrow() {
+    if (fading) return; fading = true; state.speed = 0; cb.reset(); setFade(true); await sleepMs(420);
+    const b = ensureBarrow(); syncBarrow(b); inBarrow = true; setScene(b.scene); state.px = b.entry.x; state.pz = b.entry.z; state.facing = 0; state.yaw = Math.PI; state.pitch = 0.22; state.dist = 4.8; snapCam = true; airborne = false; lastGy = -1e9; hudT = 0; fading = false; setFade(false);
+    toast(stage(save, 'barrow') >= 2 ? 'The Old Barrow · quiet now' : 'The Old Barrow · cold air, and something breathing slow below', 3.5);
+  }
+  async function exitBarrow() {
+    if (!inBarrow || fading) return; fading = true; state.speed = 0; setFade(true); await sleepMs(420);
+    inBarrow = false; setScene(scene); const d = outposts.spots.find((p) => p.id === 'barrow-door')!; const f = Math.atan2(d.x - OP.barrow.x, d.z - OP.barrow.z);
+    state.px = d.x + Math.sin(f) * 1.2; state.pz = d.z + Math.cos(f) * 1.2; state.facing = f; state.yaw = f + Math.PI; state.pitch = 0.16; state.dist = 6; snapCam = true; airborne = false; lastGy = -1e9;
+    grassField.recenter(state.px, state.pz); grassFar.recenter(state.px, state.pz); treeField.update(state.px, state.pz); hudT = 0; fading = false; setFade(false);
+  }
+  function barrowDefeat() {
+    const b = barrow!; playerHp = hpMax(); barDown = 3; state.px = b.entry.x; state.pz = b.entry.z; state.facing = 0; state.yaw = Math.PI; state.speed = 0; snapCam = true; airborne = false;
+    for (const m of barMobs()) if (m.alive) m.reset(); for (const r of b.risen) r.kill(); kingRisen = false; toast('You come to in the barrow’s first chamber · progress and XP kept', 4); hudT = 0;
+  }
+  function nearestBarMob(maxD = 14): Mob | null { let b: Mob | null = null, bd = maxD; for (const m of barMobs()) { if (!m.alive) continue; const d = Math.hypot(m.x - state.px, m.z - state.pz); if (d < bd) { bd = d; b = m; } } return b; }
+  function hitBar(m: Mob, sk: Strike) {
+    const b = barrow!; cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit();
+    if (m.hit(sk.dmg, sk.stagger)) { const lv = levelOf(save.xp); save.xp += m.xp; let extra = '';
+      if (m === b.king) { sq(save).barrow = Math.max(2, stage(save, 'barrow')); for (const r of b.risen) if (r.alive) r.hit(99, 1); b.showGlow(true); extra = ' · the vault behind his throne lies open'; shake = 0.4; audio.chime(); }
+      else if (stage(save, 'barrow') < 1 && b.hallMobs.every((x) => !x.alive)) { sq(save).barrow = 1; b.setGate(true); extra = ' · an iron grate grinds up at the hall’s far end'; }
+      persist(); hudT = 0; toast(`${m.name} falls · +${m.xp} XP${extra}${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3.5); return; }
+    if (m === b.king && !kingRisen && m.hp < m.maxHp / 2) { kingRisen = true; b.risen.forEach((r, i) => r.respawn(BAR_O.x + (i ? 4 : -4), BAR_O.z + 35)); toast('Ossric lifts his blade — the dead rise from the floor!', 2.6); return; }
+    toast(sk.stagger >= 0.8 ? `Staggered! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}` : `Hit! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}`, 1.3);
+  }
+  const barEngaged = () => inBarrow && barMobs().some((m) => m.alive && m.state !== 'idle');
+  function tickBarrow(dt: number) {
+    if (!inBarrow || !barrow) return; const b = barrow; barDown = Math.max(0, barDown - dt);
+    if (barEngaged()) barCalm = 0; else { barCalm += dt; if (barCalm > 5 && playerHp < hpMax()) { playerHp = hpMax(); hudT = 0; } }
+    for (const m of barMobs()) {
+      if (m.tick(dt, state.px, state.pz, 0, (x, z) => b.walkable(x, z, 0.55), barDown > 0 || fading || talking, true) !== 'swing') continue;
+      const res = cb.incoming(false);
+      if (res === 'dodged') toast('Rolled clear!', 1.0);
+      else if (res === 'parried') { audio.parry(); m.hit(0, 1); toast(`Parried! ${m.name} reels`, 1.6); }
+      else if (res === 'blocked') { audio.clank(); toast('Blocked · stamina spent', 1.2); }
+      else { playerHp -= m.dmg; player.play('HitRecieve'); shake = Math.max(shake, 0.2); audio.hurt(); hudT = 0;
+        if (playerHp <= 0) { barrowDefeat(); return; }
+        toast(res === 'guardbreak' ? `Guard broken! HP ${playerHp}/${hpMax()}` : `${m.name} strikes! HP ${playerHp}/${hpMax()}`, 2, true); }
+    }
+  }
   // ---------- M20b · roaming foes, rests, defeat in the open ----------
-  const vale = () => !inCave && !inCoast && !inSea && !inKeep && !inCastle && !onIsland && !perch && !lift;
+  const vale = () => !inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow && !onIsland && !perch && !lift;
   let roamDown = 0, roamCalm = 0, foeMob: Mob | null = null, roamSwings = 0;
   function nearestRoamer(maxD = 12): Mob | null { let b: Mob | null = null, bd = maxD; for (const m of roam.live()) { const d = Math.hypot(m.x - state.px, m.z - state.pz); if (d < bd) { bd = d; b = m; } } return b; }
   function hitRoamer(m: Mob, sk: Strike) {
     cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit();
     if (m.hit(sk.dmg, sk.stagger)) { const lv = levelOf(save.xp); save.xp += m.xp; const g = roam.groupOf(m); let extra = '';
-      if (roam.allDead(g)) { (save.rk ??= {})[g.def.id] = save.day ?? 0; extra = g.def.night ? ' · the shades here are gone for tonight' : ' · the road is clear for today'; }
+      if (roam.allDead(g) && g.def.camp) { (save.gone ??= {})[g.def.id] = save.day ?? 0; extra = ' · the Ashen Hollow falls quiet — their strongbox is unguarded'; }
+      else if (roam.allDead(g)) { (save.rk ??= {})[g.def.id] = save.day ?? 0; extra = g.def.night ? ' · the shades here are gone for tonight' : ' · the road is clear for today'; }
       persist(); hudT = 0; toast(`${m.name} falls · +${m.xp} XP${extra}${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3); return; }
     toast(sk.stagger >= 0.8 ? `Staggered! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}` : `Hit! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}`, 1.3);
   }
   function roamDefeat() {
-    const f = roam.nearestFire(state.px, state.pz).fire.def; state.px = f.x + 1.6; state.pz = f.z + 1.6; state.speed = 0; snapCam = true; playerHp = HP_MAX; roamDown = 4;
+    const f = roam.nearestFire(state.px, state.pz).fire.def; state.px = f.x + 1.6; state.pz = f.z + 1.6; state.speed = 0; snapCam = true; playerHp = hpMax(); roamDown = 4;
     for (const g of roam.groups) for (const m of g.mobs) if (m.alive) m.reset();
     toast(`You come to by the ${f.name} · progress and XP kept`, 4.5); hudT = 0;
   }
   function tickRoam(dt: number, t: number) {
     roamDown = Math.max(0, roamDown - dt); const out = vale() && !todLocked; // QA/shots without a time: no roamers
-    const hits = roam.tick(dt, t, state.px, state.pz, player.root.position.y, nightK, out, roamDown > 0 || fading || talking || !canFight(), (id) => (save.rk?.[id] ?? -99) >= (save.day ?? 0));
-    if (out) { if (roam.engaged()) roamCalm = 0; else if (!wd.awake) { roamCalm += dt; if (roamCalm > 6 && playerHp < HP_MAX) { playerHp = HP_MAX; hudT = 0; } } }
+    const hits = roam.tick(dt, t, state.px, state.pz, player.root.position.y, nightK, out, roamDown > 0 || fading || talking || !canFight(), (id) => id === 'ashen' ? campClear() : (save.rk?.[id] ?? -99) >= (save.day ?? 0));
+    if (out) { if (roam.engaged()) roamCalm = 0; else if (!wd.awake) { roamCalm += dt; if (roamCalm > 6 && playerHp < hpMax()) { playerHp = hpMax(); hudT = 0; } } }
     for (const m of hits) { roamSwings++;
       const res = cb.incoming(false);
       if (res === 'dodged') toast('Rolled clear!', 1.0);
@@ -799,13 +936,13 @@ async function main() {
       else if (res === 'blocked') { audio.clank(); toast('Blocked · stamina spent', 1.2); }
       else { playerHp -= m.dmg; player.play('HitRecieve'); shake = Math.max(shake, 0.2); audio.hurt(); hudT = 0;
         if (playerHp <= 0) { roamDefeat(); return; }
-        toast(res === 'guardbreak' ? `Guard broken! HP ${playerHp}/${HP_MAX}` : `The ${m.name} strikes! HP ${playerHp}/${HP_MAX}`, 2, true); }
+        toast(res === 'guardbreak' ? `Guard broken! HP ${playerHp}/${hpMax()}` : `The ${m.name} strikes! HP ${playerHp}/${hpMax()}`, 2, true); }
     }
   }
   async function restAt(f: { name: string }) {
     if (fading) return; if (roam.engaged() || wd.awake) { toast('You can’t rest with foes this close.', 2.6); return; }
     fading = true; state.speed = 0; setFade(true); await sleepMs(650);
-    save.day = (save.day ?? 0) + 1; tod = MORNING; save.tod = tod; save.rk = {}; roam.resetAll(); playerHp = HP_MAX; persist(); lightKey = ''; hudT = 0;
+    save.day = (save.day ?? 0) + 1; tod = MORNING; save.tod = tod; save.rk = {}; roam.resetAll(); playerHp = hpMax(); persist(); lightKey = ''; hudT = 0;
     await sleepMs(450); setFade(false); fading = false;
     toast(`You rest at the ${f.name} until morning · game saved · the roads stir again`, 4.5);
   }
@@ -954,7 +1091,7 @@ async function main() {
       echoT += dt; for (let i = 0; i < 5; i++) if (echoT >= i * 0.28) grove.light(i);
       if (echoT >= 1.8) { echoT = -1; const lv = levelOf(save.xp); save.echo = true; save.xp += ECHO_XP; persist(); grove.memory(true); toast(`Echo Grove remembered · +${ECHO_XP} XP · Echo${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 5); openDialog('Echo Grove', echoMemoryLines(true)); }
     }
-    chartT -= dt; if (chartT > 0 || onIsland || lift || inCave || inCoast || inSea || inKeep || inCastle) return; chartT = 0.4;
+    chartT -= dt; if (chartT > 0 || onIsland || lift || inCave || inCoast || inSea || inKeep || inCastle || inBarrow) return; chartT = 0.4;
     for (let i = 0; i < MARR_MARKS.length; i++) {
       const m = MARR_MARKS[i]; if (save.charted[i] || Math.hypot(state.px - m.x, state.pz - m.z) > CHART_R) continue;
       save.charted[i] = true; persist(); const n = save.charted.filter(Boolean).length;
@@ -964,22 +1101,24 @@ async function main() {
   // ---------- M19 · explored-map fog (Marr's map only shows land you have walked) ----------
   let fogT = 0, fogDirty = false;
   function fogNow(): number[] {
+    if (save.fog && save.fog.length === FOG_R && save.fogV !== 2) { save.fog = migrateFog(save.fog); save.fogV = 2; for (const id of save.found ?? []) { const l = LOCS.find((q) => q.id === id); if (l) revealFog(save.fog, l.x, l.z, l.reveal); } fogDirty = true; }
     if (!save.fog || save.fog.length !== FOG_R) { // first run on this save: seed from what the player already knows
       const f = new Array(FOG_R).fill(0); save.fog = f; revealFog(f, SPAWN.x, SPAWN.z, 30); revealFog(f, WAYFINDER.x, WAYFINDER.z, 30);
       MARR_MARKS.forEach((m, i) => { if (save.charted[i]) revealFog(f, m.x, m.z, 34); }); for (const d of SEALS) if (save.seals[d.id]) revealFog(f, d.x, d.z, 26);
       if (save.warden) revealFog(f, WARDEN.x, WARDEN.z, 22); if (save.cave >= 1) revealFog(f, STAIR.x, STAIR.z, 24); if (save.wind) revealFog(f, SHRINE.x, SHRINE.z, 26);
+      for (const id of save.found ?? []) { const l = LOCS.find((q) => q.id === id); if (l) revealFog(f, l.x, l.z, l.reveal); } save.fogV = 2;
       fogDirty = true;
     }
     return save.fog;
   }
   function tickFog(dt: number) {
     fogT -= dt; if (fogT > 0) return; fogT = 0.5;
-    if (!inCave && !inCoast && !inSea && !inKeep && !inCastle && !onIsland && !lift) { if (revealFog(fogNow(), state.px, state.pz, 26)) fogDirty = true; }
+    if (!inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow && !onIsland && !lift) { if (revealFog(fogNow(), state.px, state.pz, 26)) fogDirty = true; }
     if (fogDirty && !paused) { fogDirty = false; persist(); }
   }
   // ---------- Vale Warden (optional) ----------
   const wd = { hp: 6, phase: save.warden ? 3 : 0, teleT: 0, recT: 0, sx: WARDEN.x, sz: WARDEN.z, awake: false, warned: false, freeze: -1 };
-  let playerHp = HP_MAX, atkCd = 0, shake = 0, swingT = 0, swingFreeze = false;
+  let playerHp = hpMax(), atkCd = 0, shake = 0, swingT = 0, swingFreeze = false;
   const wardenDist = () => Math.hypot(state.px - WARDEN.x, state.pz - WARDEN.z);
   function resetWarden() { if (save.warden) { wd.phase = 3; wd.hp = 0; return; } wd.hp = W_HP; wd.phase = 0; wd.teleT = 0; wd.recT = 0; wd.awake = false; wd.warned = false; }
   const W_HP = 6;
@@ -1003,10 +1142,11 @@ async function main() {
   const canFight = () => !(creating || paused || talking || cine || dawnCine || lampCine || lift || fading || !chapterEl.hidden || !endEl.hidden || !titleEl.hidden);
   function foe(): { x: number; z: number; r: number } | null {
     if (inKeep && keep && save.sea < 5) return { x: keep.center.x, z: keep.center.z, r: keep.melee };
+    if (inBarrow) { const m = nearestBarMob(); return m ? { x: m.x, z: m.z, r: m.look === 'king' ? 2.4 : 1.6 } : null; }
     if (inCastle) { const m = nearestMob(); return m ? { x: m.x, z: m.z, r: 1.6 } : null; }
     if (perch) return null;
-    foeMob = null; if (vale()) { const m = nearestRoamer(); if (m && (save.warden || Math.hypot(m.x - state.px, m.z - state.pz) < Math.hypot(WARDEN.x - state.px, WARDEN.z - state.pz))) { foeMob = m; return { x: m.x, z: m.z, r: m.look === 'brute' ? 2.0 : 1.6 }; } }
-    if (!inCave && !inCoast && !inSea && !inKeep && !inCastle && !onIsland && !save.warden) return { x: WARDEN.x, z: WARDEN.z, r: W_MELEE };
+    foeMob = null; if (vale()) { const m = nearestRoamer(); if (m && (save.warden || Math.hypot(m.x - state.px, m.z - state.pz) < Math.hypot(WARDEN.x - state.px, WARDEN.z - state.pz))) { foeMob = m; return { x: m.x, z: m.z, r: m.look === 'zealot' ? 2.3 : m.look === 'brute' ? 2.0 : 1.6 }; } }
+    if (!inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow && !onIsland && !save.warden) return { x: WARDEN.x, z: WARDEN.z, r: W_MELEE };
     return null;
   }
   function faceFoe(mul = 1.7) { const f = foe(); if (!f) return; const d = Math.hypot(f.x - state.px, f.z - state.pz); if (d < f.r * cb.weapon.reach * mul) state.facing = Math.atan2(f.x - state.px, f.z - state.pz); }
@@ -1025,7 +1165,7 @@ async function main() {
     const f = foe(); if (!f) return; sk = { ...sk, dmg: sk.dmg * whetMul() };
     const dx = f.x - state.px, dz = f.z - state.pz, d = Math.hypot(dx, dz), facing = Math.cos(Math.atan2(dx, dz) - state.facing);
     if (d > f.r * sk.reach + 0.2 || facing < 0.2) return;
-    if (inCastle) { const m = nearestMob(); if (m) hitMob(m, { ...sk, dmg: sk.dmg / whetMul() }); } else if (inKeep) hitKeeper(sk); else if (foeMob) hitRoamer(foeMob, sk); else hitWarden(sk);
+    if (inBarrow) { const m = nearestBarMob(); if (m) hitBar(m, sk); } else if (inCastle) { const m = nearestMob(); if (m) hitMob(m, { ...sk, dmg: sk.dmg / whetMul() }); } else if (inKeep) hitKeeper(sk); else if (foeMob) hitRoamer(foeMob, sk); else hitWarden(sk);
   }
   function takeWeapon(id: WeaponId) {
     const o = owned(); if (!o.includes(id)) save.weapons = [...o, id]; save.weapon = id; persist(); equip(id); syncWeaponUi();
@@ -1042,6 +1182,8 @@ async function main() {
     tide: '<svg viewBox="0 0 32 32"><path d="M23 4c5 3 6 8 3 8L14 23l-4-4L22 8c2-1 1-3 1-4z" fill="#6fd6cc" stroke="#16514c" stroke-width="1.2"/><path d="M9 18l5 5-2 2-5-5z" fill="#d9cdb4"/><path d="M7 23l2 2-4 4-2-2z" fill="#1f4f52"/></svg>',
     knight: '<svg viewBox="0 0 32 32"><path d="M25 3l4 0 0 4-15 15-4-4z" fill="#e4e8ec" stroke="#3a3a3a" stroke-width="1.1"/><path d="M7 16l9 9-2 2-9-9z" fill="#c9a24a"/><path d="M8 22l2 2-4 4-2-2z" fill="#3a2416"/></svg>',
     halberd: '<svg viewBox="0 0 32 32"><path d="M6 28L24 10" stroke="#6a4a30" stroke-width="2.4" stroke-linecap="round"/><path d="M18 6c5-1 8 2 8 6l-5 1-4-4z" fill="#b9c8d6" stroke="#2f4a6a" stroke-width="1"/><path d="M24 8l5-5" stroke="#b9c8d6" stroke-width="2"/></svg>',
+    ember: '<svg viewBox="0 0 32 32"><path d="M25 3l4 0 0 4-15 15-4-4z" fill="#3a3640" stroke="#ff8a3a" stroke-width="1.4"/><path d="M7 16l9 9-2 2-9-9z" fill="#c9a24a"/><path d="M8 22l2 2-4 4-2-2z" fill="#4a2a18"/></svg>',
+    harpoon: '<svg viewBox="0 0 32 32"><path d="M5 27L23 9" stroke="#a88a62" stroke-width="2.6" stroke-linecap="round"/><path d="M21 7l7-3-3 7z" fill="#9aa4a8" stroke="#2a2a2a" stroke-width="1"/><path d="M20 12l-4-1M17 15l-4-1" stroke="#9aa4a8" stroke-width="1.6"/></svg>',
     attack: '<svg viewBox="0 0 32 32"><path d="M25 3l4 0 0 4-14 14-4-4z" fill="#f4ead2"/><path d="M9 16l7 7-2 2-7-7z" fill="#f4ead2"/><path d="M8 22l2 2-4 4-2-2z" fill="#f4ead2"/></svg>',
     heavy: '<svg viewBox="0 0 32 32"><path d="M16 2l3 9 9-4-5 8 8 4-9 2 3 9-9-6-7 7 1-9-8-2 8-5-5-8 9 4z" fill="#ffd27a" stroke="#6a3a10" stroke-width="1"/></svg>',
     block: '<svg viewBox="0 0 32 32"><path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z" fill="#cfe3e0" stroke="#24423f" stroke-width="1.6"/><path d="M16 7v18" stroke="#24423f" stroke-width="1.2"/></svg>',
@@ -1062,7 +1204,7 @@ async function main() {
     el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); pid = e.pointerId; try { el.setPointerCapture(e.pointerId); } catch { /* */ } el.classList.add('down'); down(); });
     const end = (e: PointerEvent) => { if (e.pointerId !== pid) return; pid = -1; el.classList.remove('down'); up(); };
     el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('contextmenu', (e) => e.preventDefault()); };
-  hold('b-atk', startAttack, () => {}); hold('b-hvy', heavyDown, heavyUp); hold('b-blk', () => setBlock(true), () => setBlock(false)); hold('b-dge', () => { dodgeReq = true; }, () => {}); hold('b-jmp', () => { jumpReq = true; }, () => {});
+  hold('b-atk', () => { if (ctlCalm) { const it = nearestInteract(); if (it && !it.combat) { interact(); return; } } startAttack(); }, () => {}); hold('b-hvy', heavyDown, heavyUp); hold('b-blk', () => setBlock(true), () => setBlock(false)); hold('b-dge', () => { dodgeReq = true; }, () => {}); hold('b-jmp', () => { jumpReq = true; }, () => {});
   addEventListener('keydown', (e) => {
     if (e.repeat || (e.target as HTMLElement).tagName === 'INPUT') return;
     if (e.code === 'KeyK') startAttack(); else if (e.code === 'KeyL') heavyDown(); else if (e.code === 'KeyQ') setBlock(true); else if (e.code === 'KeyC') dodgeReq = true; else if (e.code === 'Space' && !talking && !creating && !paused) { e.preventDefault(); jumpReq = true; }
@@ -1086,7 +1228,7 @@ async function main() {
     if (talking || cine || creating || dawnCine || lift || onIsland) return;
     const dist = wardenDist();
     if (dist < W_WAKE) { if (!wd.warned) { wd.warned = true; toast('Warden stirs — step out of the ring', 3.2); } wd.awake = true; }
-    else if (dist > W_SLEEP) { wd.awake = false; if (wd.phase === 1 || wd.phase === 2) { wd.phase = 0; wd.teleT = 0; wd.recT = 0; } if (playerHp < HP_MAX && dist > W_SLEEP + 15 && !inKeep && !inCastle && !(vale() && !todLocked)) playerHp = HP_MAX; } // M20b: in the open world HP comes back by resting out of a fight (tickRoam)
+    else if (dist > W_SLEEP) { wd.awake = false; if (wd.phase === 1 || wd.phase === 2) { wd.phase = 0; wd.teleT = 0; wd.recT = 0; } if (playerHp < hpMax() && dist > W_SLEEP + 15 && !inKeep && !inCastle && !inBarrow && !(vale() && !todLocked)) playerHp = hpMax(); } // M20b: in the open world HP comes back by resting out of a fight (tickRoam)
     if (!wd.awake || wd.freeze >= 0) return;
     if (wd.phase === 0) { wd.sx = state.px; wd.sz = state.pz; warden.placeZone(wd.sx, wd.sz); wd.phase = 1; wd.teleT = W_TELE; toast('⚠ Warden winds up — move!', 1.3, true); return; }
     if (wd.phase === 1) {
@@ -1101,10 +1243,10 @@ async function main() {
         if (playerHp <= 0) {
           const rp = recoveryPoint(); state.px = rp.x; state.pz = rp.z; state.speed = 0; snapCam = true;
           state.facing = Math.atan2(WARDEN.x - rp.x, WARDEN.z - rp.z); state.yaw = state.facing + Math.PI;
-          playerHp = HP_MAX; atkCd = 0; resetWarden();
+          playerHp = hpMax(); atkCd = 0; resetWarden();
           toast('Wayfinder pulls you to safety.', 4); openDialog('Wayfinder', RECOVERY_LINES); return;
         }
-        toast(res === 'guardbreak' ? `Guard broken! HP ${playerHp}/${HP_MAX}` : `Warden strike! HP ${playerHp}/${HP_MAX}`, 2, true);
+        toast(res === 'guardbreak' ? `Guard broken! HP ${playerHp}/${hpMax()}` : `Warden strike! HP ${playerHp}/${hpMax()}`, 2, true);
       }
       wd.phase = 2; wd.recT = W_RECOVER; return;
     }
@@ -1137,7 +1279,7 @@ async function main() {
   };
   // HUD: quest tracker + compass.
   { const qEl = document.getElementById('quest')!; qEl.addEventListener('click', () => { if (innerWidth <= 520) qEl.classList.toggle('open'); }); } // portrait: tap the quest card for the full status
-  const bossEl = document.getElementById('bossbar')!, kFill = document.getElementById('kfill')!, kSt = document.getElementById('kst')!, kPh = document.getElementById('kph')!;
+  const bossEl = document.getElementById('bossbar')!, kFill = document.getElementById('kfill')!, kSt = document.getElementById('kst')!, kPh = document.getElementById('kph')!, kName = document.getElementById('kname')!;
   const wdArrow = document.getElementById('wdarrow')!, wdText = document.getElementById('wdtext')!, combatEl = document.getElementById('combat')!, foeLbl = document.getElementById('foelbl')!, hpEl = document.getElementById('hp')!, whpEl = document.getElementById('whp')!;
   const wArrow = document.getElementById('warrow')!, wText = document.getElementById('wtext')!;
   const qline = document.getElementById('qline')!, qstats = document.getElementById('qstats')!, carrow = document.getElementById('carrow')!, ctext = document.getElementById('ctext')!;
@@ -1194,12 +1336,12 @@ async function main() {
     if (save.cave >= 4 && save.coast >= 1) qline.textContent = save.lamp >= 2 ? 'The End · The Broken Vale, mended · explore freely' : save.lamp === 1 ? `The Lowtide Lamp · set the glass when the tide turns${inCoast && coast ? ` · tide ${coast.tidePhase}` : ''}` : save.sea >= 5 ? 'Chapter II · Enna waits at the Lowtide Lamp' : save.sea >= 4 ? 'Chapter II · The Drowned Keeper — the seal is open' : save.sea >= 3 ? 'Chapter II · The Drowned Keeper — the round seal waits' : save.sea >= 2 ? 'Enna’s Trail · the packet by the round seal' : save.coast >= 3 ? `Enna’s Trail · the Listening Pools${inSea && sea ? ` · tide ${sea.tidePhase}` : ''}` : save.coast >= 2 ? 'Enna’s Trail · the causeway to the sea cave' : `Enna’s Trail · Tidewrack Coast${inCoast && coast ? ` · tide ${coast.tidePhase}` : ''}`;
     qstats.textContent = `Lv ${levelOf(save.xp)} · ${save.xp} XP · ${SEALS.map((d) => (save.seals[d.id] ? '◆' : '◇')).join('')}${todLocked ? '' : ` · ${nightK > 0.5 ? '☾' : '☀'} ${clockText(tod)}`}`;
     const tgt = objective();
-    const away = inCave || inCoast || inSea || inKeep || inCastle, hx = away ? STAIR.x : state.px, hz = away ? STAIR.z : state.pz;
+    const away = inCave || inCoast || inSea || inKeep || inCastle || inBarrow, hx = away ? STAIR.x : state.px, hz = away ? STAIR.z : state.pz;
     const dx = tgt.x - state.px, dz = tgt.z - state.pz, dist = Math.hypot(dx, dz);
     const fx = -Math.sin(state.yaw), fz = -Math.cos(state.yaw), rx = Math.cos(state.yaw), rz = -Math.sin(state.yaw);
     const sx = dx * rx + dz * rz, sy = dx * fx + dz * fz;
     carrow.style.transform = `rotate(${(Math.atan2(-sy, sx) * 180 / Math.PI).toFixed(0)}deg)`;
-    const free = save.beacon && save.cave >= 4 && save.sea >= 5 && save.lamp >= 2 && !onIsland && !inCave && !inCoast && !inSea && !inKeep && !inCastle;
+    const free = save.beacon && save.cave >= 4 && save.sea >= 5 && save.lamp >= 2 && !onIsland && !inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow;
     ctext.textContent = free && (dist < 6 || !guidance) ? 'Explore freely' : guidance ? `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}` : `✎ ${tgt.name} · clues in Journal`;
     // Optional Wind Shrine locator line.
     { const ws = { x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z }; const ddx = ws.x - hx, ddz = ws.z - hz, dd = Math.hypot(ddx, ddz);
@@ -1209,13 +1351,17 @@ async function main() {
     { const ddx = WARDEN.x - hx, ddz = WARDEN.z - hz, dd = Math.hypot(ddx, ddz); const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
       wdArrow.style.transform = `rotate(${(Math.atan2(-wy, wx) * 180 / Math.PI).toFixed(0)}deg)`; wdArrow.style.visibility = save.warden ? 'hidden' : 'visible';
       wdText.textContent = save.warden ? "Warden dormant · Warden's Crest" : `Vale Warden (optional)${guidance ? ` · ${dd < 12 ? 'here' : Math.round(dd) + ' m'}` : ''}`;
-      if (inCastle) { const m = nearestMob(), show = mobEngaged() || playerHp < HP_MAX; combatEl.hidden = !show;
-        if (show) { hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(HP_MAX - playerHp); foeLbl.textContent = 'Sentinel'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(MOB_HP - Math.max(0, Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', !!m?.winding); } }
-      else if (vale() && (roam.engaged() || (playerHp < HP_MAX && !wd.awake))) { const m = nearestRoamer(16); combatEl.hidden = false; hpEl.textContent = '♥'.repeat(Math.max(0, playerHp)) + '♡'.repeat(Math.max(0, HP_MAX - playerHp)); foeLbl.textContent = m?.name ?? 'Night'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(Math.max(0, m.maxHp - Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', !!m?.winding); }
-      else { const show = !save.warden && (wd.awake || playerHp < HP_MAX);
-      combatEl.hidden = !show; if (show) { foeLbl.textContent = 'Warden'; hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(HP_MAX - playerHp); whpEl.textContent = '■'.repeat(Math.ceil(wd.hp)) + '□'.repeat(W_HP - Math.ceil(wd.hp)); combatEl.classList.toggle('alert', wd.phase === 1); } } }
-    { const showK = inKeep && !!keep && save.sea < 5 && keep.active; bossEl.hidden = !showK;
-      if (showK && keep) { kFill.style.width = `${(keep.hp / KEEPER_HP) * 100}%`; const st = keep.state; const txt = `♥ ${'♥'.repeat(Math.max(0, playerHp - 1))}${'♡'.repeat(HP_MAX - playerHp)} · ` + (keep.revealed ? 'CORE EXPOSED — strike!' : st === 'low' ? 'Low water · raise the Tide-Glass' : st === 'windup' ? '⚠ spout — move!' : st === 'sweepWarn' ? '⚠ tide sweep — climb a stone!' : st === 'ebb' ? 'the tide drains…' : 'armoured · wait for low water');
+      if (inBarrow) { const m = nearestBarMob(16), kingUp = !!barrow && barrow.king.alive && barrow.king.state !== 'idle', show = !kingUp && (barEngaged() || playerHp < hpMax()); combatEl.hidden = !show; // the boss bar carries the hearts while Ossric fights
+        if (show) { hpEl.textContent = '♥'.repeat(Math.max(0, playerHp)) + '♡'.repeat(Math.max(0, hpMax() - playerHp)); foeLbl.textContent = m?.name ?? 'The barrow'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(Math.max(0, m.maxHp - Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', !!m?.winding); } }
+      else if (inCastle) { const m = nearestMob(), show = mobEngaged() || playerHp < hpMax(); combatEl.hidden = !show;
+        if (show) { hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(hpMax() - playerHp); foeLbl.textContent = 'Sentinel'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(MOB_HP - Math.max(0, Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', !!m?.winding); } }
+      else if (vale() && (roam.engaged() || (playerHp < hpMax() && !wd.awake))) { const m = nearestRoamer(16); combatEl.hidden = false; hpEl.textContent = '♥'.repeat(Math.max(0, playerHp)) + '♡'.repeat(Math.max(0, hpMax() - playerHp)); foeLbl.textContent = m?.name ?? 'Night'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(Math.max(0, m.maxHp - Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', !!m?.winding); }
+      else { const show = !save.warden && (wd.awake || playerHp < hpMax());
+      combatEl.hidden = !show; if (show) { foeLbl.textContent = 'Warden'; hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(hpMax() - playerHp); whpEl.textContent = '■'.repeat(Math.ceil(wd.hp)) + '□'.repeat(W_HP - Math.ceil(wd.hp)); combatEl.classList.toggle('alert', wd.phase === 1); } } }
+    { const showK = inKeep && !!keep && save.sea < 5 && keep.active, kb = inBarrow && !!barrow && barrow.king.alive && barrow.king.state !== 'idle'; bossEl.hidden = !showK && !kb;
+      const nm = kb ? 'Ossric, the Barrow-King' : 'The Drowned Keeper'; if (kName.textContent !== nm) kName.textContent = nm;
+      if (kb && barrow) { const k = barrow.king; kFill.style.width = `${(Math.max(0, k.hp) / k.maxHp) * 100}%`; const txt = `${'♥'.repeat(Math.max(0, playerHp))}${'♡'.repeat(Math.max(0, hpMax() - playerHp))}${k.winding ? ' · ⚠ he winds up — roll or parry!' : kingRisen ? ' · the dead walk again' : ''}`; if (kSt.textContent !== txt) kSt.textContent = txt; kPh.textContent = ''; kHud = ''; bossEl.classList.toggle('alert', !!k.winding); }
+      if (showK && keep) { kFill.style.width = `${(keep.hp / KEEPER_HP) * 100}%`; const st = keep.state; const txt = `♥ ${'♥'.repeat(Math.max(0, playerHp - 1))}${'♡'.repeat(hpMax() - playerHp)} · ` + (keep.revealed ? 'CORE EXPOSED — strike!' : st === 'low' ? 'Low water · raise the Tide-Glass' : st === 'windup' ? '⚠ spout — move!' : st === 'sweepWarn' ? '⚠ tide sweep — climb a stone!' : st === 'ebb' ? 'the tide drains…' : 'armoured · wait for low water');
         if (txt !== kHud) { kHud = txt; kSt.textContent = txt; kPh.textContent = `· ${['', 'I', 'II', 'III'][keep.phase]}`; } bossEl.classList.toggle('alert', st === 'windup' || st === 'sweepWarn'); bossEl.classList.toggle('open', keep.revealed); } }
     const it = talking || cine || dawnCine || lampCine || fading ? null : nearestInteract();
     actBtn.hidden = !it; if (it) actBtn.textContent = it.label; actBtn.classList.toggle('combat', !!it?.combat); actBtn.style.setProperty('--cd', it?.combat ? (atkCd / PLAYER_ATK_CD).toFixed(2) : '0');
@@ -1319,6 +1465,8 @@ async function main() {
       [state.px, state.pz] = keep.constrain(state.px + Math.sin(state.facing) * state.speed * dt, state.pz + Math.cos(state.facing) * state.speed * dt);
     } else if (state.speed > 0.02 && inSea && sea) {
       [state.px, state.pz] = sea.constrain(state.px + Math.sin(state.facing) * state.speed * dt, state.pz + Math.cos(state.facing) * state.speed * dt);
+    } else if (state.speed > 0.02 && inBarrow && barrow) {
+      [state.px, state.pz] = barrow.constrain(state.px, state.pz, state.px + Math.sin(state.facing) * state.speed * dt, state.pz + Math.cos(state.facing) * state.speed * dt);
     } else if (state.speed > 0.02 && inCave && cave) {
       [state.px, state.pz] = cave.constrain(state.px + Math.sin(state.facing) * state.speed * dt, state.pz + Math.cos(state.facing) * state.speed * dt);
     } else if (state.speed > 0.02 && onIsland) {
@@ -1326,6 +1474,7 @@ async function main() {
     } else if (state.speed > 0.02) {
       let nx = state.px + Math.sin(state.facing) * state.speed * dt, nz = state.pz + Math.cos(state.facing) * state.speed * dt;
       for (const s of solids) { const dx = nx - s.x, dz = nz - s.z, dd = Math.hypot(dx, dz); if (dd < s.r) { nx = s.x + dx / dd * s.r; nz = s.z + dz / dd * s.r; } }
+      [nx, nz] = standPush(nx, nz, airborne ? footY : lastGy); // M20b-2: rocks, low walls, ruined steps block until you hop above them
       const R = 235; const rr = Math.hypot(nx, nz); if (rr > R) { nx *= R / rr; nz *= R / rr; }
       // Wading: the creek is shallow — slow down instead of blocking.
       if (Math.abs(nx - creekX(nz)) < creekHalf(nz)) { nx = state.px + (nx - state.px) * 0.5; nz = state.pz + (nz - state.pz) * 0.5; }
@@ -1339,25 +1488,25 @@ async function main() {
       state.pitch += (0.3 - state.pitch) * Math.min(1, dt * 2);
       state.px = bz.x; state.pz = bz.z; gy = bz.y;
       if (u >= 1) { const down = lift.down; lift = null; onIsland = !down; hudT = 0; if (onIsland) toast(save.beacon ? 'The held morning is spent · ride down from the western edge.' : 'Turn the four morning mirrors · read the Unspent carving.', 4); }
-    } else if (inCave) gy = 0;
+    } else if (inCave || inBarrow) gy = 0;
     else if (inSea && sea) gy = sea.groundY(state.px, state.pz);
     else if (inKeep && keep) gy = keep.groundY(state.px, state.pz);
     else if (inCastle && castle) gy = castle.y;
     else if (perch) gy = perch.y;
     else if (inCoast && coast) gy = coast.groundY(state.px, state.pz);
     else if (onIsland) gy = islandY(state.px, state.pz) ?? player.root.position.y;
-    else gy = Math.max(heightAt(state.px, state.pz), WATER_Y - 0.7, walkY(state.px, state.pz)); // M20b: stand on raised landmark floors (Sunspire platform & causeways)
+    else { gy = Math.max(heightAt(state.px, state.pz), WATER_Y - 0.7, walkY(state.px, state.pz)); gy = Math.max(gy, standY(state.px, state.pz, airborne ? footY : Math.max(lastGy, gy))); } // M20b: stand on raised landmark floors (Sunspire platform & causeways)
     { // M20b · jump (fixed tick): hop from the current floor, land on whatever floor is under the feet when falling past it.
       const hopOk = !lift && !perch && !onIsland && !talking && !creating && !fading;
       if (jumpReq) { jumpReq = false; if (!airborne && hopOk && canFight()) { if (cb.jump()) { airborne = true; footY = gy; vy = inCastle || inCave ? JUMP_V * 0.8 : JUMP_V; audio.roll(); } else audio.tired(); } }
       if (airborne) {
         if (!hopOk) airborne = false;
-        else if (!airHold) { vy -= JUMP_G * dt; footY += vy * dt; if (inCastle && castle) { const cap = castle.ceilAt(state.px, state.pz, gy) - 1.9; if (footY > cap) { footY = Math.max(gy, cap); vy = Math.min(vy, 0); } } if (footY <= gy) { airborne = false; vy = 0; landT = 0.24; audio.step(surfaceNow(), true); } }
+        else if (!airHold) { vy -= JUMP_G * dt; footY += vy * dt; if ((inCastle && castle) || (inBarrow && barrow)) { const cap = (inBarrow && barrow ? barrow.ceil(state.px, state.pz) : castle!.ceilAt(state.px, state.pz, gy)) - 1.9; if (footY > cap) { footY = Math.max(gy, cap); vy = Math.min(vy, 0); } } if (footY <= gy) { airborne = false; vy = 0; landT = 0.24; audio.step(surfaceNow(), true); } }
       }
       if (landT > 0) landT = Math.max(0, landT - dt);
       // Step off a raised floor outdoors (Sunspire platform, causeways): drop under gravity instead of snapping down.
-      const outdoor = !inCastle && !inKeep && !inSea && !inCoast && !inCave && hopOk;
-      if (!airborne && outdoor && !snapCam && lastGy - gy > 0.45 && lastGy - gy < 3) { airborne = true; footY = lastGy; vy = 0; }
+      const outdoor = !inCastle && !inBarrow && !inKeep && !inSea && !inCoast && !inCave && hopOk;
+      if (!airborne && outdoor && !snapCam && lastGy - gy > 0.45 && lastGy - gy < 8) { airborne = true; footY = lastGy; vy = 0; }
       lastGy = gy;
     }
     player.root.position.set(state.px, airborne ? footY : gy, state.pz);
@@ -1367,8 +1516,8 @@ async function main() {
     player.pose.style = cb.weapon.style; player.pose.block += ((cb.blocking ? 1 : 0) - player.pose.block) * Math.min(1, dt * 14);
     player.setSpeed(cb.act ? 0 : state.speed, cb.hitStop > 0 ? dt * 0.08 : dt); // hit stop: the swing freezes for a few frames
     for (const k of PICK) if (k.p.group.visible) k.p.update(t); if (seaPick?.p.group.visible) seaPick.p.update(t);
-    if (inCastle && castle) tickMobs(dt);
-    tickRoam(dt, t);
+    if (inCastle && castle) tickMobs(dt); tickBarrow(dt); tickDiscover(dt);
+    tickRoam(dt, t); tickControls(dt);
     // Wayfinder looks at Ilka when near.
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 9) { const want = Math.atan2(state.px - WAYFINDER.x, state.pz - WAYFINDER.z); let d = want - wayfinder.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); wayfinder.root.rotation.y += d * Math.min(1, dt * 3); }
@@ -1398,8 +1547,8 @@ async function main() {
     if (inCave && cave) cave.clampCam(camTarget, camPos);
     if (inSea && sea) sea.clampCam(camTarget, camPos);
     if (inKeep && keep) keep.clampCam(camTarget, camPos);
-    if (inCastle && castle) castle.clampCam(camTarget, camPos); else if (perch) perchCam(camTarget, camPos);
-    const floor = inCoast && coast ? coast.camFloor(camPos.x, camPos.z) + 0.25 : inCave || inSea || inKeep || inCastle ? -1e9 : perch ? perch.y + 0.4 : (onIsland || lift ? (islandY(camPos.x, camPos.z) ?? -1e9) : heightAt(camPos.x, camPos.z)) + 0.6;
+    if (inCastle && castle) castle.clampCam(camTarget, camPos); else if (inBarrow && barrow) barrow.clampCam(camPos, camTarget); else if (perch) perchCam(camTarget, camPos);
+    const floor = inCoast && coast ? coast.camFloor(camPos.x, camPos.z) + 0.25 : inCave || inSea || inKeep || inCastle || inBarrow ? -1e9 : perch ? perch.y + 0.4 : (onIsland || lift ? (islandY(camPos.x, camPos.z) ?? -1e9) : heightAt(camPos.x, camPos.z)) + 0.6;
     // Rigid horizontal follow (no positional lag): a lagged lerp toward a moving target leaves a dt-dependent gap, so on a phone with
     // uneven frame times the camera→player distance pumped every frame while running ("view goes back and forth").
     // Only the occlusion pull-in and the terrain floor push are smoothed (dt-correct), as offsets along the boom / in height.
@@ -1443,7 +1592,7 @@ async function main() {
   const turnTo = (o: THREE.Object3D, dx: number, dz: number, dt: number) => { let d = Math.atan2(dx, dz) - o.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); o.rotation.y += d * Math.min(1, dt * 3); };
   const turnHome = (o: THREE.Object3D, dt: number) => { const h = o.userData.home as number | undefined; if (h === undefined) { o.userData.home = o.rotation.y; return; } let d = h - o.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); o.rotation.y += d * Math.min(1, dt * 0.8); };
   function tickNpcs(dt: number) {
-    const inVale = !inCave && !inCoast && !inSea && !inKeep && !inCastle && !onIsland;
+    const inVale = !inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow && !onIsland;
     if (inVale) for (const n of valeNpcs) { if (!n.c.root.visible) continue; const dx = state.px - n.p.x, dz = state.pz - n.p.z, d = Math.hypot(dx, dz); if (d > 45) continue; if (d < 8) turnTo(n.c.root, dx, dz, dt); else turnHome(n.c.root, dt); n.c.setSpeed(0, dt); }
     if (inCoast) for (const c of [ennaC, ressC]) { if (!c.root.visible) continue; const dx = state.px - c.root.position.x, dz = state.pz - c.root.position.z, d = Math.hypot(dx, dz); if (d > 60) continue; if (d < 9) turnTo(c.root, dx, dz, dt); else turnHome(c.root, dt); c.setSpeed(0, dt); }
   }
@@ -1479,13 +1628,13 @@ async function main() {
     nightSky.mesh.position.copy(camera.position); nightSky.set(nightK, moonV, t); lantern.position.set(state.px - Math.sin(state.yaw) * 0.6, gy + 2.3, state.pz - Math.cos(state.yaw) * 0.6);
     const aloft = onIsland || !!lift; grassField.mesh.visible = !aloft; grassFar.mesh.visible = HIGH && !aloft;
     if (onIsland) { const L = toLocal(state.px, state.pz); island.treesNear(L.x, L.z); } else island.treesNear(1e4, 1e4);
-    updraft.update(t, lastDt); hollow.update(t, lastDt); grove.update(t, lastDt); grove.near(inCave || inCoast || inSea || inKeep || inCastle || aqLevel >= 2 ? 1e9 : Math.hypot(camera.position.x - ECHO.x, camera.position.z - ECHO.z)); updraft.setActive(save.done);
+    updraft.update(t, lastDt); hollow.update(t, lastDt); grove.update(t, lastDt); grove.near(inCave || inCoast || inSea || inKeep || inCastle || inBarrow || aqLevel >= 2 ? 1e9 : Math.hypot(camera.position.x - ECHO.x, camera.position.z - ECHO.z)); updraft.setActive(save.done);
     stair.update(t, lastDt); if (inCave && cave) cave.update(t, lastDt); if (inCoast && coast) coast.update(t, lastDt, camera, camTarget);
     if (inKeep && keep && !(inFrame && !legacyMotion)) keep.update(t, lastDt, player.root.position); // M20b: in live frames the Keeper animates per presented frame (below)
-    if (inCastle && castle) castle.update(lastDt, t);
+    if (inCastle && castle) castle.update(lastDt, t); if (inBarrow && barrow) barrow.update(t, lastDt, state.px, state.pz); outposts.update(t, lastDt);
     if (inSea && sea && sea.update(t, lastDt, player.root.position) === 'reset') { toast(SEA_LINES.reset, 3.4); hudT = 0; }
-    if (!inCave && !inCoast && !inSea && !inKeep && !inCastle) treeField.update(state.px, state.pz);
-    if (!inCave && !inCoast && !inSea && !inKeep && !inCastle) { const gd = Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y);
+    if (!inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow) treeField.update(state.px, state.pz);
+    if (!inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow) { const gd = Math.hypot(state.px - grassField.center.x, state.pz - grassField.center.y);
       if (gd > (HIGH ? 12 : 13)) { grassField.recenter(state.px, state.pz); if (HIGH) grassFar.recenter(state.px, state.pz); } // teleport-sized jump: rebuild now
       else if (gd > (HIGH ? 6 : 5)) { grassField.recenterSoon(state.px + Math.sin(state.facing) * state.speed * 0.4, state.pz + Math.cos(state.facing) * state.speed * 0.4); if (HIGH) grassFar.recenterSoon(state.px, state.pz); } }
     for (const gf of [grassField, grassFar]) { gf.uniforms.uTime.value = t; gf.uniforms.uPlayer.value.set(state.px, gy, state.pz); }
@@ -1505,6 +1654,7 @@ async function main() {
     const j = buildJournal(save, profile, onIsland);
     { const c = clueLines({ save, inCave, inCoast, inSea, inKeep, onIsland, owned: owned() }); const o = owned();
       j.sections.unshift({ h: 'Where to go · clues', items: c.goal.map((t) => ({ t })) });
+      if (save.started) j.sections.splice(1, 0, sideJournal(save));
       j.sections.splice(1, 0, { h: 'Weapons', items: [...o.map((id) => ({ t: `${WEAPONS[id].name}${id === cb.weapon.id ? ' (in hand)' : ''} — ${WEAPONS[id].desc}`, done: true })), ...c.rumours.map((t) => ({ t, lore: true }))] }); }
     document.getElementById('jtitle')!.textContent = j.title; document.getElementById('jsub')!.textContent = j.sub;
     const body = document.getElementById('jbody')!; body.textContent = '';
@@ -1518,7 +1668,7 @@ async function main() {
   function drawMap(t: number) {
     const maxW = Math.min(560, innerWidth - 24) - 20, maxH = innerHeight - 140, ar = (MAPBOX.z1 - MAPBOX.z0) / (MAPBOX.x1 - MAPBOX.x0);
     const w = Math.floor(Math.min(maxW, maxH / ar)), h = Math.floor(w * ar);
-    drawValeMap(mapCv, w, h, { player: inCave || inCoast || inSea || inKeep || inCastle ? { x: STAIR.x, z: STAIR.z, facing: state.facing } : { x: state.px, z: state.pz, facing: state.facing }, target: !guidance ? null : inCave || inCoast || inSea || inKeep || inCastle ? { name: 'Collapsed Stair', x: STAIR.x, z: STAIR.z } : save.started ? objective() : { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z }, save, onIsland, t, fog: fogNow() });
+    drawValeMap(mapCv, w, h, { player: inBarrow ? { x: OP.barrow.x, z: OP.barrow.z, facing: state.facing } : inCave || inCoast || inSea || inKeep || inCastle || inBarrow ? { x: STAIR.x, z: STAIR.z, facing: state.facing } : { x: state.px, z: state.pz, facing: state.facing }, target: !guidance ? null : inCave || inCoast || inSea || inKeep || inCastle || inBarrow ? { name: 'Collapsed Stair', x: STAIR.x, z: STAIR.z } : save.started ? objective() : { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z }, save, onIsland, t, fog: fogNow(), places: OUTPOSTS.filter((o) => (save.found ?? []).includes(o.id)).map((o) => ({ x: o.x, z: o.z, name: o.name, kind: o.kind })) });
   }
   function openSheet(which: 'journal' | 'map') {
     if (creating || cine || dawnCine || lift) return;
@@ -1606,7 +1756,7 @@ async function main() {
     if (paused && !mapEl.hidden) { mapT -= dt; if (mapT <= 0) { mapT = 0.12; drawMap(t); } }
     grassField.pump(motionSmooth ? 4 : 2.5); if (HIGH) grassFar.pump(2);
     if (rec) recFrame(dt);
-    if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : inKeep && keep ? keep.scene : inCastle && castle ? castle.scene : scene, camera);
+    if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : inKeep && keep ? keep.scene : inCastle && castle ? castle.scene : inBarrow && barrow ? barrow.scene : scene, camera);
     unInterp();
     frames++; totalFrames++; fpsT += dt; if (fpsT > 0.5) { fps = frames / fpsT; const fpsT0 = fpsT / frames; adaptQuality(fpsT); frames = 0; fpsT = 0; if (fpsOn) fpsEl.textContent = `${fps.toFixed(0)} fps · ${(fpsT0 * 1000).toFixed(1)} ms · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M tris · ${quality}${aqLevel ? ` · aq${aqLevel}` : ''}`; }
   }
@@ -1726,7 +1876,7 @@ async function main() {
           state.px = k.center.x + (name === 'keeper-windup' ? -3.2 : 7.5); state.pz = k.center.z + (name === 'keeper-windup' ? 7.5 : 3.2); state.facing = Math.atan2(k.center.x - state.px, k.center.z - state.pz); state.yaw = state.facing + Math.PI; state.pitch = 0.22; state.dist = 7.2; snapCam = true;
           tick(4); while (talking) advance(); tick(80);
           if (name === 'keeper-windup') { for (let i = 0; i < 400 && k.state !== 'windup'; i++) { tick(1); if (talking) while (talking) advance(); } tick(Math.round(0.85 * 30)); k.hold = true; }
-          else { for (let i = 0; i < 3000 && k.state !== 'low'; i++) { tick(1); if (talking) while (talking) advance(); if (k.state === 'sweepWarn') { const s0 = k.stones[0]; state.px = s0.x; state.pz = s0.z; } } state.px = k.center.x + 5.0; state.pz = k.center.z + 1.5; snapCam = true; tick(6); k.reveal(); playerHp = HP_MAX; tick(45); state.facing = Math.atan2(k.center.x - state.px, k.center.z - state.pz); state.yaw = state.facing + Math.PI + 0.35; state.dist = 7.5; state.pitch = 0.18; snapCam = true; tick(3); k.hold = true; }
+          else { for (let i = 0; i < 3000 && k.state !== 'low'; i++) { tick(1); if (talking) while (talking) advance(); if (k.state === 'sweepWarn') { const s0 = k.stones[0]; state.px = s0.x; state.pz = s0.z; } } state.px = k.center.x + 5.0; state.pz = k.center.z + 1.5; snapCam = true; tick(6); k.reveal(); playerHp = hpMax(); tick(45); state.facing = Math.atan2(k.center.x - state.px, k.center.z - state.pz); state.yaw = state.facing + Math.PI + 0.35; state.dist = 7.5; state.pitch = 0.18; snapCam = true; tick(3); k.hold = true; }
         })();
       }
       if (name === 'sea-cave-interior' || name === 'sea-cave-solved') {
@@ -1791,11 +1941,11 @@ async function main() {
     recStart() { rec = [];}, recStop() { const r = rec; rec = null; return r; },
     /** Deterministic stepping: run update() with a given dt sequence while holding the stick at (sx, sy); returns recorder rows. */
     sim(dts: number[], sx: number, sy: number) { const id = stick.id; stick.id = 999; stick.x = sx; stick.y = sy; rec = []; let t = clock.elapsedTime; for (const d of dts) { t += d; const t0 = performance.now(); update(d, t); const t1 = performance.now(); recFrame(d); rec![rec!.length - 1].push(t1 - t0); } stick.id = id; stick.x = stick.y = 0; const r = rec; rec = null; return r; },
-    warp(x: number, z: number) { state.px = x; state.pz = z; snapCam = true; },
+    warp(x: number, z: number) { state.px = x; state.pz = z; snapCam = true; lastGy = -1e9; airborne = false; },
     view(face: number, yaw: number, pitch: number, dist: number) { state.facing = face; state.yaw = yaw; state.pitch = pitch; state.dist = dist; snapCam = true; },
     /** Frame cost probe: n full frames (fixed-tick sim + render + 1-px readback to include GPU work). */
     bench(n = 60) { const px = new Uint8Array(4), gl = renderer.getContext(), ms: number[] = [];
-      for (let i = 0; i < n; i++) { const t0 = performance.now(); stepFrame(1 / 30); grassField.pump(4); if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : inKeep && keep ? keep.scene : inCastle && castle ? castle.scene : scene, camera); unInterp(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); ms.push(performance.now() - t0); }
+      for (let i = 0; i < n; i++) { const t0 = performance.now(); stepFrame(1 / 30); grassField.pump(4); if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : inKeep && keep ? keep.scene : inCastle && castle ? castle.scene : inBarrow && barrow ? barrow.scene : scene, camera); unInterp(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); ms.push(performance.now() - t0); }
       ms.sort((a, b) => a - b); return { avg: ms.reduce((a, b) => a + b, 0) / n, p50: ms[n >> 1], p95: ms[Math.floor(n * 0.95)], tris: renderer.info.render.triangles, calls: renderer.info.render.calls }; },
     interact() { interact(); },
     advance() { if (talking) advance(); },
@@ -1808,12 +1958,13 @@ async function main() {
     sea: () => ({ stage: save.sea, inSea, opened: sea?.opened ?? false, level: sea?.level ?? null, low: sea?.isLow() ?? null, phase: sea?.tidePhase ?? null, lit: sea?.lit ?? null, solved: sea?.solved ?? false, shells: sea?.shells, page: sea?.page, door: sea?.door, exit: sea?.exit }),
     coast: () => ({ stage: save.coast, inCoast, tide: coast?.tide() ?? null, phase: coast?.tidePhase ?? null, low: coast?.isLow() ?? null, revealed: !!coast?.revealed, rise: coast?.rise ?? 0, passage: cave?.passage, shrine: coast?.shrine, caveMouth: coast?.caveMouth, pathStart: coast?.pathStart, tunnel: coast?.tunnel, aq: aqLevel }),
     cave: () => ({ stage: save.cave, inCave, fading, mouth: stair.mouth, stair: STAIR, lit: [...litOrder], door: !!cave?.doorOpen, entry: cave?.entry, exit: cave?.exit, braziers: cave?.braziers, carving: cave?.carving, doorAt: cave?.door, order: RIVER_ORDER, names: BRAZIERS.map((b) => b.name) }),
+    openSheet(w: 'journal' | 'map' | null) { if (w) openSheet(w); else closeSheets(); paused = false; },
     sheets: () => ({ journal: !jEl.hidden, map: !mapEl.hidden, paused, journalText: jEl.innerText }),
     warden: () => ({ x: WARDEN.x, z: WARDEN.z, hp: wd.hp, phase: wd.phase, awake: wd.awake, playerHp, atkCd, recovery: recoveryPoint(), melee: W_MELEE }),
     audio() { return audio.state; },
     combat: () => ({ stamina: +cb.stamina.toFixed(1), weapon: cb.weapon.id, owned: owned(), saveWeapon: save.weapon ?? null, act: cb.act ? { kind: cb.act.kind, t: +cb.act.t.toFixed(3), step: cb.act.step } : null, charge: cb.charge, blocking: cb.blocking, iframes: cb.iframes, hitStop: cb.hitStop, rolling: cb.rolling, counts: { ...cb.counts },
       picks: PICK.map((k) => ({ id: k.id, x: k.x, z: k.z, taken: !k.p.group.visible })), seaPick: seaPick ? { x: seaPick.x, z: seaPick.z, taken: !seaPick.p.group.visible } : null, guidance, inHand: holders.map((h) => h.id),
-      ui: { buttons: ['b-atk', 'b-hvy', 'b-blk', 'b-dge', 'b-jmp', 'b-wpn'].map((id) => { const r = document.getElementById(id)!.getBoundingClientRect(); return { id, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), vis: r.width > 0 && getComputedStyle(document.getElementById('cbt')!).display !== 'none' }; }), act: !actBtn.hidden, arrow: getComputedStyle(carrow).display !== 'none', ctext: ctext.textContent, wpick: !wpick.hidden } }),
+      ui: { buttons: ['b-atk', 'b-hvy', 'b-blk', 'b-dge', 'b-jmp', 'b-wpn'].map((id) => { const r = document.getElementById(id)!.getBoundingClientRect(); return { id, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), vis: r.width > 0 && getComputedStyle(document.getElementById('cbt')!).display !== 'none' && getComputedStyle(document.getElementById(id)!).visibility !== 'hidden' }; }), calm: ctlCalm, atkLabel: ctlLbl, act: !actBtn.hidden, arrow: getComputedStyle(carrow).display !== 'none', ctext: ctext.textContent, wpick: !wpick.hidden } }),
     setGuidance(on: boolean) { setGuidance(on); },
     castle: () => ({ inCastle, id: castle?.id ?? null, y: castle ? +castle.y.toFixed(3) : null, room: castle ? castle.roomName(state.px, state.pz) : null, perch: perch ? { ...perch } : null, secret: castle?.secretOpen ?? null, O: castle?.O ?? null,
       mobs: mobs.map((m) => ({ id: m.id, x: +m.x.toFixed(2), z: +m.z.toFixed(2), y: m.y, hp: m.hp, state: m.state, alive: m.alive })), playerHp, near: nearestInteract()?.label ?? null, fading,
@@ -1829,14 +1980,29 @@ async function main() {
       fires: FIRES.map((f) => ({ id: f.id, name: f.name, x: f.x, z: f.z })), groups: roam.groups.map((g) => ({ id: g.def.id, night: g.def.night, x: g.def.x, z: g.def.z, present: g.present, near: g.near, mobs: g.mobs.map((m) => ({ id: m.id, look: m.look, x: +m.x.toFixed(2), z: +m.z.toFixed(2), hp: m.hp, state: m.state, alive: m.alive, vis: m.group.visible })) })) }),
     /** M20b QA: press Jump / read the hop state. */
     jump() { jumpReq = true; },
-    heal() { playerHp = HP_MAX; },
+    heal() { playerHp = hpMax(); },
+    hurt(n = 1) { playerHp = Math.max(1, playerHp - n); },
+    ctl: () => ({ calm: ctlCalm, t: +ctlT.toFixed(2), label: ctlLbl, hostile: hostileNear() }),
+    /** M20b-2 QA: side tales, discoveries, the camp, the barrow, standables. */
+    quests: () => { const b = barrow; return { sq: { ...(save.sq ?? {}) }, found: [...(save.found ?? [])], views: [...(save.views ?? [])], hpUp: save.hpUp ?? 0, hpMax: hpMax(), hp: playerHp, xp: save.xp, whet: save.whet ?? 0, weapons: owned(), weapon: cb.weapon.id, fogV: save.fogV ?? 0, gone: { ...(save.gone ?? {}) }, campClear: campClear(), day: save.day ?? 0,
+      inBarrow, vale: vale(), perch: !!perch, lift: !!lift, todLocked, talking, near: nearestInteract()?.label ?? null, px: +state.px.toFixed(2), pz: +state.pz.toFixed(2), foot: +player.root.position.y.toFixed(3), air: airborne, stands: STANDS.length, locs: LOCS.length,
+      barrow: b ? { gate: b.gateOpen, hall: b.hallMobs.map((m) => m.alive), king: { alive: b.king.alive, hp: +b.king.hp.toFixed(2), state: b.king.state, x: +(b.king.x - BAR_O.x).toFixed(2), z: +(b.king.z - BAR_O.z).toFixed(2) }, risen: b.risen.map((m) => m.alive), lx: +(state.px - BAR_O.x).toFixed(2), lz: +(state.pz - BAR_O.z).toFixed(2) } : null }; },
+    talkTo(w: 'sefa' | 'dov' | 'ress') { if (w === 'sefa') talkSefa(); else if (w === 'dov') talkDov(); else talkRess(); return dtxt.textContent; },
+    barrowMobs: () => barrow ? barMobs().map((m) => ({ x: m.x, z: m.z, alive: m.alive, hall: barrow!.hallMobs.includes(m), state: m.state })) : null,
+    setSq(o: Record<string, number>) { Object.assign(sq(save), o); persist(); },
+    give(o: { views?: string[]; found?: string[]; day?: number }) { if (o.views) save.views = [...new Set([...(save.views ?? []), ...o.views])]; if (o.found) save.found = [...new Set([...(save.found ?? []), ...o.found])]; if (o.day != null) save.day = o.day; persist(); },
+    barrowGo(cmd: 'enter' | 'exit') { return cmd === 'enter' ? enterBarrow() : exitBarrow(); },
+    barrowWarp(lx: number, lz: number) { state.px = BAR_O.x + lx; state.pz = BAR_O.z + lz; snapCam = true; },
+    barrowHit(which: 'hall' | 'king' | 'risen', dmg = 99) { const b = barrow; if (!b) return null; const m = which === 'king' ? b.king : (which === 'hall' ? b.hallMobs : b.risen).find((x) => x.alive); if (!m) return null; hitBar(m, { dmg, stagger: 0.3, heavy: false } as Strike); return m.alive; },
+    standsNear(x: number, z: number, r = 6) { return STANDS.filter((q) => Math.hypot(q.x - x, q.z - z) < r).map((q) => ({ x: +q.x.toFixed(2), z: +q.z.toFixed(2), top: +q.top.toFixed(2), r: q.r ?? null, hw: q.hw ?? null, tag: q.tag ?? null })); },
+    spots: () => outposts.spots.map((p) => ({ id: p.id, x: +p.x.toFixed(2), z: +p.z.toFixed(2), y: +p.y.toFixed(2), r: p.r })),
     holdAir(on: boolean) { airHold = on; },
     hop: () => ({ air: airborne, foot: player.root.position.y, vy, land: landT, count: cb.counts.jump, stamina: cb.stamina, px: state.px, pz: state.pz, ceil: inCastle && castle ? castle.ceilAt(state.px, state.pz, castle.y) : null, gy: inCastle && castle ? castle.y : null, region: inCastle ? 'castle' : inKeep ? 'keep' : inSea ? 'sea' : inCoast ? 'coast' : inCave ? 'cave' : onIsland ? 'island' : 'vale' }),
     /** M20b QA: the highest opaque walk-surface under (x,z) vs where the sim puts the feet. */
     footProbe(x: number, z: number) {
       const rc = new THREE.Raycaster(new THREE.Vector3(x, 120, z), new THREE.Vector3(0, -1, 0), 0, 400);
       const hits = rc.intersectObjects(scene.children, true).filter((h) => { const o = h.object as THREE.Mesh; if (!(o as THREE.Mesh).isMesh || (o as THREE.InstancedMesh).isInstancedMesh) return false; let v: THREE.Object3D | null = o; while (v) { if (!v.visible || v === player.root) return false; v = v.parent; } const m = o.material as THREE.Material; if (Array.isArray(m) || m.transparent || !m.depthWrite || (m as THREE.MeshBasicMaterial).isMeshBasicMaterial) return false; return !!h.face && h.face.normal.clone().transformDirection(o.matrixWorld).y > 0.7; });
-      const h = hits[0]; const bb = h ? new THREE.Box3().setFromObject(h.object) : null; return { blocked: solids.some((o) => o.r > 0 && Math.hypot(x - o.x, z - o.z) < o.r - 0.05), box: bb ? [bb.min.x, bb.min.y, bb.min.z, bb.max.x, bb.max.y, bb.max.z].map((v) => +v.toFixed(1)) : null, foot: player.root.position.y, top: h ? h.point.y : null, name: h ? (() => { const n: string[] = []; let v: THREE.Object3D | null = h.object; while (v && v !== scene) { if (v.name) n.push(v.name); v = v.parent; } return n.join('<') || (h.object as THREE.Mesh).geometry.type + '@' + (h.object.parent === scene ? 'scene' : h.object.parent?.type); })() : '' };
+      const h = hits[0]; const bb = h ? new THREE.Box3().setFromObject(h.object) : null; return { blocked: solids.some((o) => o.r > 0 && Math.hypot(x - o.x, z - o.z) < o.r - 0.05) || STANDS.some((q) => q.top > player.root.position.y + 0.45 && inStand(q, x, z, -0.05)), box: bb ? [bb.min.x, bb.min.y, bb.min.z, bb.max.x, bb.max.y, bb.max.z].map((v) => +v.toFixed(1)) : null, foot: player.root.position.y, top: h ? h.point.y : null, name: h ? (() => { const n: string[] = []; let v: THREE.Object3D | null = h.object; while (v && v !== scene) { if (v.name) n.push(v.name); v = v.parent; } return n.join('<') || (h.object as THREE.Mesh).geometry.type + '@' + (h.object.parent === scene ? 'scene' : h.object.parent?.type); })() : '' };
     },
     setTime(t: number, run = false) { tod = ((t % 1) + 1) % 1; save.tod = tod; timeFrozen = !run; lightKey = ''; hudT = 0; },
     title() { return { open: !titleEl.hidden, confirm: !document.getElementById('tconfirm')!.hidden, settings: !setEl.hidden, save: document.getElementById('tsave')!.textContent, paused }; },
@@ -2002,11 +2168,17 @@ function okSpot(x: number, z: number, clearPath = 2.2, clearCreek = 2): boolean 
   if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < 6 || Math.hypot(x - SPAWN.x, z - SPAWN.z - 6) < 6 || Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 3 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 20) return false;
   for (const l of LANDMARKS) if (Math.hypot(x - l.x, z - l.z) < l.r * (l.id === 'veilfall' ? 1.7 : 1.25)) return false;
   for (const d of SEALS) if (Math.hypot(x - d.x, z - d.z) < 7) return false;
+  for (const o of OUTPOSTS) if (Math.hypot(x - o.x, z - o.z) < o.flat * 1.3) return false;
   if (Math.hypot(x - WARDEN.x, z - WARDEN.z) < 14 || Math.hypot(x - UPDRAFT.x, z - UPDRAFT.z) < 9 || Math.hypot(x - ECHO.x, z - ECHO.z) < 16) return false;
   void clearPath; return true;
 }
 function place(src: THREE.Object3D, x: number, z: number, s: number, ry: number, sink = 0.05) {
   const o = src.clone(true); o.position.set(x, heightAt(x, z) - sink * s, z); o.rotation.y = ry; o.scale.setScalar(s); scene.add(o); return o;
+}
+// M20b-2: scanned rocks and boulders become standable tops (a hop gets you onto anything ≤ ~0.6 m above your feet).
+function standOn(o: THREE.Object3D, k: number) {
+  const bb = new THREE.Box3().setFromObject(o), c = bb.getCenter(new THREE.Vector3()), h = Math.min(bb.max.x - bb.min.x, bb.max.z - bb.min.z) * 0.5 * k;
+  if (h > 0.25 && bb.max.y - heightAt(c.x, c.z) > 0.12) STANDS.push({ x: c.x, z: c.z, top: bb.max.y - 0.04, r: h, tag: 'rock' });
 }
 function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, shrubG: GLTF, fernG: GLTF) {
   const r = rng(42);
@@ -2068,8 +2240,8 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
   plants.forEach((k, i) => { if (keep[i].length) { const o = instanceKind(k, keep[i], { shadows: false }); o.traverse((c) => c.layers.set(1)); scene.add(o); } });
   return field;
   // ---- Rocks, boulders, shrubs, ferns (Poly Haven scans). ----
-  for (let i = 0; i < 26; i++) { const a = r() * 6.28, d = 10 + r() * 90, x = Math.cos(a) * d, z = Math.sin(a) * d - 10; if (!okSpot(x, z)) continue; const p = rockParts[i % rockParts.length]; const o = place(p, x, z, 1.4 + r() * 2.2, r() * 6.28, 0.25); o.rotation.x = (r() - 0.5) * 0.3; }
-  for (let i = 0; i < 9; i++) { const a = r() * 6.28, d = 16 + r() * 70, x = Math.cos(a) * d, z = Math.sin(a) * d - 15; if (!okSpot(x, z)) continue; const s = 0.6 + r() * 0.9; place(boulder, x, z, s, r() * 6.28, 0.3); SOLIDS.push({ x, z, r: 1.4 * s }); }
+  for (let i = 0; i < 26; i++) { const a = r() * 6.28, d = 10 + r() * 90, x = Math.cos(a) * d, z = Math.sin(a) * d - 10; if (!okSpot(x, z)) continue; const p = rockParts[i % rockParts.length]; const o = place(p, x, z, 1.4 + r() * 2.2, r() * 6.28, 0.25); o.rotation.x = (r() - 0.5) * 0.3; standOn(o, 0.72); }
+  for (let i = 0; i < 9; i++) { const a = r() * 6.28, d = 16 + r() * 70, x = Math.cos(a) * d, z = Math.sin(a) * d - 15; if (!okSpot(x, z)) continue; const s = 0.6 + r() * 0.9; standOn(place(boulder, x, z, s, r() * 6.28, 0.3), 0.8); }
   for (let i = 0; i < 60; i++) { const a = r() * 6.28, d = 8 + r() * 80, x = Math.cos(a) * d, z = Math.sin(a) * d - 8; if (!okSpot(x, z)) continue; place(shrub, x, z, 0.7 + r() * 0.8, r() * 6.28); }
   for (let i = 0; i < 90; i++) { const z = -90 + r() * 170, side = r() < 0.5 ? -1 : 1, x = creekX(z) + side * (creekHalf(z) + 1.2 + r() * 3.5); place(fern, x, z, 0.8 + r() * 0.9, r() * 6.28); }
 }

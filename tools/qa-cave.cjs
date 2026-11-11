@@ -44,7 +44,7 @@ ok('stick-walk the flood passage into the Flooded grotto',r&&r.chamber==='flood'
 await at(-26.4,29.5);await p.evaluate(()=>window.__vale.view(0,Math.PI,0.2,5));await sim(50,0,-1);
 let q=await pos();ok('flooded grotto wall holds',q.z<23.8+6.6+0.2,{q});
 // chest on the back ledge
-r=await walk(-26.0,27.2,160);
+r=await walk(-26.0,27.8,160);
 s=await S();ok('drowned chest offered',/drowned chest/i.test(s.near||r.near||''),{near:s.near,r});
 x0=(await Q()).save;await act();await sleep(250);x1=(await Q()).save;
 ok('drowned chest: +30 XP once',x1.xp-x0.xp===30&&(x1.chests||[]).includes('sea-flood'),{dxp:x1.xp-x0.xp,chests:x1.chests});

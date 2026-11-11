@@ -80,14 +80,69 @@ function crystalGeo(h: number, r: number, lean = 0) {
   const cap = new THREE.ConeGeometry(r * 0.55, h * 0.36, 6).toNonIndexed(); cap.translate(0, h * 0.68 + h * 0.18, 0);
   const g = mergeGeometries([shaft, cap])!; if (lean) g.rotateZ(lean); return g;
 }
+/** Boxed body, rounded lid, iron bands and a hasp — a chest, not a slab on a crate. */
+function seaChest(scale = 1) {
+  const wood = new THREE.MeshStandardMaterial({ color: '#8a5a30', roughness: 0.7, metalness: 0.03, emissive: '#4a2a14', emissiveIntensity: 0.16 });
+  const band = new THREE.MeshStandardMaterial({ color: '#9a8458', roughness: 0.4, metalness: 0.72 });
+  const dark = new THREE.MeshStandardMaterial({ color: '#3a2818', roughness: 0.82 });
+  const cg = new THREE.Group();
+  const foot = 0.07 * scale;
+  const bodyH = 0.5 * scale, bodyW = 1.12 * scale, bodyD = 0.7 * scale;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(bodyW, bodyH, bodyD), wood);
+  body.position.y = foot + bodyH / 2; cg.add(body);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, foot, 0.12 * scale), dark);
+    f.position.set(sx * (bodyW / 2 - 0.12 * scale), foot / 2, sz * (bodyD / 2 - 0.12 * scale)); cg.add(f);
+  }
+  for (const ox of [-0.4, 0, 0.4]) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.07 * scale, bodyH + 0.02 * scale, bodyD + 0.04 * scale), band);
+    b.position.set(ox * scale, foot + bodyH / 2, 0); cg.add(b);
+  }
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * scale, 0.35 * scale, bodyW, 12, 1, false, 0, Math.PI), wood);
+  lid.rotation.z = Math.PI / 2; lid.scale.set(0.5, 1, 1); lid.position.set(0, foot + bodyH, 0); cg.add(lid);
+  for (const ox of [-0.4, 0, 0.4]) {
+    const lb = new THREE.Mesh(new THREE.BoxGeometry(0.07 * scale, 0.16 * scale, bodyD + 0.04 * scale), band);
+    lb.position.set(ox * scale, foot + bodyH + 0.12 * scale, 0); cg.add(lb);
+  }
+  const lock = new THREE.Mesh(new THREE.BoxGeometry(0.16 * scale, 0.18 * scale, 0.08 * scale), band);
+  lock.position.set(0, foot + bodyH - 0.02 * scale, bodyD / 2 + 0.01 * scale); cg.add(lock);
+  const hasp = new THREE.Mesh(new THREE.BoxGeometry(0.07 * scale, 0.14 * scale, 0.05 * scale), band);
+  hasp.position.set(0, foot + bodyH + 0.1 * scale, bodyD / 2 + 0.01 * scale); cg.add(hasp);
+  cg.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = m.receiveShadow = true; });
+  return cg;
+}
+/** Incised tide-runes on pale stone; paired color + bump canvases. */
+function runeTabletTex() {
+  const w = 512, h = 768; const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d')!;
+  x.fillStyle = '#c9c0ae'; x.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2200; i++) { x.fillStyle = `rgba(70,60,45,${0.03 + Math.random() * 0.07})`; x.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 3); }
+  x.strokeStyle = '#4a4032'; x.lineWidth = 12; x.strokeRect(26, 30, w - 52, h - 60);
+  x.strokeStyle = '#8a7e6a'; x.lineWidth = 3; x.strokeRect(42, 46, w - 84, h - 92);
+  x.fillStyle = '#2a2218'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = '78px serif'; x.fillText('≈', 256, 112);
+  x.font = '46px serif';
+  const rows = ['◎  ⁘  ◇  △  ☽', '✶  ⊢  ◎  ⁘  ≈', '△  ☽  ✶  ◇  ⊢', '◎  ≈  ⁘  ☽  △', '✶  ⊢  ◇  ◎  ≈'];
+  rows.forEach((ln, i) => x.fillText(ln, 256, 220 + i * 86));
+  x.strokeStyle = '#2a2218'; x.lineWidth = 7; x.beginPath(); x.moveTo(110, 690); x.lineTo(400, 690); x.stroke();
+  x.beginPath(); x.moveTo(110, 690); x.lineTo(150, 668); x.moveTo(110, 690); x.lineTo(150, 712); x.stroke();
+  const map = new THREE.CanvasTexture(c); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 8;
+  const b = document.createElement('canvas'); b.width = w; b.height = h; const bx = b.getContext('2d')!;
+  bx.fillStyle = '#888'; bx.fillRect(0, 0, w, h);
+  bx.drawImage(c, 0, 0);
+  const id = bx.getImageData(0, 0, w, h), d = id.data;
+  for (let i = 0; i < d.length; i += 4) { const lum = 0.3 * d[i] + 0.5 * d[i + 1] + 0.2 * d[i + 2]; const v = lum < 120 ? 40 : 200; d[i] = d[i + 1] = d[i + 2] = v; }
+  bx.putImageData(id, 0, 0);
+  const bump = new THREE.CanvasTexture(b); bump.anisotropy = 8;
+  return { map, bump };
+}
 export const gradTex = (stops: [number, string][], w = 4, h = 128, radial = false) => { const c = document.createElement('canvas'); c.width = radial ? 128 : w; c.height = h; const x = c.getContext('2d')!;
   const gr = radial ? x.createRadialGradient(64, 64, 0, 64, 64, 64) : x.createLinearGradient(0, 0, 0, h); for (const [o, col] of stops) gr.addColorStop(o, col); x.fillStyle = gr; x.fillRect(0, 0, c.width, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
 
 export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex; blocks: GroundTex }, waterNormals: THREE.Texture, env: THREE.Texture | null) {
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#020607');
   scene.fog = new THREE.FogExp2('#04100f', high ? 0.034 : 0.04);
-  if (env) { scene.environment = env; scene.environmentIntensity = 0.05; }
-  scene.add(new THREE.HemisphereLight('#4f7f86', '#120e0a', 0.22));
+  if (env) { scene.environment = env; scene.environmentIntensity = 0.1; }
+  scene.add(new THREE.HemisphereLight('#6a8a8e', '#1a1410', 0.34));
   const g = new THREE.Group(); g.position.set(SEA_O.x, 0, SEA_O.z); scene.add(g);
   let seed = 41; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const L = (x: number, z: number) => ({ x: x + SEA_O.x, z: z + SEA_O.z });
@@ -127,6 +182,7 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
     const rb = new THREE.Mesh(mergeGeometries(parts.map((q) => { const k = q.index ? q.toNonIndexed() : q; for (const n of Object.keys(k.attributes)) if (n !== 'position' && n !== 'normal') k.deleteAttribute(n); return k; })), wetRock); rb.castShadow = rb.receiveShadow = true; g.add(rb);
     const glCol = gr.kind === 'flood' ? '#2fe0c8' : gr.kind === 'crystal' ? '#f0b45a' : gr.side > 0 ? '#3fe6c8' : '#6aa8ff';
     const gl = new THREE.PointLight(glCol, gr.kind === 'crystal' ? 9 : 7, gr.kind === 'crystal' ? 16 : 14, 1.4); gl.position.set(gr.x, fy + 3.2, gr.z); g.add(gl);
+    const bounce = new THREE.PointLight('#c8bba8', 3.4, 15, 2); bounce.position.set(gr.x, fy + 4.6, gr.z); g.add(bounce);
     const px = gr.x, pz = gr.z + gr.side * 0.4; // the prop sits just past the interact spot
     if (gr.kind === 'wrack') { // a heap of storm-wrack with a split sea-chest in it
       for (let i = 0; i < 7; i++) { const k = new THREE.Mesh(new THREE.SphereGeometry(0.5 + rnd() * 0.35, 8, 6), kelpM); k.scale.set(1.3, 0.35, 1); k.position.set(px + (rnd() - 0.5) * 2.2, fy + 0.12, pz + (rnd() - 0.5) * 1.6); k.rotation.y = rnd() * 3; g.add(k); }
@@ -135,19 +191,24 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
       const pts: THREE.Vector2[] = []; for (let i = 0; i <= 12; i++) { const u = i / 12; pts.push(new THREE.Vector2(0.35 + 0.75 * u * u + 0.12 * Math.sin(u * 3), 1.5 * (1 - u))); }
       const bell = new THREE.Mesh(new THREE.LatheGeometry(pts, 20), bronzeM); bell.position.set(px, fy - 0.15, pz); bell.rotation.set(0.5, 0.4, 0.35); bell.castShadow = high; g.add(bell);
     } else if (gr.kind === 'flood') {
-      // a dished basin that holds a pool even at mid-tide, ribbon kelp, and a banded chest on a dry ledge.
+      // a dished basin that holds a pool even at mid-tide, and a proper chest seated on a low dry shelf.
       { const dish = fl.geometry.clone(); const p = dish.attributes.position as THREE.BufferAttribute;
         for (let i = 0; i < p.count; i++) { const x = p.getX(i) * (gr.rx + 0.6), z = p.getZ(i) * (gr.rz + 0.6); const u = Math.max(0, 1 - (x * x) / 18 - (z * z) / 14); p.setY(i, p.getY(i) - 0.48 * u * u); }
         dish.computeVertexNormals(); fl.geometry.dispose(); fl.geometry = dish; }
-      const ledge = new THREE.Mesh(rockBlob(1.35, rnd, 1.4, 0.8, 1.2, 2), wetRock); ledge.position.set(gr.x + 0.4, -0.3, gr.z + gr.side * 3.4); ledge.receiveShadow = true; g.add(ledge);
-      const wood = new THREE.MeshStandardMaterial({ color: '#8a5a30', roughness: 0.84, metalness: 0.05 }), band = new THREE.MeshStandardMaterial({ color: '#c4a05a', roughness: 0.45, metalness: 0.35 });
-      const chest = new THREE.Group(); chest.position.set(gr.x + 0.4, 0.62, gr.z + gr.side * 3.4); chest.rotation.set(0.04, -0.35, 0.06); g.add(chest);
-      const box = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 0.72), wood); box.castShadow = high; chest.add(box);
-      const lid = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.1, 0.76), wood); lid.position.y = 0.32; chest.add(lid);
-      for (const ox of [-0.38, 0.38]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.62, 0.76), band); b.position.x = ox; chest.add(b); }
+      // a quay-like stone ledge: thick face down into the basin, back butted into the wall, flat walkable top.
+      const platTop = 0.2, platH = 1.55, platW = 3.6, platD = 3.0;
+      const platZ = gr.z + gr.side * 4.35;
+      const plat = new THREE.Mesh(new THREE.BoxGeometry(platW, platH, platD), wetRock);
+      plat.position.set(gr.x + 0.15, platTop - platH / 2, platZ); plat.receiveShadow = plat.castShadow = true; g.add(plat);
+      const face = new THREE.Mesh(new THREE.BoxGeometry(platW + 0.1, platH, 0.38), wetRock);
+      face.position.set(gr.x + 0.15, platTop - platH / 2, platZ - gr.side * (platD / 2 - 0.05)); face.receiveShadow = face.castShadow = true; g.add(face);
+      // one corner boulder in the water (same rnd count as the old boulder); kept below the walkable top.
+      const lip = new THREE.Mesh(rockBlob(0.7, rnd, 1.0, 0.7, 0.9, 2), wetRock);
+      lip.position.set(gr.x + 1.45, -0.55, platZ - gr.side * (platD / 2 + 0.15)); lip.receiveShadow = lip.castShadow = true; g.add(lip);
+      const chest = seaChest(0.92); chest.position.set(gr.x + 0.4, platTop, platZ - gr.side * 0.35); chest.rotation.y = -0.45; g.add(chest);
       gl.intensity = 11; gl.distance = 16; gl.position.set(gr.x, fy + 2.6, gr.z);
-      const gl2 = new THREE.PointLight('#7ec8b8', 5.5, 11, 1.5); gl2.position.set(gr.x + 0.6, 1.6, gr.z + gr.side * 2.2); g.add(gl2);
-      const warm = new THREE.PointLight('#ffd7a0', 3.2, 6, 1.8); warm.position.set(gr.x + 0.4, 1.5, gr.z + gr.side * 3.4); g.add(warm);
+      const gl2 = new THREE.PointLight('#7ec8b8', 4.2, 11, 1.6); gl2.position.set(gr.x - 1.4, 1.8, gr.z + gr.side * 1.2); g.add(gl2);
+      const warm = new THREE.PointLight('#ffd7a0', 4.4, 7, 1.8); warm.position.set(gr.x + 0.4, 1.55, gr.z + gr.side * 3.2); g.add(warm);
     } else if (gr.kind === 'crystal') {
       // opaque amber / teal clusters (pointed hexagonal shafts, not cones) and a standing carved tablet.
       const am = new THREE.MeshStandardMaterial({ color: '#e8a84a', roughness: 0.22, metalness: 0.15, emissive: '#a86410', emissiveIntensity: 0.7 }), tm = new THREE.MeshStandardMaterial({ color: '#5ad4cc', roughness: 0.18, metalness: 0.2, emissive: '#146a66', emissiveIntensity: 0.85 });
@@ -165,16 +226,23 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
       // a dense cluster at the back wall, behind the tablet
       for (let i = 0; i < 7; i++) { const h = 0.8 + rnd() * 1.15; plant(i < 3 ? teal : amber, gr.x + (rnd() - 0.5) * 1.6, gr.z + gr.side * 2.8 + (rnd() - 0.5) * 0.8, h, 0.15 + rnd() * 0.08); }
       for (const [list, mat] of [[amber, am], [teal, tm]] as const) if (list.length) { const xm = new THREE.Mesh(mergeGeometries(list), mat); xm.castShadow = xm.receiveShadow = true; g.add(xm); }
-      const tab = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.25, 0.14), new THREE.MeshStandardMaterial({ color: '#e6dece', roughness: 0.5, emissive: '#4a6058', emissiveIntensity: 0.45 }));
-      tab.position.set(tabX, fy + 0.78, tabZ); tab.rotation.set(-0.06, gr.side * 0.2, 0.02); tab.castShadow = high; g.add(tab);
-      const cr = new THREE.Group(); cr.position.set(gr.x + 2.2, fy + 0.28, gr.z + gr.side * 0.4); cr.rotation.y = 0.55; g.add(cr);
-      cr.add(new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.38, 0.5), new THREE.MeshStandardMaterial({ color: '#6b4a28', roughness: 0.8 })));
-      const lid = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.08, 0.54), new THREE.MeshStandardMaterial({ color: '#7a5630', roughness: 0.75 })); lid.position.y = 0.23; cr.add(lid);
+      const tabG = new THREE.Group(); tabG.position.set(tabX, fy, tabZ); tabG.rotation.set(-0.04, gr.side * 0.2, 0.02); g.add(tabG);
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.22, 0.44), wetRock); plinth.position.y = 0.11; plinth.castShadow = plinth.receiveShadow = true; tabG.add(plinth);
+      const plinthCap = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.07, 0.5), wetRock); plinthCap.position.y = 0.235; plinthCap.receiveShadow = true; tabG.add(plinthCap);
+      const rune = runeTabletTex();
+      const slabM = new THREE.MeshStandardMaterial({ color: '#c9c0ae', roughness: 0.62, metalness: 0.04, emissive: '#2a3834', emissiveIntensity: 0.18 });
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(0.74, 1.16, 0.12), slabM); slab.position.y = 0.27 + 0.58; slab.castShadow = high; tabG.add(slab);
+      const faceM = new THREE.MeshStandardMaterial({ map: rune.map, bumpMap: rune.bump, bumpScale: 0.035, roughness: 0.58, metalness: 0.04, emissive: '#1c2a26', emissiveIntensity: 0.22 });
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 1.08), faceM); face.position.set(0, slab.position.y, 0.062); tabG.add(face);
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 1.08), faceM); back.position.set(0, slab.position.y, -0.062); back.rotation.y = Math.PI; tabG.add(back);
+      const cr = seaChest(0.68); cr.position.set(gr.x + 2.2, fy, gr.z + gr.side * 0.4); cr.rotation.y = 0.55; g.add(cr);
       gl.intensity = 10; gl.distance = 16;
-      const gl2 = new THREE.PointLight('#3fe0d4', 7, 12, 1.4); gl2.position.set(gr.x - 1.6, fy + 2.0, gr.z - gr.side * 1.6); g.add(gl2);
+      const gl2 = new THREE.PointLight('#3fe0d4', 6, 12, 1.4); gl2.position.set(gr.x - 1.6, fy + 2.0, gr.z - gr.side * 1.6); g.add(gl2);
+      const tabFill = new THREE.PointLight('#ffe8c0', 2.8, 6, 1.8); tabFill.position.set(tabX, fy + 1.4, tabZ + 0.9); g.add(tabFill);
     }
     const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.07, 0), lichenMats[gr.kind === 'crystal' ? 1 : 0], high ? 160 : 90); const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
-    for (let i = 0; i < im.count; i++) { const a = rnd() * Math.PI * 2, y = fy + 0.25 + rnd() ** 1.5 * 2.4; const e = Math.sqrt(Math.max(0.05, 1 - ((y + 0.4) / gr.ry) ** 2)) * 0.99; q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, 0)); sc.setScalar(0.28 + rnd() * 0.55); mx.compose(v.set(gr.x + Math.cos(a) * gr.rx * e, y, gr.z + Math.sin(a) * gr.rz * e), q, sc); im.setMatrixAt(i, mx); }
+    // sit flecks in the wall (e > 1 buries them when the shell bulges out); same rnd-call count as before.
+    for (let i = 0; i < im.count; i++) { const a = rnd() * Math.PI * 2, y = fy + 0.25 + rnd() ** 1.5 * 2.4; const e = Math.sqrt(Math.max(0.05, 1 - ((y + 0.4) / gr.ry) ** 2)) * 1.16; q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, 0)); sc.setScalar(0.2 + rnd() * 0.35); const lx = gr.x + Math.cos(a) * gr.rx * e, lz = gr.z + Math.sin(a) * gr.rz * e; if (Math.abs(lx - gr.x) < PASS_W + 0.9 && gr.side * (lz - gr.z) < -gr.rz * 0.5) sc.setScalar(0.001); mx.compose(v.set(lx, y, lz), q, sc); im.setMatrixAt(i, mx); }
     im.frustumCulled = false; g.add(im);
   }
   // Floor with three pools and the seal pool.
@@ -196,7 +264,7 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
   // Glow-lichen: bioluminescent flecks on the lower walls, two pulsing sets.
   { const blob = new THREE.IcosahedronGeometry(0.06, 0); blob.scale(1, 0.5, 1); const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3();
     for (let set = 0; set < 2; set++) { const n = high ? 420 : 240; const im = new THREE.InstancedMesh(blob, lichenMats[set], n); let c = 0;
-      for (let i = 0; i < n * 3 && c < n; i++) { const a = rnd() * Math.PI * 2, y = 0.1 + rnd() ** 1.6 * 3.2; const e = Math.sqrt(Math.max(0.02, 1 - ((y + 0.6) / RY) ** 2)) * 0.985; const x = CX + Math.cos(a) * rxOf(Math.cos(a)) * e, z = Math.sin(a) * RZ * e; if (x > 1) continue; if (GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 1.8 && gr.side * z > mouthOf(gr) - 2.2)) continue; // no flecks floating in the passage mouths
+      for (let i = 0; i < n * 3 && c < n; i++) { const a = rnd() * Math.PI * 2, y = 0.1 + rnd() ** 1.6 * 3.2; const e = Math.sqrt(Math.max(0.02, 1 - ((y + 0.6) / RY) ** 2)) * 1.14; const x = CX + Math.cos(a) * rxOf(Math.cos(a)) * e, z = Math.sin(a) * RZ * e; if (x > 1) continue; if (GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 1.8 && gr.side * z > mouthOf(gr) - 2.2)) continue; // no flecks floating in the passage mouths
         const near = POOLS.some((p) => Math.hypot(p.x - x, p.z - z) < 9) || x < -26; if (!near && rnd() < 0.6) continue;
         q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, rnd() * 3)); s.setScalar(0.5 + rnd() * 1.6); mtx.compose(v.set(x, y, z), q, s); im.setMatrixAt(c++, mtx); }
       im.count = c; im.frustumCulled = false; g.add(im); } }
@@ -309,7 +377,7 @@ void main(){ float depth=uLev-uFloor; if(depth<0.) discard;
   return {
     grottos: GROTTOS.map((gr) => ({ id: gr.id, name: gr.name, kind: gr.kind, ...L(gr.x, gr.z - gr.side * 1.2) })),
     loot: [
-      { id: 'sea-flood', name: 'drowned chest', ...L(-26.4 + 0.4, 23.8 + 3.4) },
+      { id: 'sea-flood', name: 'drowned chest', ...L(-26.4 + 0.4, 23.8 + 4.0) },
       { id: 'sea-crystal-chest', name: 'crystal-shelf chest', ...L(-5.5 + 2.1, -23.6 - 0.2) },
     ],
     loreFinds: [
@@ -335,7 +403,7 @@ void main(){ float depth=uLev-uFloor; if(depth<0.) discard;
       const pass = inPassage(x, z, -0.6);
       if (pass) { const z0 = pass.side * mouthOf(pass), z1 = pass.z - pass.side * (pass.rz - 1.2); const u = Math.max(0, Math.min(1, ((z - z0) / (z1 - z0)) * pass.side)); const y0 = Math.max(GROT_Y, sh(x, z)); return y0 + u * (fyOf(pass) - y0); }
       const gro = inGrotto(x, z, -1.4);
-      if (gro) { if (gro.kind === 'flood' && gro.side * (z - gro.z) > 2.4) return 0.18; if (gro.kind === 'flood') { const u = Math.max(0, 1 - ((x - gro.x) ** 2) / 18 - ((z - gro.z) ** 2) / 14); return fyOf(gro) - 0.48 * u * u; } return fyOf(gro); }
+      if (gro) { if (gro.kind === 'flood' && gro.side * (z - gro.z) > 2.4) { const dx = x - (gro.x + 0.15), dz = z - (gro.z + gro.side * 4.35); if (Math.abs(dx) < 1.85 && Math.abs(dz) < 1.55) return 0.2; return 0.18; } if (gro.kind === 'flood') { const u = Math.max(0, 1 - ((x - gro.x) ** 2) / 18 - ((z - gro.z) ** 2) / 14); return fyOf(gro) - 0.48 * u * u; } return fyOf(gro); }
       return Math.max(sh(x, z), Math.hypot(x - (DOOR.x + 3), z - 1.4) < 3.05 ? 0.25 : -9);
     },
     inTight(wx: number, wz: number) { const x = wx - SEA_O.x, z = wz - SEA_O.z; return !!(inPassage(x, z, -0.2) || inGrotto(x, z, -0.5)); },

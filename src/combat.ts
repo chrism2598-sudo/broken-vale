@@ -2,13 +2,13 @@ import * as THREE from 'three';
 
 /** M19 · Combat: weapons, a light combo, a charged heavy, block/parry, dodge-roll, stamina and hit stop.
  *  Pure gameplay state — main.ts decides what a strike touches and feeds incoming hits through `incoming()`. */
-export type WeaponId = 'rusty' | 'spear' | 'maul' | 'tide';
+export type WeaponId = 'rusty' | 'spear' | 'maul' | 'tide' | 'knight' | 'halberd';
 export type Weapon = {
   id: WeaponId; name: string; short: string; icon: string; desc: string; where: string;
   dmg: number; heavy: number; reach: number; swing: number; combo: number; stagger: number; keeperMul: number; heavyCost: number;
   style: 0 | 1 | 2; heavyMove: 'cleave' | 'lunge' | 'slam' | 'wave';
 };
-export const WEAPON_ORDER: WeaponId[] = ['rusty', 'spear', 'maul', 'tide'];
+export const WEAPON_ORDER: WeaponId[] = ['rusty', 'spear', 'maul', 'tide', 'knight', 'halberd'];
 export const WEAPONS: Record<WeaponId, Weapon> = {
   rusty: { id: 'rusty', name: 'Rusty Sword', short: 'Sword', icon: '🗡', where: 'Enna’s old blade, from the start',
     desc: 'Quick three-cut combo · heavy is a wide cleave.', dmg: 1, heavy: 2.2, reach: 1, swing: 0.36, combo: 3, stagger: 0, keeperMul: 1, heavyCost: 30, style: 0, heavyMove: 'cleave' },
@@ -18,6 +18,10 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     desc: 'Slow and brutal · every hit staggers · heavy is a ground slam.', dmg: 2, heavy: 4, reach: 0.95, swing: 0.72, combo: 2, stagger: 1.1, keeperMul: 1, heavyCost: 40, style: 2, heavyMove: 'slam' },
   tide: { id: 'tide', name: 'Tide-blade', short: 'Tide', icon: '🌊', where: 'In a side pool of the Listening Pools',
     desc: 'Sea-glass edge · bites the Keeper (×1.5) · heavy throws a wave.', dmg: 1.5, heavy: 3, reach: 1.15, swing: 0.34, combo: 3, stagger: 0.3, keeperMul: 1.5, heavyCost: 30, style: 0, heavyMove: 'wave' },
+  knight: { id: 'knight', name: 'Knight’s Longsword', short: 'Long', icon: '⚔', where: 'Sealed behind the hearth of Pale Keep',
+    desc: 'Bright steel, three long cuts · heavy is a sweeping cleave.', dmg: 1.4, heavy: 3, reach: 1.15, swing: 0.4, combo: 3, stagger: 0.25, keeperMul: 1, heavyCost: 30, style: 0, heavyMove: 'cleave' },
+  halberd: { id: 'halberd', name: 'Azure Halberd', short: 'Halb', icon: '🪓', where: 'Hidden in the solar of Azure Keep',
+    desc: 'Longest reach · every hit staggers · heavy is a driving lunge.', dmg: 1.3, heavy: 3.2, reach: 1.55, swing: 0.5, combo: 2, stagger: 0.9, keeperMul: 1, heavyCost: 34, style: 1, heavyMove: 'lunge' },
 };
 export const isWeapon = (s: unknown): s is WeaponId => typeof s === 'string' && s in WEAPONS;
 
@@ -132,6 +136,20 @@ export function makeWeaponModel(id: WeaponId): THREE.Group {
     add(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.16, 8), leather), 0, 0.02, 0);
     const head = add(new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.15, 0.34), M('#5d5f61', 0.8, 0.5)), 0, -0.86, 0);
     add(new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.03, 0.36), iron), 0, -0.79, 0); add(new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.03, 0.36), iron), 0, -0.93, 0); void head;
+  } else if (id === 'knight') {
+    const steel = M('#d6d9dc', 0.9, 0.28), gold = M('#c9a24a', 0.8, 0.35);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.22, 8), leather), 0, 0.04, 0);
+    add(new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), gold), 0, 0.17, 0);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.045), gold), 0, -0.08, 0);
+    add(blade(0.98, 0.034, 0.009, steel), 0, -0.095, 0);
+  } else if (id === 'halberd') {
+    const steel = M('#b9c8d6', 0.9, 0.3), az = M('#2f5f9a', 0.3, 0.5);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.021, 2.0, 8), M('#4a3524', 0, 0.7)), 0, -0.4, 0);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.14, 8), az), 0, 0.02, 0);
+    { const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.quadraticCurveTo(0.24, 0.02, 0.27, 0.16); sh.lineTo(0.27, -0.2); sh.quadraticCurveTo(0.2, -0.08, 0, -0.1); sh.lineTo(0, 0);
+      const ax = new THREE.ExtrudeGeometry(sh, { depth: 0.012, bevelEnabled: false }); ax.translate(0.015, 0, -0.006); add(new THREE.Mesh(ax, steel), 0, -1.22, 0); }
+    add(new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.12, 4), steel), -0.05, -1.2, 0).rotation.z = -Math.PI / 2;
+    add(blade(0.28, 0.035, 0.01, steel), 0, -1.38, 0);
   } else {
     const glass = M('#6fd6cc', 0.25, 0.18, '#1d7a72', 0.55), bone = M('#d9cdb4', 0, 0.6);
     add(new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.019, 0.17, 8), M('#1f4f52', 0.1, 0.7)), 0, 0.02, 0);

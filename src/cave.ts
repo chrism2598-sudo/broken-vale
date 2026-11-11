@@ -54,13 +54,13 @@ function rockGeo(r: number, rnd: () => number, flat = 0.75) {
   for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), f = 0.8 + 0.35 * noise3(x * 2 + rnd(), y * 2, z * 2); p.setXYZ(i, x * f, y * f * flat, z * f); }
   g.computeVertexNormals(); return g;
 }
-function flameTex() {
+export function flameTex() {
   const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d')!;
   const g = x.createRadialGradient(32, 92, 2, 32, 80, 56); g.addColorStop(0, 'rgba(255,246,214,1)'); g.addColorStop(0.25, 'rgba(255,190,90,0.95)'); g.addColorStop(0.55, 'rgba(240,110,30,0.45)'); g.addColorStop(1, 'rgba(120,30,0,0)');
   x.fillStyle = g; x.beginPath(); x.moveTo(32, 4); x.bezierCurveTo(54, 50, 62, 92, 32, 124); x.bezierCurveTo(2, 92, 10, 50, 32, 4); x.fill();
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-function makeFlame(tex: THREE.Texture, s = 1) {
+export function makeFlame(tex: THREE.Texture, s = 1) {
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: '#ffd9a0', fog: false }));
   sp.scale.set(0.42 * s, 0.8 * s, 1); sp.center.set(0.5, 0.1); sp.layers.set(1); return sp;
 }

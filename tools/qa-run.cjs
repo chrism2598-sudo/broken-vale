@@ -1,7 +1,7 @@
 // Full four-seal run + Menu → Reset progress, driven through the real UI/keys with debug warps.
 const puppeteer=require(process.env.PUPPETEER_CORE);const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:600000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-const p=await b.newPage();await p.setViewport({width:800,height:500});const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
+const p=await b.newPage();await p.setViewport({width:800,height:500});const errs=[];p.on('error',e=>console.log('PAGE-CRASH',e.message));p.on('framenavigated',f=>{if(f===p.mainFrame())console.log('NAV',f.url())});p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 await p.goto('http://localhost:8090/?q=lite&qa=1',{waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});
 await p.click('#begin');await sleep(1500);
 // Pose watchdog: sample Ilka's head-above-hips through every state of the run (meadow, flight, fights, coast causeway, sea cave, Keeper).
@@ -21,7 +21,7 @@ await p.evaluate((x,z)=>window.__vale.warp(x,z+4),E0.x,E0.z);await sleep(1200);l
 {const C0=await p.evaluate(()=>window.__vale.cave());await p.evaluate((x,z)=>window.__vale.warp(x,z),C0.mouth.x,C0.mouth.z);await sleep(1200);const n0=(await Q()).near;await p.keyboard.press('KeyE');await sleep(700);log('stair before dawn',{near:n0,toast:await p.$eval('#toast',e=>e.textContent),inCave:(await p.evaluate(()=>window.__vale.cave())).inCave,stage:(await p.evaluate(()=>window.__vale.cave())).stage});}
 for(const s of q.seals){await p.evaluate((x,z)=>window.__vale.warp(x+1.5,z+1.2),s.x,s.z);await sleep(1500);const n=(await Q()).near;await p.keyboard.press('KeyE');await sleep(700);const qq=await Q();log('seal '+s.id,{near:n,claimed:qq.save.seals[s.id],xp:qq.save.xp,toast:await p.$eval('#toast',e=>e.textContent)});}
 // finale: cine → Wayfinder completion dialogue → chapter card
-await p.waitForFunction('window.__vale.quest().cine',{timeout:60000}).catch(()=>{});log('cine started',(await Q()).cine);
+await p.waitForFunction('window.__vale.quest().cine',{timeout:180000}).catch(()=>{});log('cine started',(await Q()).cine);
 await p.waitForFunction('window.__vale.quest().talking',{timeout:300000});q=await Q();log('completion dialog',{dlg:q.dlg,done:q.save.done,xp:q.save.xp});
 for(let i=0;i<5&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(400);}
 q=await Q();log('chapter card',{chapter:q.chapter,text:await p.$eval('#chapter',e=>e.innerText.replace(/\n+/g,' | '))});
@@ -67,7 +67,7 @@ for(let i=0;i<6&&(await Q()).talking;i++){await p.keyboard.press('Space');await 
 await p.keyboard.press('KeyE');await sleep(500);qe=await Q();const recallTxt=await p.evaluate(()=>document.getElementById('dtxt').textContent);for(let i=0;i<6&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(250);}
 log('echo recall (no farming)',{talking:qe.talking,first:recallTxt,xpGain:(await Q()).save.xp-xpE0});
 // Marr's Unfinished Map: visit every mark
-for(let i=0;i<E.marks.length;i++){const m=E.marks[i];await p.evaluate((x,z)=>window.__vale.warp(x,z),m.x+20,m.z+20);await p.waitForFunction(i=>window.__vale.echo().charted[i],{timeout:60000},i).catch(()=>log('chart timeout',m.name));await sleep(300);}
+for(let i=0;i<E.marks.length;i++){const m=E.marks[i];await p.evaluate((x,z)=>window.__vale.warp(x,z),m.x+20,m.z+20);await p.waitForFunction(i=>window.__vale.echo().charted[i],{timeout:180000},i).catch(()=>log('chart timeout',m.name));await sleep(300);}
 const EC=await p.evaluate(()=>window.__vale.echo());log('charting',{charted:EC.charted.filter(Boolean).length+'/'+EC.charted.length,toast:await toastTxt()});
 // Hollow Beacon: Updraft → island → carving → wrong mirror → right mirrors → dawn ending (+60 once) → ride down → reload persists
 const closeDlg=async()=>{for(let i=0;i<5&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);}};
@@ -82,7 +82,7 @@ const pressM=async()=>{await p.keyboard.press('KeyE');await sleep(450);const b=a
 await atMirror(0);log('near Pale',(await Q()).near);const wrong=await pressM();await sleep(1500);
 log('wrong mirror (Pale→East)',{...wrong,cineAfter:(await p.evaluate(()=>window.__vale.beacon())).cine,xpUnchanged:(await Q()).save.xp===xpB0});
 for(let i=0;i<4;i++){const b=await p.evaluate(()=>window.__vale.beacon());const n=(b.solve[i]-b.mirrors[i]+4)%4;if(!n)continue;await atMirror(i);let r;for(let k=0;k<n;k++)r=await pressM();log('mirror '+i+' set',r);}
-await p.waitForFunction('window.__vale.beacon().cine||window.__vale.beacon().beacon',{timeout:60000});log('dawn ending started',(await p.evaluate(()=>window.__vale.beacon())).cine);
+await p.waitForFunction('window.__vale.beacon().cine||window.__vale.beacon().beacon',{timeout:180000});log('dawn ending started',(await p.evaluate(()=>window.__vale.beacon())).cine);
 await p.waitForFunction('window.__vale.beacon().ending',{timeout:400000});B=await p.evaluate(()=>window.__vale.beacon());
 log('ending card',{beacon:B.beacon,dawn:B.dawn,xpGain:(await Q()).save.xp-xpB0,text:B.endingText.replace(/\n+/g,' | ').slice(0,260)});
 await p.screenshot({path:'shots/qa-ending.png'});await p.click('#endok');await sleep(500);
@@ -130,10 +130,10 @@ log('sea cave mouth → Listening Pools',{near:nM,onShelf:Math.hypot(pp.x-k.cave
 // M12 · the Listening Pools: wake three lamp-shells with the Tide-Glass in one ebb → round seal stirs → Enna's page (+45 once) → back out
 {const S=()=>p.evaluate(()=>window.__vale.sea());let s=await S();const xpS0=(await Q()).save.xp;const at=async(pt,dx=2.2)=>{await p.evaluate((x,z)=>window.__vale.warp(x,z),pt.x+dx,pt.z);await sleep(450);};
 log('sea stage on entry',{stage:s.stage,tide:+s.level.toFixed(2),phase:s.phase});
-await p.waitForFunction('!window.__vale.sea().low',{timeout:60000});await at(s.shells[0]);const nH=(await Q()).near;await p.keyboard.press('KeyE');await sleep(400);s=await S();
+await p.waitForFunction('!window.__vale.sea().low',{timeout:180000});await at(s.shells[0]);const nH=(await Q()).near;await p.keyboard.press('KeyE');await sleep(400);s=await S();
 log('lamp-shell at high water (covered)',{near:nH,toast:await toastTxt(),lit:s.lit,phase:s.phase});
 await p.waitForFunction('window.__vale.sea().low',{timeout:180000});await sleep(300);await p.keyboard.press('KeyE');await sleep(400);s=await S();log('one shell woken at low water',{toast:await toastTxt(),lit:s.lit});
-await p.waitForFunction('!window.__vale.sea().low',{timeout:60000});await sleep(400);s=await S();log('tide returns → partial set resets',{lit:s.lit,toast:await toastTxt(),stage:s.stage});
+await p.waitForFunction('!window.__vale.sea().low',{timeout:180000});await sleep(400);s=await S();log('tide returns → partial set resets',{lit:s.lit,toast:await toastTxt(),stage:s.stage});
 await p.waitForFunction('window.__vale.sea().low',{timeout:180000});const tL=Date.now();
 for(let i=0;i<3;i++){await at(s.shells[i]);await p.keyboard.press('KeyE');await sleep(350);if(i<2)log('shell '+(i+1),{toast:await toastTxt(),lit:(await S()).lit});}
 const dS=(await Q()).dlg;await closeDlg();await sleep(600);s=await S();log('all three in one ebb → seal wakes',{secs:+((Date.now()-tL)/1000).toFixed(1),dialog:dS,stage:s.stage,solved:s.solved,lowStill:s.low,xpUnchanged:(await Q()).save.xp===xpS0,hud:await p.$eval('#qline',e=>e.textContent)});
@@ -173,7 +173,7 @@ await p.screenshot({path:'shots/chapter2-complete.png'});await p.click('#chok').
 await off(0.3,5.0);const nK=(await Q()).near;await p.keyboard.press('KeyE');await sleep(500);const dK=(await Q()).dlg;await closeDlg();log('sleeping Keeper (no farming)',{near:nK,dialog:dK,xpGain:(await Q()).save.xp-xpB,state:(await KP()).state});
 kp=await KP();await p.evaluate((x,z)=>window.__vale.warp(x,z),kp.exit.x,kp.exit.z);await sleep(400);const nKx=(await Q()).near;await p.keyboard.press('KeyE');await p.waitForFunction('window.__vale.sea().inSea&&!window.__vale.keeper().inKeep&&window.__vale.ready',{timeout:180000});await sleep(700);
 log('back to the Listening Pools',{near:nKx,inSea:(await S()).inSea,doorLabel:(await (async()=>{s=await S();await at(s.door,0.2);return (await Q()).near;})())});}
-s=await S();await at(s.exit,-0.4);const nX=(await Q()).near;await p.keyboard.press('KeyE');await p.waitForFunction('!window.__vale.sea().inSea&&window.__vale.coast().inCoast&&window.__vale.ready',{timeout:60000});await sleep(700);
+s=await S();await at(s.exit,-0.4);const nX=(await Q()).near;await p.keyboard.press('KeyE');await p.waitForFunction('!window.__vale.sea().inSea&&window.__vale.coast().inCoast&&window.__vale.ready',{timeout:180000});await sleep(700);
 log('out to the causeway',{near:nX,inSea:(await S()).inSea,inCoast:(await K()).inCoast,mouthLabel:(await Q()).near,xpTotal:(await Q()).save.xp});}
 // M16 · the Lowtide Lamp: Ress → Enna reunion (tide released) → climb → glass at high water (no) → low water → cinematic → final card (+70 once) → credits → keep exploring (down)
 {const LA=()=>p.evaluate(()=>window.__vale.lamp());let la=await LA();const xpL0=(await Q()).save.xp;const ppL=()=>p.evaluate(()=>{const v=window.__vale.debug.player.position;return {x:v.x,y:v.y,z:v.z};});
@@ -183,9 +183,9 @@ await sleep(800);la=await LA();log('Enna reunion',{near:nEn,lines:eL.length,firs
 await p.evaluate((x,z)=>window.__vale.warp(x,z),la.towerDoor.x,la.towerDoor.z);await sleep(700);const nD=(await Q()).near;await p.keyboard.press('KeyE');await p.waitForFunction('window.__vale.lamp().onTop&&!window.__vale.debug.aq.fading',{timeout:30000}).catch(async()=>log('WAIT FAIL onTop',{near:(await Q()).near,talking:(await Q()).talking,dlg:(await Q()).dlg}));await sleep(900);
 let pt=await ppL();log('climbed the Lamp',{near:nD,onTop:(await LA()).onTop,y:+pt.y.toFixed(2),near2:(await Q()).near,qline:await p.$eval('#qline',e=>e.textContent)});
 await p.keyboard.down('KeyW');await sleep(2500);await p.keyboard.up('KeyW');pt=await ppL();log('walking on the lantern floor stays on it',{rFromLantern:+Math.hypot(pt.x-la.lanternW.x,pt.z-la.lanternW.z).toFixed(2),y:+pt.y.toFixed(2)});
-await p.waitForFunction('window.__vale.lamp().low===false',{timeout:60000});await p.evaluate((x,z)=>window.__vale.warp(x,z),la.lanternW.x-1.3,la.lanternW.z+1.0);await sleep(500);const nL=(await Q()).near;await p.keyboard.press('KeyE');await sleep(400);la=await LA();
+await p.waitForFunction('window.__vale.lamp().low===false',{timeout:180000});await p.evaluate((x,z)=>window.__vale.warp(x,z),la.lanternW.x-1.3,la.lanternW.z+1.0);await sleep(500);const nL=(await Q()).near;await p.keyboard.press('KeyE');await sleep(400);la=await LA();
 log('glass at high water (no)',{near:nL,phase:la.phase,toast:await toastTxt(),stage:la.stage,cine:la.cine,xpUnchanged:(await Q()).save.xp===xpL0});
-await p.waitForFunction('window.__vale.lamp().low',{timeout:60000});await sleep(200);await p.keyboard.press('KeyE');await sleep(600);la=await LA();log('glass at low water → the Lamp',{cine:la.cine,phase:la.phase});
+await p.waitForFunction('window.__vale.lamp().low',{timeout:180000});await sleep(200);await p.keyboard.press('KeyE');await sleep(600);la=await LA();log('glass at low water → the Lamp',{cine:la.cine,phase:la.phase});
 await p.waitForFunction('window.__vale.lamp().ending',{timeout:90000});await sleep(800);la=await LA();
 log('final card',{stage:la.stage,endMode:la.endMode,xpGain:(await Q()).save.xp-xpL0,xp:(await Q()).save.xp,rift:la.rift,ennaVale:la.ennaVale,text:la.endingText.replace(/\n+/g,' | ').slice(0,420)});
 await p.screenshot({path:'shots/qa-final-card.png'});

@@ -1,3 +1,4 @@
+import { CHESTS, LORE, KEEP_NAME } from './castle';
 import { LANDMARKS, SEALS, WAYFINDER, SHRINE, heightAt, creekX, creekHalf, pathMask } from './world';
 import { WARDEN } from './warden';
 import { UPDRAFT, MIRRORS } from './beacon';
@@ -66,7 +67,13 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
       }
     }
   }
-  const sections = s.beacon ? [trail, quest, chart, shrine, warden, echo, beacon, lore] : [quest, chart, shrine, warden, echo, beacon, lore];
+  // M20a · keeps explored, secrets, and the lore pages found inside.
+  const keeps: JSection = { h: 'The keeps (optional)', items: (['pale', 'azure'] as const).map((id) => { const n = (s.chests ?? []).filter((c) => c.startsWith(id + '-')).length, tot = CHESTS[id].length, sec = (s.secrets ?? []).includes(id), look = (s.views ?? []).includes(id + '-look');
+    return { t: `${KEEP_NAME[id]} — chests ${n}/${tot} · ${sec ? 'secret room found' : 'a secret is said to be hidden inside'} · ${look ? 'lookout climbed' : 'the crown tower can be climbed'}`, done: n === tot && sec && look }; }) };
+  if (s.whet) keeps.items.push({ t: `Whetstones ×${s.whet} · every blade +${15 * s.whet}% damage`, done: true });
+  const pages: JSection = { h: `Lore pages · ${(s.lore ?? []).length}/${Object.keys(LORE).length}`, items: (s.lore ?? []).map((id) => LORE[id]).filter(Boolean).map((L) => ({ t: `${L.title}: ${L.text}`, lore: true })) };
+  if (!pages.items.length) pages.items.push({ t: 'Ledgers, letters and prayer-cards left in the keeps will be copied here.' });
+  const sections = s.beacon ? [trail, quest, chart, keeps, pages, shrine, warden, echo, beacon, lore] : [quest, chart, keeps, pages, shrine, warden, echo, beacon, lore];
   return {
     title: fill('Field notes — {fullname}', p),
     sub: fill(`{Name}, 17 · Enna’s {child} · Level ${levelOf(s.xp)} · ${s.xp} XP`, p),

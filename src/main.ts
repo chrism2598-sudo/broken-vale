@@ -28,6 +28,7 @@ import { KEEPER_LINES, KEEPER_XP, KEEPER_HP, makeKeeper, type Keeper, type Keepe
 import { cutTerrain, cutGrass, STAIR, STAIR_DIR, CAVE_LINES, CAVE_XP, BRAZIERS, RIVER_ORDER, makeStairEntrance, makeCaveInterior, type CaveInterior } from './cave';
 import { ECHO, ECHO_RANGE, ECHO_XP, ECHO_SILENT, echoMemoryLines, MARR_MARKS, CHART_R, CHART_DONE, makeEchoGrove } from './echo';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { dressEnna } from './enna';
 import { GameAudio, type Region, type Surface } from './audio';
 import { ENNA_LINES, ENNA_NAME, LAMP_XP, LAMP_TOAST, FINAL_TITLE, FINAL_KICKER, FINAL_LINES, FINAL_REWARD, finalStats, CREDITS, sefaLines, dovLines, ressLines, nextUncharted } from './finale';
 import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep } from './world';
@@ -174,16 +175,16 @@ async function main() {
   const staff = makeLanternStaff(); scene.add(staff.group);
   const handBone = wayfinder.root.getObjectByName('Wrist.R') ?? wayfinder.root.getObjectByName('WristR') ?? wayfinder.root; const handPos = new THREE.Vector3();
   // M17 · the people of the vale (CC0 Quaternius rigs, recoloured): Sefa Lune the mapmaker, Dov Hask the old Dome smith and, after the ending, Enna by the crossing.
-  const ENNA_COL = { Skin: '#d39a70', LightBrown: '#b98a3c', DarkBrown: '#2e2620', Black: '#3b3029', Brown: '#2f3b4c', White: '#8c8175', Gold: '#c9a24a', Metal: '#aab4b8' };
+  const ENNA_COL = { Skin: '#d39a70', LightBrown: '#b98a3c', DarkBrown: '#2e2620', Black: '#3b3029', Brown: '#8d867c', White: '#8c8175', Gold: '#c9a24a', Metal: '#aab4b8' }; // Brown = hair: ash-streaked, matches her braid
   const SEFA = { x: 12, z: -15 }, DOV = { x: 31.9, z: 23.0 }, ENNA_V = { x: WAYFINDER.x - 3.2, z: WAYFINDER.z + 1.6 };
   const sefa = makeCharacter(heroFG, 1.62 / 1.877, { Skin: '#c98d64', LightBrown: '#c9a24a', DarkBrown: '#2a2230', Black: '#3a2f2a', Brown: '#4b3b66', White: '#d9d4cc', Gold: '#d9b35c', Metal: '#c5d0d4' }, ['Sword']);
   const dov = makeCharacter(wayG, 1.70 / 1.903, { Metal: '#4a4540', Metal_Dark: '#2a2622', Blue: '#6a3b22', Beige: '#8f7a5a', Hair_White: '#8c8580', DarkBrown: '#2a1f18' }, ['mat:Gold']);
-  const ennaV = makeCharacter(heroFG, 1.68 / 1.877, ENNA_COL, ['Sword']);
+  const ennaV = makeCharacter(heroFG, 1.68 / 1.877, ENNA_COL, ['Sword']); dressEnna(ennaV.root);
   const valeNpcs = [sefa, dov, ennaV].map((c, i) => { const p = [SEFA, DOV, ENNA_V][i]; c.root.position.set(p.x, heightAt(p.x, p.z), p.z); c.root.rotation.y = Math.atan2(SPAWN.x - p.x, SPAWN.z - p.z); scene.add(c.root); const solid = { x: p.x, z: p.z, r: 0.7 }; SOLIDS.push(solid); return { c, p, solid }; });
   const setEnnaVale = (on: boolean) => { ennaV.root.visible = on; valeNpcs[2].solid.r = on ? 0.7 : 0; };
   setEnnaVale(save.lamp >= 2);
   // Coast cast: Enna (from the Keeper's chamber onward) and Ress, her hired guide. Added to the coast scene when it is first built.
-  const ennaC = makeCharacter(heroFG, 1.68 / 1.877, ENNA_COL, ['Sword']);
+  const ennaC = makeCharacter(heroFG, 1.68 / 1.877, ENNA_COL, ['Sword']); dressEnna(ennaC.root);
   const ressC = makeCharacter(heroMG, 1.78 / 1.866, { Skin: '#b07a55', Purple: '#2f4a44', LightBlue: '#c7a25a', 'Casual_Legs/Skin': '#3a2c22', White: '#5a4634', Hair: '#1e1610', Eyebrows: '#1a120c' }, []);
 
   // ---------- post ----------

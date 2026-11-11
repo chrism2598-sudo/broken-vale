@@ -13,8 +13,10 @@ export function configureFoliage(o: { a2c?: boolean }) { useA2C = !!o.a2c; }
 const LEAF_ALPHA_A2C = `#ifdef USE_ALPHATEST
   #ifdef USE_MAP
     diffuseColor.a*=1.+max(length(dFdx(vMapUv)),length(dFdy(vMapUv)))*24.;
+    // G3: sharpen alpha to a ~1px ramp around the cutoff so MSAA coverage gives a smooth, stable edge (not stair-steps).
+    diffuseColor.a=clamp((diffuseColor.a-alphaTest)/max(fwidth(diffuseColor.a),1e-4)+.5,0.,1.);
   #endif
-  if(diffuseColor.a<alphaTest) discard;
+  if(diffuseColor.a<.02) discard;
 #endif`;
 const LEAF_ALPHA_SOFT = `#ifdef USE_ALPHATEST
   #ifdef USE_MAP
@@ -102,7 +104,7 @@ function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, aut
   transformed.x+=sw*.025*hh; transformed.z+=sw*.018*hh;`)
       .replace('#include <beginnormal_vertex>', 'vec3 objectNormal=normalize(normal+vec3(0.,.6,0.));');
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-${autumn ? 'float L=dot(diffuseColor.rgb,vec3(.3,.59,.11)); diffuseColor.rgb=mix(vec3(.58,.34,.08),vec3(.96,.72,.22),smoothstep(.06,.55,L))*(.65+.85*L);' : ''}`)
+${autumn ? 'float L=dot(diffuseColor.rgb,vec3(.3,.59,.11)); L=mix(.36,L,smoothstep(.12,.6,diffuseColor.a)); diffuseColor.rgb=mix(vec3(.58,.34,.08),vec3(.96,.72,.22),smoothstep(.06,.55,L))*(.65+.85*L);' : ''}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.16,.1,.02)' : 'vec3(.07,.1,.03)'};`)
       .replace('#include <alphatest_fragment>', leafAlpha());

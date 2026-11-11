@@ -350,12 +350,16 @@ void main(){ vec2 L=vW.xz-uO; float depth=uTide-coastH(L); float dist=distance(v
   col+=uSunCol*pow(max(dot(r,uSunDir),0.),520.)*6.;
   float fn=texture2D(uNor,vW.xz*.21+vec2(uTime*.03,0.)).x*.5+.5;
   float band=sin(depth*7.5-uTime*1.7+fn*4.)*.5+.5;
-  float foam=(1.-smoothstep(0.,.65,depth))*smoothstep(.5,.85,band*.7+fn*.5)*.85+(1.-smoothstep(0.,.14,depth))*.8;
+  // G3: break the foam up. Two drifting noise octaves carve the bands and collars into patches, streaks and lace,
+  // so the shoreline reads as churned water rather than clean painted rings.
+  float b1=texture2D(uNor,vW.xz*.075+vec2(-uTime*.011,uTime*.007)).y, b2=texture2D(uNor,vW.xz*.39+vec2(uTime*.019,-uTime*.013)).x;
+  float brk=b1*.62+b2*.38; float lace=smoothstep(.34,.6,brk+fn*.22-.12);
+  float foam=(1.-smoothstep(0.,.65,depth))*smoothstep(.5,.85,band*.7+fn*.5)*.85*lace*(.55+.45*smoothstep(.4,.62,b2))+(1.-smoothstep(0.,.1+.12*b1,depth))*(.45+.45*smoothstep(.3,.58,brk));
   #if WAVES > 2
   foam+=smoothstep(.72,1.05,vCrest)*smoothstep(.55,.8,fn)*.55*det;
   #endif
   if(dist<70.){ float rf=0.; for(int i=0;i<NR;i++){ vec4 R=uRings[i]; if(R.w<.01) continue; float dd=length(L-R.xy)-R.z; if(dd>2.2) continue;
-      float w=1.-smoothstep(0.,.5+.9*fn,dd); float lap=.5+.5*sin(dd*8.-uTime*2.4+fn*6.+R.x); rf=max(rf,R.w*(w*w*.9+w*smoothstep(.35,.9,lap*.75+fn*.4)*.7)); }
+      float w=1.-smoothstep(0.,.5+.9*fn,dd); float lap=.5+.5*sin(dd*8.-uTime*2.4+fn*6.+R.x); rf=max(rf,R.w*(w*w*.9*smoothstep(.2,.55,brk+w*.35)+w*smoothstep(.35,.9,lap*.75+fn*.4)*.7*lace)); }
     foam+=rf*det; }
   foam=clamp(foam,0.,1.); vec3 lit=vec3(.95,.93,.9)*(.6+.4*max(uSunDir.y+.3,0.)); col=mix(col,lit,foam*.92);
   float a=max(smoothstep(-.03,.45,depth),foam*.9);

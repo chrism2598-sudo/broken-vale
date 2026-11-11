@@ -281,10 +281,10 @@ function makeVeilfall(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): {
   fall.position.set(0, y0 + 13.5, 10.5); g.add(fall);
   const pool = new THREE.Mesh(new THREE.CircleGeometry(6.5, 32).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#2b5a62', roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.85 }));
   pool.position.set(0, y0 + 0.25, 15); g.add(pool);
-  const foam = new THREE.Mesh(new THREE.RingGeometry(1.5, 4.2, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#f2fbff', transparent: true, opacity: 0.35, depthWrite: false }));
+  const foam = new THREE.Mesh(new THREE.RingGeometry(1.5, 4.2, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#f2fbff', map: brokenFoamTex(), transparent: true, opacity: 0.8, depthWrite: false }));
   foam.position.set(0, y0 + 0.3, 12.5); g.add(foam);
   g.position.set(l.x, 0, l.z);
-  return { group: g, update: (time) => { fallMat.uniforms.uTime.value = time; foam.scale.setScalar(1 + Math.sin(time * 3) * 0.05); orb.scale.setScalar(1 + Math.sin(time * 1.7) * 0.08);
+  return { group: g, update: (time) => { fallMat.uniforms.uTime.value = time; foam.scale.setScalar(1 + Math.sin(time * 3) * 0.05); foam.rotation.y = time * 0.05; orb.scale.setScalar(1 + Math.sin(time * 1.7) * 0.08);
     for (const sp of mist) { const k = sp.userData.k as number, f = (time * 0.25 + k / 6) % 1; sp.position.set(Math.sin(k * 2.1) * 2.5, y0 + 0.8 + f * 4, 12.5 + Math.cos(k * 1.7) * 1.5); sp.scale.setScalar(3 + f * 4); (sp.material as THREE.SpriteMaterial).opacity = 0.32 * Math.sin(f * Math.PI); } } };
 }
 
@@ -315,4 +315,20 @@ export function makeLandmarks(t: BuildTex, solids: Solid[], opts: LOpts = { ligh
   });
   void heightAt;
   return { group: grp, update: (time) => { for (const u of updates) u(time); } };
+}
+
+/** G3: churned, broken foam for the basin ring: soft blobs and streaks, dense at the fall and thinning outward with gaps. */
+function brokenFoamTex(): THREE.Texture {
+  const N = 256, cv = document.createElement('canvas'); cv.width = cv.height = N; const x = cv.getContext('2d')!;
+  let sd = 7; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  x.clearRect(0, 0, N, N);
+  for (let i = 0; i < 900; i++) {
+    const rr = 0.36 + Math.pow(r(), 1.6) * 0.62, a = r() * Math.PI * 2; // in ring radius fraction (inner 1.5/4.2 = .36)
+    const gap = Math.sin(a * 5 + rr * 9) * 0.5 + Math.sin(a * 11 - rr * 4) * 0.3; if (gap > 0.35 && r() < 0.8) continue; // open water lanes
+    const px = N / 2 + Math.cos(a) * rr * N / 2, py = N / 2 + Math.sin(a) * rr * N / 2, sz = (2 + r() * 9) * (1.25 - rr * 0.7);
+    const al = (0.12 + r() * 0.35) * (1.15 - rr);
+    const gr = x.createRadialGradient(px, py, 0, px, py, sz); gr.addColorStop(0, `rgba(255,255,255,${al.toFixed(3)})`); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr; x.beginPath(); x.ellipse(px, py, sz * (1.3 + r()), sz, a + Math.PI / 2, 0, Math.PI * 2); x.fill();
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }

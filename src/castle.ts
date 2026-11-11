@@ -12,7 +12,7 @@ type Rect = { x0: number; x1: number; z0: number; z1: number };
 type Region = Rect & { y: number; ramp?: { ax: 'x' | 'z'; a0: number; a1: number; y0: number; y1: number }; door?: string };
 type Room = Rect & { id: string; name: string; y0: number; h: number; floor?: 'wood' | 'stone' };
 type Door = { id: string; x: number; z: number; ax: 'x' | 'z'; w: number; h: number; y: number; secret?: boolean };
-export type CInteract = { id: string; kind: 'exit' | 'roof' | 'hatch' | 'chest' | 'lore' | 'secret' | 'view'; x: number; z: number; y: number; r: number };
+export type CInteract = { id: string; kind: 'exit' | 'roof' | 'hatch' | 'chest' | 'lore' | 'secret' | 'view' | 'stash'; x: number; z: number; y: number; r: number };
 export type MobSpawn = { id: string; x: number; z: number; y: number; face: number };
 export type ChestDef = { id: string; xp: number; weapon?: 'knight' | 'halberd'; whet?: boolean; lore?: string; note: string };
 export type LoreDef = { id: string; title: string; text: string };
@@ -20,6 +20,8 @@ export type LoreDef = { id: string; title: string; text: string };
 export const CASTLE_O: Record<KeepId, { x: number; z: number }> = { pale: { x: 6000, z: 0 }, azure: { x: 6000, z: 400 } };
 export const KEEP_NAME: Record<KeepId, string> = { pale: 'Pale Keep', azure: 'Azure Keep' };
 export const LORE: Record<string, LoreDef> = {
+  'pale-cellar': { id: 'pale-cellar', title: 'The gaoler’s note (Pale Keep cellar)', text: '“Two of the hollow ones stand down here now. They do not sleep and they do not eat, and they will not let me past the third cell. Whatever the old lord kept there, he kept it from the sky as well as from us.”' },
+  'azure-cellar': { id: 'azure-cellar', title: 'A page in the warden’s hand (Azure Keep cells)', text: '“The tide comes up through the cell floors twice a day. The prisoners learned to count it. When the sky broke they counted wrong, and the sea did not come at all.”' },
   'sea-bell': { id: 'sea-bell', title: 'Chalk on the drowned bell (Listening Pools)', text: '“Rang it once at low water to hear how far the cave goes. It answered from three places, and one of them was not stone. — E. M.”' },
   'pale-ledger': { id: 'pale-ledger', title: 'The Steward’s Ledger (Pale Keep)', text: '“…coal for the great hearth, eleven sacks. The old lord never let it be lit. Said the soot-black stone was not for warming. Press it, and the wall remembers the door.”' },
   'pale-solar': { id: 'pale-solar', title: 'A letter in the solar (Pale Keep)', text: '“The sky cracked over the vale at noon and the custodians rode out. We barred the gate. From the tower you can see where the light went wrong.”' },
@@ -34,12 +36,14 @@ export const CHESTS: Record<KeepId, ChestDef[]> = {
     { id: 'pale-chapel', xp: 15, whet: true, lore: 'pale-chapel', note: 'A fine whetstone — every blade bites harder (+15% damage · +15 XP).' },
     { id: 'pale-solar', xp: 25, lore: 'pale-solar', note: 'A sealed letter and a silver clasp (+25 XP).' },
     { id: 'pale-secret', xp: 30, weapon: 'knight', note: 'The Knight’s Longsword, wrapped in oilcloth (+30 XP).' },
+    { id: 'pale-cellar', xp: 30, lore: 'pale-cellar', note: 'A strongbox under the dungeon stair: old silver and a gaoler’s note (+30 XP).' },
   ],
   azure: [
     { id: 'azure-library', xp: 20, note: 'A few blue glass beads and a silver tide-coin (+20 XP).' },
     { id: 'azure-chapel', xp: 15, whet: true, lore: 'azure-chapel', note: 'A sea-grey whetstone — every blade bites harder (+15% damage · +15 XP).' },
     { id: 'azure-solar', xp: 25, lore: 'azure-solar', note: 'An unsent letter and a brass spyglass (+25 XP).' },
     { id: 'azure-secret', xp: 30, weapon: 'halberd', note: 'The Azure Halberd, hung in the dark (+30 XP).' },
+    { id: 'azure-cellar', xp: 30, lore: 'azure-cellar', note: 'A sea-chest in the cells: salt-stiff coin and a page of the warden’s hand (+30 XP).' },
   ],
 };
 export const VIEW_XP = 15;
@@ -66,8 +70,22 @@ function layout(id: KeepId) {
   ];
   if (id === 'pale') { rooms.push({ id: 'secret', name: 'Hidden room', x0: -15, x1: -9, z0: -2, z1: 4, y0: 0, h: 3.6 }); doors.push({ id: 'secret', x: -9, z: 1.0, ax: 'z', w: 1.6, h: 2.4, y: 0, secret: true }); }
   else { rooms.push({ id: 'secret', name: 'Hidden room', x0: -15, x1: -9, z0: -17, z1: -11, y0: UP, h: 3.4 }); doors.push({ id: 'secret', x: -9, z: -12.2, ax: 'z', w: 1.6, h: 2.4, y: UP, secret: true }); }
+  // M21b · more of the keep: kitchen (west) and armoury (east) off the hall, a cellar/dungeon under the kitchen by a stone stair, and (Pale) a bedchamber off the solar.
+  rooms.push({ id: 'kitchen', name: 'Kitchen', x0: -15, x1: -9, z0: -10, z1: -4, y0: 0, h: 4 }, { id: 'armory', name: 'Armoury', x0: 9, x1: 15, z0: -10, z1: -4, y0: 0, h: 4 },
+    { id: 'cellar', name: 'Cellar', x0: -15, x1: -5, z0: -18, z1: -10, y0: CELLAR_Y, h: 3.6 - CELLAR_Y });
+  doors.push({ id: 'hall-kitchen', x: -9, z: -8.6, ax: 'z', w: 1.6, h: 2.6, y: 0 }, { id: 'hall-armory', x: 9, z: -8.6, ax: 'z', w: 1.6, h: 2.6, y: 0 }, { id: 'kitchen-cellar', x: -13, z: -10, ax: 'x', w: 1.6, h: 2.6, y: 0 });
+  if (id === 'pale') { rooms.push({ id: 'bed', name: 'Bedchamber', x0: -15, x1: -9, z0: -17, z1: -10.6, y0: UP, h: 3.6, floor: 'wood' }); doors.push({ id: 'solar-bed', x: -9, z: -12.4, ax: 'z', w: 1.6, h: 2.6, y: UP }); }
   return { rooms, doors };
 }
+export const CELLAR_Y = -4;
+/** M21b · small hidden caches (loose stones, levers): one-off XP + a line of story. */
+export const STASH: Record<string, { label: string; note: string; xp: number }> = {
+  'pale-stone': { label: 'A loose stone in the armoury wall', note: 'Behind the loose stone: a soldier’s purse and a tin badge (+15 XP).', xp: 15 },
+  'pale-lever': { label: 'An iron ring behind the bed-hangings', note: 'The ring is a lever · a panel in the wainscot drops open: a silver ring with a moth engraved on it (+20 XP).', xp: 20 },
+  'pale-cell': { label: 'Scratches on the cell wall', note: 'Tally marks, and under them, a hidden key-hole · a little drawer holds a waxed map of the cave (+15 XP).', xp: 15 },
+  'azure-stone': { label: 'A loose stone in the armoury wall', note: 'Behind the loose stone: a coil of blue cord and three tide-coins (+15 XP).', xp: 15 },
+  'azure-cell': { label: 'Scratches on the cell wall', note: 'A prisoner’s calendar of tides · tucked in a crack, a brass whistle shaped like a gull (+15 XP).', xp: 15 },
+};
 
 const mat = (color: string, rough = 0.85, metal = 0, o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...o });
 function canvasTex(w: number, h: number, draw: (x: CanvasRenderingContext2D) => void, srgb = true) {
@@ -193,7 +211,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   block(-9, -6.4, -17, -13.6, UP);
   box(woodM, 1.4, 0.08, 0.9, -3.6, UP + 0.78, -15.6); for (const [lx, lz] of [[-4.2, -15.9], [-3, -15.9], [-4.2, -15.3], [-3, -15.3]]) box(woodM, 0.08, 0.78, 0.08, lx, UP, lz); block(-4.5, -2.7, -16.2, -15, UP);
   { const r = new THREE.PlaneGeometry(3.2, 2.4); r.rotateX(-Math.PI / 2); put(rugM, r, -5, UP + 0.02, -13.2); }
-  if (!az) { const tp = new THREE.PlaneGeometry(2.2, 2.6); tp.rotateY(Math.PI / 2); put(clothM, tp, -8.96, UP + 2.2, -12.4); }
+  if (!az) { const tp = new THREE.PlaneGeometry(2.2, 2.6); tp.rotateY(Math.PI / 2); put(clothM, tp, -8.96, UP + 2.2, -15.6); }
   // ---- battlements door at the gallery's west end ----
   box(darkWoodM, 0.16, 2.6, 1.6, -8.9, UP, -8.25); for (const s of [-1, 1]) box(ironM, 0.06, 2.4, 0.08, -8.82, UP + 0.1, -8.25 + s * 0.45);
   inter.push({ id: 'roof', kind: 'roof', x: -7.8, z: -8.25, y: UP, r: 1.8 });
@@ -225,10 +243,59 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   else { box(darkWoodM, 1.8, 0.9, 0.8, -12, UP, -16.5); block(-13, -11, -17, -16, UP); }
   inter.push(az ? { id: 'secret', kind: 'secret', x: -8.0, z: -12.2, y: UP, r: 1.9 } : { id: 'secret', kind: 'secret', x: -8.0, z: 0.4, y: 0, r: 2.0 });
 
+  // ---- M21b · kitchen: a great cook-hearth, work table, pots, barrels, a hanging rack ----
+  { const C = mat('#2a2622', 0.6, 0.5);
+    // Surround + open mouth (the old solid 0.9×2.6×3.2 block hid the fire behind a stone face).
+    box(stoneM, 0.28, 2.6, 3.2, -14.82, 0, -7);
+    box(stoneM, 0.72, 2.6, 0.5, -14.48, 0, -8.35); box(stoneM, 0.72, 2.6, 0.5, -14.48, 0, -5.65);
+    box(stoneM, 0.72, 0.55, 2.3, -14.48, 2.05, -7); box(stoneM, 1.1, 0.4, 3.6, -14.4, 2.6, -7);
+    box(stoneM, 0.5, 0.14, 2.4, -14.05, 0, -7); block(-15, -13.6, -8.8, -5.2, 0);
+    box(sootM, 0.06, 1.85, 2.15, -14.66, 0.14, -7); box(sootM, 0.55, 1.85, 0.06, -14.4, 0.14, -8.08); box(sootM, 0.55, 1.85, 0.06, -14.4, 0.14, -5.92);
+    const coal = mat('#c45a12', 0.7, 0, { emissive: '#c24a10', emissiveIntensity: 1.15 });
+    const bed = new THREE.PlaneGeometry(0.55, 1.5); bed.rotateX(-Math.PI / 2); put(coal, bed, -14.35, 0.16, -7);
+    for (const [z, ry] of [[-7.3, 0.28], [-6.8, -0.4], [-7.05, 0.08]] as const) { const log = new THREE.CylinderGeometry(0.07, 0.08, 0.62, 8); log.rotateZ(Math.PI / 2); log.rotateY(ry); put(woodM, log, -14.28, 0.24, z); }
+    const emb = makeFlame(flameTex(), 1.6); emb.position.set(-14.15, 0.3, -7); g.add(emb);
+    box(woodM, 2.6, 0.12, 1.1, -11.6, 0.82, -6.4); for (const [dx, dz] of [[-1.1, -0.4], [1.1, -0.4], [-1.1, 0.4], [1.1, 0.4]]) box(darkWoodM, 0.1, 0.82, 0.1, -11.6 + dx, 0, -6.4 + dz); block(-13.1, -10.1, -7.1, -5.7, 0);
+    for (const [x, z] of [[-11.9, -6.3], [-11.2, -6.6]]) cyl(C, 0.22, 0.28, x, 0.94, z, 10);
+    for (const [x, z] of [[-9.8, -4.8], [-10.6, -4.7]]) { cyl(woodM, 0.4, 0.95, x, 0, z, 12); for (const y of [0.15, 0.75]) cyl(ironM, 0.41, 0.05, x, y, z, 12); } block(-11.1, -9.3, -5.3, -4.3, 0);
+    box(darkWoodM, 3.0, 0.08, 0.08, -11.6, 3.1, -6.4); for (let k = 0; k < 5; k++) { box(ironM, 0.02, 0.4, 0.02, -12.8 + k * 0.6, 2.7, -6.4); cyl(C, 0.12, 0.1, -12.8 + k * 0.6, 2.6, -6.4, 8); }
+    const sk = new THREE.PlaneGeometry(1.1, 1.1); sk.rotateX(-Math.PI / 2); put(rugM, sk, -11.6, 0.02, -8.6); }
+  // ---- armoury: weapon racks, armour stands, shields, a loose stone ----
+  { const steel = mat('#9aa0a6', 0.35, 0.85);
+    for (const z of [-9.2, -4.8]) { box(darkWoodM, 4.2, 0.1, 0.3, 12.2, 0.9, z); box(darkWoodM, 4.2, 0.1, 0.3, 12.2, 1.9, z); for (let k = 0; k < 7; k++) { box(steel, 0.05, 1.9, 0.05, 10.5 + k * 0.58, 0.2, z); box(darkWoodM, 0.07, 0.5, 0.07, 10.5 + k * 0.58, 0, z); } block(10, 14.4, z - 0.35, z + 0.35, 0); }
+    for (const z of [-7.8, -6.2]) { cyl(darkWoodM, 0.06, 1.4, 14.2, 0, z, 6); box(steel, 0.5, 0.65, 0.3, 14.2, 1.0, z); const hm = new THREE.SphereGeometry(0.17, 10, 8); put(steel, hm, 14.2, 1.85, z); box(steel, 0.75, 0.12, 0.2, 14.2, 1.55, z); } block(13.7, 15, -8.3, -5.7, 0);
+    for (const [y, z] of [[2.6, -8], [2.6, -6], [2.9, -7]]) { const sh = new THREE.CylinderGeometry(0.45, 0.45, 0.06, 16); sh.rotateZ(Math.PI / 2); put(clothM, sh, 14.93, y, z); const b2 = new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10); b2.rotateZ(Math.PI / 2); put(steel, b2, 14.9, y, z); }
+    box(stoneM, 0.06, 0.32, 0.5, 14.95, 0.5, -5.4); inter.push({ id: id + '-stone', kind: 'stash', x: 14.0, z: -5.4, y: 0, r: 1.3 }); }
+  // ---- cellar / dungeon: a stone stair down from the kitchen, iron-barred cells, barrels, two sentinels ----
+  { const Y = CELLAR_Y, S0 = -12.0, S1 = -6.4, zA = -12.1, zB = -10.35, n = 12;
+    box(stoneM, 3.0, -Y, zB - zA, -13.5, Y, (zA + zB) / 2); regions.push({ x0: -14.62, x1: S0, z0: zA + 0.1, z1: -10.3, y: 0 });
+    for (let i = 0; i < n; i++) { const xa = S0 + (S1 - S0) * i / n, xb = S0 + (S1 - S0) * (i + 1) / n, top = -Y * (1 - (i + 1) / n); box(stoneM, Math.abs(xb - xa), Math.max(0.05, top), zB - zA, (xa + xb) / 2, Y, (zA + zB) / 2); }
+    regions.push({ x0: S0, x1: S1, z0: zA + 0.1, z1: zB - 0.05, y: 0, ramp: { ax: 'x', a0: S0, a1: S1, y0: 0, y1: Y } }); block(-15, S1 - 0.8, zA - 0.25, -10, Y);
+    for (let k = 0; k <= 8; k++) { const x = S0 + (S1 - S0) * k / 8, yy = -Y * (1 - k / 8) + Y; box(ironM, 0.05, 0.95, 0.05, x, yy + (k === 8 ? 0 : 0), zA + 0.04); }
+    { const len = Math.hypot(S1 - S0, Y), rl = new THREE.BoxGeometry(len, 0.06, 0.08); rl.rotateZ(Math.atan2(Y, S1 - S0)); put(ironM, rl, (S0 + S1) / 2, Y / 2 + 0.95, zA + 0.04); }
+    // cells along the north wall: bars, cots, a hidden drawer
+    for (let c = 0; c < 3; c++) { const x0 = -14.8 + c * 2.6; for (let k = 0; k < 9; k++) box(ironM, 0.05, 2.6, 0.05, x0 + 0.15 + k * 0.28, Y, -15.6); box(ironM, 2.5, 0.08, 0.08, x0 + 1.25, Y + 2.55, -15.6); box(darkWoodM, 0.8, 0.35, 1.7, x0 + 0.6, Y, -17.0); }
+    block(-15, -7, -18, -15.4, Y); inter.push({ id: id + '-cell', kind: 'stash', x: -9.2, z: -14.8, y: Y, r: 1.3 }); box(stoneM, 0.5, 0.4, 0.06, -9.2, Y + 1.0, -15.5);
+    for (const [x, z] of [[-14.4, -13.4], [-14.4, -14.3], [-13.6, -13.6]]) { cyl(woodM, 0.4, 0.95, x, Y, z, 12); for (const y of [0.15, 0.75]) cyl(ironM, 0.41, 0.05, x, Y + y, z, 12); } block(-15, -13.1, -14.8, -12.9, Y);
+    for (let k = 1; k < 4; k++) cyl(stoneM, 0.28, -Y + 3.6, -5 - k * 2.5 - 0.0, Y, -13.2, 10); // squat pillars hold the kitchen floor
+    for (let k = 1; k < 4; k++) block(-5 - k * 2.5 - 0.4, -5 - k * 2.5 + 0.4, -13.6, -12.8, Y);
+    // Floor grate (slats, not a solid black plate).
+    box(ironM, 1.64, 0.05, 0.08, -11.2, Y, -14.3 - 0.78); box(ironM, 1.64, 0.05, 0.08, -11.2, Y, -14.3 + 0.78);
+    box(ironM, 0.08, 0.05, 1.64, -11.2 - 0.78, Y, -14.3); box(ironM, 0.08, 0.05, 1.64, -11.2 + 0.78, Y, -14.3);
+    for (let k = 0; k < 6; k++) box(ironM, 0.05, 0.04, 1.5, -11.2 - 0.65 + k * 0.26, Y + 0.02, -14.3);
+    mobs.push({ id: id + '-cellar1', x: -9.2, z: -14.0, y: Y, face: 0 }, { id: id + '-cellar2', x: -6.6, z: -15.2, y: Y, face: -Math.PI / 2 }); }
+  // ---- Pale bedchamber: four-poster bed, wardrobe, rug, a lever behind the hangings ----
+  if (!az) { const Y = UP;
+    box(darkWoodM, 2.0, 0.5, 2.6, -13.4, Y, -15.4); box(cloth2M, 1.9, 0.18, 2.4, -13.4, Y + 0.5, -15.4); box(clothM, 1.9, 0.2, 0.7, -13.4, Y + 0.55, -16.3);
+    for (const [dx, dz] of [[-0.95, -1.25], [0.95, -1.25], [-0.95, 1.25], [0.95, 1.25]]) box(darkWoodM, 0.12, 2.5, 0.12, -13.4 + dx, Y, -15.4 + dz);
+    box(clothM, 2.0, 0.08, 2.6, -13.4, Y + 2.5, -15.4); for (const s2 of [-1, 1]) box(clothM, 0.04, 1.9, 2.5, -13.4 + s2 * 1.0, Y + 0.6, -15.4); block(-14.5, -12.3, -16.9, -14.0, Y);
+    box(darkWoodM, 1.4, 2.2, 0.6, -10.4, Y, -16.6); box(ironM, 0.05, 0.2, 0.05, -10.5, Y + 1.1, -16.28); box(ironM, 0.05, 0.2, 0.05, -10.3, Y + 1.1, -16.28); block(-11.2, -9.6, -17, -16.2, Y);
+    const rg = new THREE.PlaneGeometry(2.4, 1.6); rg.rotateX(-Math.PI / 2); put(rugM, rg, -12.6, Y + 0.02, -12.6);
+    const ring = new THREE.TorusGeometry(0.09, 0.02, 6, 12); put(ironM, ring, -14.93, Y + 1.3, -13.6, Math.PI / 2); inter.push({ id: 'pale-lever', kind: 'stash', x: -14.0, z: -13.6, y: Y, r: 1.3 }); }
   const ft = flameTex();
   // ---- chests ----
   const chestDefs = CHESTS[id]; const chestPos: Record<string, [number, number, number, number]> = {
-    [id + '-library']: [9.6, 0, 5.0, -Math.PI / 2], [id + '-chapel']: [-10.3, 0, 9.3, Math.PI], [id + '-solar']: [-1.9, UP, -16.3, 0], [id + '-secret']: az ? [-14.2, UP, -13.5, Math.PI / 2] : [-14.2, 0, 0.8, Math.PI / 2] };
+    [id + '-library']: [9.6, 0, 5.0, -Math.PI / 2], [id + '-chapel']: [-10.3, 0, 9.3, Math.PI], [id + '-solar']: [-1.9, UP, -16.3, 0], [id + '-secret']: az ? [-14.2, UP, -13.5, Math.PI / 2] : [-14.2, 0, 0.8, Math.PI / 2], [id + '-cellar']: [-6.3, CELLAR_Y, -17.0, 0] };
   const lidM = mat('#6b4a2c', 0.7), bandM = mat('#8c7a50', 0.45, 0.8);
   const chests = chestDefs.map((c) => {
     const [x, y, z, ry] = chestPos[c.id]; const cg = new THREE.Group(); cg.position.set(x, y, z); cg.rotation.y = ry; g.add(cg);
@@ -253,10 +320,10 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   };
   const T: [number, number, number, number, number, boolean, boolean][] = [ // x,y,z,nx,nz, light(High), light(Lite)
     [-2.2, 2.6, 9.85, 0, -1, true, true], [2.2, 2.6, 9.85, 0, -1, false, false],
-    [-8.85, 3.0, -0.2, 1, 0, true, true], [8.85, 3.0, -7.5, -1, 0, true, true], [-3.5, 3.0, 3.85, 0, -1, false, false], [3.5, 3.0, 3.85, 0, -1, false, false],
+    [-8.85, 3.0, -0.2, 1, 0, true, true], [8.85, 3.4, -7.2, -1, 0, true, true], [-3.5, 3.0, 3.85, 0, -1, false, false], [3.5, 3.0, 3.85, 0, -1, false, false],
     [10.85, 2.4, 8.6, -1, 0, true, true], [-10.85, 2.6, 5.2, 1, 0, true, true],
     [-1.2, UP + 2.3, -16.85, 0, 1, true, true], [8.85, UP + 2.4, -13.5, -1, 0, false, false], [2.15, UP + 8.6, -13.5, 1, 0, true, true],
-    [-0.5, UP + 2.4, -9.85, 0, 1, false, false], [-12, (az ? UP : 0) + 2.2, az ? -11.15 : 3.85, 0, -1, true, false],
+    [-0.5, UP + 2.4, -9.85, 0, 1, false, false], [-14.85, 2.4, -5.2, 1, 0, true, false], [14.85, 2.4, -7, -1, 0, true, true], [-5.15, CELLAR_Y + 2.4, -15.5, -1, 0, true, true], [-14.85, CELLAR_Y + 2.4, -13, 1, 0, false, false], [-12, (az ? UP : 0) + 2.2, az ? -11.15 : 3.85, 0, -1, true, false],
   ];
   for (const [x, y, z, nx, nz, hi, lo] of T) torchAt(x, y, z, nx, nz, high ? hi : lo);
   const hearthL = new THREE.PointLight('#ff7a32', az ? 0 : 0, 8, 1.8); hearthL.position.set(-7.6, 1.0, -3); g.add(hearthL);
@@ -327,8 +394,10 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
       const fit = (c: THREE.Vector3) => { let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; tv.lerpVectors(target, c, m); const [a, b, cc] = lx(tv); if (ok(a, b, cc)) lo = m; else hi = m; } return lo; };
       // Tight rooms: rather than shoving the camera into the hero's back, crane the boom up (look down from higher) until it fits.
       let best = fit(cam), bestC = cv.copy(cam); const L = cam.distanceTo(target);
-      if (best * L < 3.2) { const vx = cam.x - target.x, vy = cam.y - target.y, vz = cam.z - target.z, h = Math.hypot(vx, vz) || 1e-6, a0 = Math.atan2(vy, h);
-        const k = 0.9 * Math.min(1, (3.2 - best * L) / 2.4), a = Math.min(1.15, a0 + k); // continuous in the clamp depth → no camera pops
+      // M21b · tall rooms (great hall + its stair) crane earlier and higher so the stair never ends in a tight over-the-back view.
+      const tall = r.h > 6, TH = tall ? 4.8 : 3.2;
+      if (best * L < TH) { const vx = cam.x - target.x, vy = cam.y - target.y, vz = cam.z - target.z, h = Math.hypot(vx, vz) || 1e-6, a0 = Math.atan2(vy, h);
+        const k = (tall ? 1.1 : 0.9) * Math.min(1, (TH - best * L) / 2.4), a = Math.min(tall ? 1.3 : 1.15, a0 + k); // continuous in the clamp depth → no camera pops
         cv2.set(target.x + vx / h * L * Math.cos(a), target.y + L * Math.sin(a), target.z + vz / h * L * Math.cos(a)); best = fit(cv2); bestC = cv.copy(cv2); }
       cam.lerpVectors(target, bestC, Math.max(0.12, best));
     },

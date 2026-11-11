@@ -29,7 +29,7 @@ import { cutTerrain, cutGrass, STAIR, STAIR_DIR, CAVE_LINES, CAVE_XP, BRAZIERS, 
 import { ECHO, ECHO_RANGE, ECHO_XP, ECHO_SILENT, echoMemoryLines, MARR_MARKS, CHART_R, CHART_DONE, makeEchoGrove } from './echo';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { dressEnna } from './enna';
-import { makeCastle, CHESTS, LORE, LECTERN_LORE, KEEP_NAME, VIEW_XP, PLATE, type Castle, type KeepId } from './castle';
+import { makeCastle, CHESTS, LORE, LECTERN_LORE, KEEP_NAME, VIEW_XP, PLATE, STASH, type Castle, type KeepId } from './castle';
 import { makeSentinel, MOB_HP, MOB_XP, type Mob } from './mobs';
 import { Combat, WEAPONS, WEAPON_ORDER, isWeapon, makeHolder, makePickup, ST_MAX, DODGE_T, DODGE_SPEED, type WeaponId, type Strike, type Pickup } from './combat';
 import { clueLines } from './clues';
@@ -808,6 +808,7 @@ async function main() {
       else if (it.kind === 'hatch') r = { label: 'Climb to the lookout ↑', act: () => { void exitCastle('top'); } };
       else if (it.kind === 'chest') { if (!sList('chests').includes(it.id)) r = { label: 'Open the chest', act: () => openKeepChest(it.id), x: wx, z: wz }; }
       else if (it.kind === 'lore') r = { label: id === 'pale' ? 'Read the open ledger' : 'Read the tide-warden’s log', act: () => readLore(LECTERN_LORE[id], true), x: wx, z: wz };
+      else if (it.kind === 'stash') { const st = STASH[it.id]; if (st && !(save.stashes ?? []).includes(it.id)) r = { label: st.label, act: () => { (save.stashes ??= []).push(it.id); save.xp += st.xp; persist(); audio.chime(); toast(st.note, 4.5); hudT = 0; }, x: wx, z: wz }; }
       else if (it.kind === 'secret' && !c.secretOpen) r = { label: id === 'pale' ? 'Hearth · a soot-black stone' : 'Tapestry · a silver-tasselled cord', act: () => openKeepSecret(), x: wx, z: wz };
       if (r) { best = r; bd = d; }
     }
@@ -1897,7 +1898,13 @@ async function main() {
           await enterCastle(v === 'azure' ? 'azure' : 'pale', 'door', true); const c = castle!, O = c.O;
           const at = (lx: number, lz: number, ly: number, face: number, yo: number, pitch: number, dist: number) => { state.px = O.x + lx; state.pz = O.z + lz; c.place(state.px, state.pz, ly); state.facing = face; state.yaw = face + Math.PI + yo; state.pitch = pitch; state.dist = dist; snapCam = true; };
           if (v === 'shelf' || v === 'shelfopen') for (const m of mobs) m.kill();
-          if (v === 'stairs') { for (const m of mobs) m.kill(); at(7.7, 0.2, 0, Math.PI, 0.9, 0.22, 5.0); }
+          if (v === 'cellar' || v === 'kitchen' || v === 'armory' || v === 'bed' || v === 'cells') for (const m of mobs) m.kill();
+          if (v === 'cellar') at(-8.6, -14.2, -4, -Math.PI / 2 + 0.35, 0.4, 0.12, 4.6);
+          if (v === 'cells') at(-8.7, -13.8, -4, Math.PI, 0.08, 0.14, 4.6);
+          if (v === 'kitchen') at(-11.4, -4.9, 0, -Math.PI / 2 - 0.55, 0.3, 0.08, 3.6);
+          if (v === 'armory') at(10.5, -8.5, 0, Math.PI / 2 - 0.4, 0.3, 0.15, 4.5);
+          if (v === 'bed') at(-10.2, -12.0, UPF, -Math.PI / 2 - 0.5, 0.3, 0.15, 4.2);
+          if (v === 'stairs') { for (const m of mobs) m.kill(); at(7.7, -2.4, 2.2, Math.PI, 0.18, 0.28, 5.6); }
           if (v === 'door') { for (const m of mobs) m.kill(); at(-2.4, 7.0, 0, -Math.PI / 2, 0.15, 0.08, 4.4); }
           if (v === 'shelf') at(-6.4, 1.0, 0, -Math.PI / 2, 0.7, 0.12, 2.6);
           if (v === 'shelfopen') { c.openSecret(true); at(-6.4, 1.0, 0, -Math.PI / 2, 0.7, 0.12, 2.6); }
@@ -1948,6 +1955,7 @@ async function main() {
     setLegacyMotion(on: boolean) { legacyMotion = on; stickF.x = stickF.y = 0; acc = 0; },
     recStart() { rec = [];}, recStop() { const r = rec; rec = null; return r; },
     /** Deterministic stepping: run update() with a given dt sequence while holding the stick at (sx, sy); returns recorder rows. */
+    killCastleMobs() { for (const m of mobs) m.kill(); },
     /** M21a QA · steer the touch stick toward a castle-local point frame by frame (real joystick speed), like a player would. */
     walkTo(lx: number, lz: number, frames = 240, m = 1) { if (!castle) return null; const id = stick.id; stick.id = 999; let t = clock.elapsedTime, n = 0;
       for (; n < frames; n++) { const dx = castle.O.x + lx - state.px, dz = castle.O.z + lz - state.pz, L = Math.hypot(dx, dz); if (L < 0.3) break; const ux = dx / L, uz = dz / L, sn = Math.sin(state.yaw), cs = Math.cos(state.yaw); stick.x = (ux * cs - uz * sn) * m; stick.y = (ux * sn + uz * cs) * m; t += 1 / 30; update(1 / 30, t); }

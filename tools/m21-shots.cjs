@@ -6,7 +6,11 @@ const P={
  'm21-night-road':{q:'q=lite&shot=spawn&tod=0.95',js:`__vale.warp(-6,-20);__vale.view(Math.PI+0.45,0.45,0.2,5.6)`},
  'm21-camp':{q:'q=lite&shot=spawn&tod=0.45',js:`__vale.warp(-122+5,148-17);__vale.view(Math.atan2(-5,17),Math.atan2(-5,17)+Math.PI,0.2,6.5)`},
  'm21-shelf':{q:'q=lite&shot=m20-shelf',w:6000},'m21-shelfopen':{q:'q=lite&shot=m20-shelfopen',w:6000},'m21-gate':{q:'q=lite&shot=m20-gate',w:6000},'m21-hall':{q:'q=lite&shot=m20-hall',w:6000},
+ 'm21-cellar':{q:'q=lite&shot=m20-cellar',w:6000},'m21-cells':{q:'q=lite&shot=m20-cells',w:6000},'m21-kitchen':{q:'q=lite&shot=m20-kitchen',w:6000},'m21-armory':{q:'q=lite&shot=m20-armory',w:6000},'m21-bed':{q:'q=lite&shot=m20-bed',w:6000},
  'm21-stairs':{q:'q=lite&shot=m20-stairs',w:6000},'m21-door':{q:'q=lite&shot=m20-door',w:6000},'m21-keeper':{q:'q=lite&shot=keeper',w:8000},
+
+ 'm21b-kitchen':{q:'q=lite&shot=m20-kitchen',w:6000},'m21b-armory':{q:'q=lite&shot=m20-armory',w:6000},'m21b-cellar':{q:'q=lite&shot=m20-cellar',w:6000},
+ 'm21b-cells':{q:'q=lite&shot=m20-cells',w:6000},'m21b-bedchamber':{q:'q=lite&shot=m20-bed',w:6000},'m21b-stairs':{q:'q=lite&shot=m20-stairs',w:6000},
 };
 (async()=>{const b=await pc.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:600000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
  for(const name of process.argv.slice(2)){const pr=P[name];const p=await b.newPage();const logs=[];p.on('pageerror',e=>logs.push('PE '+e.message));p.on('console',m=>{if(m.type()==='error')logs.push('CE '+m.text().slice(0,200));});

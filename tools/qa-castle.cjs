@@ -72,13 +72,13 @@ tries=0;for(;tries<40;tries++){k=await K();const m=k.mobs.find(x=>x.id==='pale-h
 k=await K();ok('hall sentinel beaten',!k.mobs.find(x=>x.id==='pale-hall').alive,{tries});
 // 14 · Journal shows keeps + lore
 await p.keyboard.press('KeyJ');await sleep(500);const jt=await p.evaluate(()=>window.__vale.sheets().journalText);await p.keyboard.press('Escape');await sleep(300);
-ok('Journal: keeps + lore pages',/Pale Keep — chests 3\/4 · secret room found · lookout climbed/i.test(jt)&&/Lore pages · 2\//i.test(jt)&&/Steward/i.test(jt),{j:(jt.match(/keeps[\s\S]{0,240}/i)||[jt.slice(0,300)])[0]});
+ok('Journal: keeps + lore pages',/Pale Keep — chests 3\/5 · secret room found · lookout climbed/i.test(jt)&&/Lore pages · 2\//i.test(jt)&&/Steward/i.test(jt),{j:(jt.match(/keeps[\s\S]{0,240}/i)||[jt.slice(0,300)])[0]});
 // 15 · leave by the door
 await at(0,8.8,0);k=await K();ok('exit offered',/Leave Pale Keep/.test(k.near||''),{near:k.near});await act();await settle('!window.__vale.castle().inCastle&&!window.__vale.castle().fading');
 ci=await p.evaluate(()=>window.__vale.camInfo());ok('back outside by the keep door',Math.hypot(ci.st.px-door.x,ci.st.pz-door.z)<3&&!(await K()).perch,{d:Math.hypot(ci.st.px-door.x,ci.st.pz-door.z)});
 // 16 · persistence
 await p.reload({waitUntil:'load'});await ready();await sleep(1200);await p.evaluate(()=>window.__vale.enterCastle('pale'));k=await K();
-ok('reload: secret open, foes stay down, chests stay open',k.secret===true&&k.mobs.every(m=>!m.alive)&&k.save.chests.length===3,{k:k.save});
+ok('reload: secret open, foes stay down, chests stay open',k.secret===true&&k.mobs.filter(m=>!/cellar/.test(m.id)).every(m=>!m.alive)&&k.save.chests.length===3,{k:k.save});
 c=await C();ok('reload: longsword kept',c.owned.includes('knight'),{owned:c.owned});
 // 17 · Azure Keep: tapestry secret → halberd
 await p.evaluate(()=>window.__vale.enterCastle('azure'));k=await K();ok('Azure Keep interior',k.id==='azure'&&k.room==='Entry hall',{id:k.id,room:k.room});
@@ -87,9 +87,15 @@ await at(-8.2,-12.2,4.5);await walk(-1,0,40);k=await K();ok('into the azure hidd
 await at(-13.25,-13.5,4.5,-Math.PI/2);await act();await settle(`window.__vale.combat().owned.includes('halberd')`,30000).catch(()=>{});c=await C();ok('secret chest → Azure Halberd',c.owned.includes('halberd'),{owned:c.owned});
 // 18 · M21a: walk through every doorway into every room in both keeps, steering the touch stick like a player (full deflection, diagonal approaches).
 const W=(x,z,f=360,m=1)=>p.evaluate((x,z,f,m)=>window.__vale.walkTo(x,z,f,m),x,z,f,m);
-const ROUTE=[['Library',0,[[2.5,8.6],[7.5,6.0]]],['Entry hall',0,[[1.0,7.6]]],['Chapel',0,[[-7.5,8.2]]],['Entry hall',0,[[-0.5,6.4]]],['Great hall',0,[[0,0]]],['Great hall',4.5,[[7.7,2.2],[7.7,-7.4]]],['Tower',4.5,[[5.2,-8.4],[5.2,-13]]],['Great hall',4.5,[[5.2,-8.4]]],['Solar',4.5,[[-5,-8.4],[-5,-13.5]]],['Great hall',4.5,[[-5,-8.4]]]];
-for(const kid of ['azure','pale']){await p.evaluate((kid)=>window.__vale.enterCastle(kid),kid);await settle(`window.__vale.castle().id==='${kid}'&&!window.__vale.castle().fading`,30000).catch(()=>{});await sleep(300);await at(0,8.6,0,Math.PI);const res=[];let allOk=true;
+const ROUTE0=[['Library',0,[[2.5,8.6],[7.5,6.0]]],['Entry hall',0,[[1.0,7.6]]],['Chapel',0,[[-7.5,8.2]]],['Entry hall',0,[[-0.5,6.4]]],['Great hall',0,[[0,0]]],['Great hall',4.5,[[7.7,2.2],[7.7,-7.4]]],['Tower',4.5,[[5.2,-8.4],[5.2,-13]]],['Great hall',4.5,[[5.2,-8.4]]],['Solar',4.5,[[-5,-8.4],[-5,-13.5]]],['Great hall',4.5,[[-5,-8.4]]]];
+const DOWN=[['Great hall',4.5,[[5.2,-8.4],[7.7,-7.4]]],['Great hall',0,[[7.7,2.2],[4.2,0],[4.2,-9.3],[8.0,-9.2]]],['Armoury',0,[[12,-8.0]]],['Great hall',0,[[8.0,-9.2]]],['Kitchen',0,[[-8.0,-9.3],[-12,-8.2]]],
+  ['Cellar',0,[[-13,-8.6],[-13,-11.2]]],['Cellar',-4,[[-9.4,-11.2],[-5.9,-11.2],[-6.4,-14.4]]],['Cellar',0,[[-5.9,-11.2],[-12.6,-11.2]]],['Kitchen',0,[[-13,-8.2]]]];
+const BED=[['Bedchamber',4.5,[[-8.0,-12.4],[-12,-13]]],['Solar',4.5,[[-6.0,-12.0]]]];
+for(const kid of ['azure','pale']){const ROUTE=[...ROUTE0.slice(0,9),...(kid==='pale'?BED:[]),...ROUTE0.slice(9),...DOWN];await p.evaluate((kid)=>window.__vale.enterCastle(kid),kid);await settle(`window.__vale.castle().id==='${kid}'&&!window.__vale.castle().fading`,30000).catch(()=>{});await sleep(300);await p.evaluate(()=>window.__vale.killCastleMobs());await at(0,8.6,0,Math.PI);const res=[];let allOk=true;
   for(const [room,yy,wps] of ROUTE){let r;for(const [x,z] of wps)r=await W(x,z);const good=r&&r.room===room&&Math.abs(r.y-yy)<0.3;if(!good)allOk=false;res.push({want:room,got:r&&r.room,y:r&&r.y,at:r&&[r.lx,r.lz]});}
   ok(`${kid}: walk through every doorway into every room (stick)`,allOk,res.filter(x=>x.want!==x.got||true).map(x=>`${x.want}->${x.got}@${x.y}`).join(' | '));}
+// 19 · M21b: loose stone (once), cellar chest → lore page
+{await at(14.0,-5.4,0,Math.PI/2);let k1=await K();const x0=(await Q()).save.xp;ok('armoury loose stone offered',/loose stone/i.test(k1.near||''),{near:k1.near});await act();await sleep(200);const x1=(await Q()).save.xp;await act();await sleep(200);const x2=(await Q()).save.xp;ok('loose stone pays once',x1===x0+15&&x2===x1,{x0,x1,x2});
+ await at(-6.3,-16.0,-4,Math.PI);await act();await settle(`(window.__vale.quest().save.lore||[]).includes('pale-cellar')`,8000).catch(()=>{});const q=await Q();ok('cellar chest opens with a lore page',q.save.chests.includes('pale-cellar')&&(q.save.lore||[]).includes('pale-cellar'),{chests:q.save.chests,lore:q.save.lore});}
 ok('no page errors',errs.length===0,errs.slice(0,5));
 console.log(fails?`QA-CASTLE FAIL ${fails}`:'QA-CASTLE PASS');await b.close();process.exit(fails?1:0);})().catch(e=>{console.log('QA-CASTLE ERROR',e.message);process.exit(2);});

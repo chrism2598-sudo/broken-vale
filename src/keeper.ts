@@ -206,7 +206,7 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
   const go = (s: KeeperState, t: number) => { f.state = s; f.t = t; };
   const onStone = (lx: number, lz: number) => STONES.some((s) => Math.hypot(lx - s.x, lz - s.z) < STONE_R + 0.15) || Math.hypot(lx - LEDGE.x, lz - LEDGE.z) < LEDGE.r;
   const local = (wx: number, wz: number) => [wx - KEEP_O.x, wz - KEEP_O.z] as const;
-  const exV = new THREE.Vector3(); let camFr = 1;
+  const exV = new THREE.Vector3(), upV = new THREE.Vector3(); let camFr = 1, camUp = 0;
   const api = {
     rig: { root, segs, head, chest }, scene, entry: L(LEDGE.x - 0.4, 0), exit: L(LEDGE.x + 1.0, 0), center: L(0, 0), stones: STONES.map((s) => L(s.x, s.z)), melee: MELEE,
     set hold(v: boolean) { f.hold = v; }, get state() { return f.state; }, get hp() { return f.hp; }, get phase() { return f.phase; }, get revealed() { return f.revealed > 0; }, get level() { return lev; }, get active() { return f.active; }, get zone() { return f.state === 'windup' ? L(f.zx, f.zz) : null; },
@@ -222,6 +222,9 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
     },
     clampCam(target: THREE.Vector3, cam: THREE.Vector3) {
       const inside = (v: THREE.Vector3) => { const x = v.x - KEEP_O.x, z = v.z - KEEP_O.z; if (v.y < Math.max(FLOOR, lev) + 0.45) return false; return (x * x + z * z) / (R + 1.8) ** 2 + ((v.y + 1.4) / (DOME_H - 1.5)) ** 2 < 1; };
+      // M21b · near the arena wall, swing the boom up and over (a crane shot looking down) before shortening it, so the view never ends low and close.
+      { let want = 0; if (!inside(cam)) { for (const u of [0.25, 0.45, 0.65, 0.85, 1]) { upV.lerpVectors(target, cam, 1 - u * 0.45); upV.y += u * 5.5; if (inside(upV)) { want = u; break; } want = 1; } }
+        camUp = want > camUp ? Math.min(want, camUp + 0.025) : Math.max(want, camUp - 0.012); if (camUp > 0.001) { const u = camUp; cam.lerpVectors(target, cam, 1 - u * 0.45); cam.y += u * 5.5; } }
       let fr = 1; if (!inside(cam)) { let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; exV.lerpVectors(target, cam, m); if (inside(exV)) lo = m; else hi = m; } fr = Math.max(0.15, lo * 0.95); }
       // M20b: pull in at once (never through rock), ease back out (no boom pumping along the wall), and never sit inside the coil.
       camFr = fr < camFr ? fr : Math.min(fr, camFr + 0.025); cam.lerpVectors(target, cam, camFr);

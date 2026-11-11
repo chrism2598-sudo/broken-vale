@@ -85,5 +85,11 @@ await p.evaluate(()=>window.__vale.enterCastle('azure'));k=await K();ok('Azure K
 await at(-8.0,-12.2,4.5,-Math.PI/2);k=await K();ok('tapestry clue offered',/tapestry/i.test(k.near||''),{near:k.near});await act();await sleep(200);
 await at(-8.2,-12.2,4.5);await walk(-1,0,40);k=await K();ok('into the azure hidden room',k.room==='Hidden room'&&Math.abs(k.y-4.5)<0.05,{room:k.room});
 await at(-13.25,-13.5,4.5,-Math.PI/2);await act();await settle(`window.__vale.combat().owned.includes('halberd')`,30000).catch(()=>{});c=await C();ok('secret chest → Azure Halberd',c.owned.includes('halberd'),{owned:c.owned});
+// 18 · M21a: walk through every doorway into every room in both keeps, steering the touch stick like a player (full deflection, diagonal approaches).
+const W=(x,z,f=360,m=1)=>p.evaluate((x,z,f,m)=>window.__vale.walkTo(x,z,f,m),x,z,f,m);
+const ROUTE=[['Library',0,[[2.5,8.6],[7.5,6.0]]],['Entry hall',0,[[1.0,7.6]]],['Chapel',0,[[-7.5,8.2]]],['Entry hall',0,[[-0.5,6.4]]],['Great hall',0,[[0,0]]],['Great hall',4.5,[[7.7,2.2],[7.7,-7.4]]],['Tower',4.5,[[5.2,-8.4],[5.2,-13]]],['Great hall',4.5,[[5.2,-8.4]]],['Solar',4.5,[[-5,-8.4],[-5,-13.5]]],['Great hall',4.5,[[-5,-8.4]]]];
+for(const kid of ['azure','pale']){await p.evaluate((kid)=>window.__vale.enterCastle(kid),kid);await settle(`window.__vale.castle().id==='${kid}'&&!window.__vale.castle().fading`,30000).catch(()=>{});await sleep(300);await at(0,8.6,0,Math.PI);const res=[];let allOk=true;
+  for(const [room,yy,wps] of ROUTE){let r;for(const [x,z] of wps)r=await W(x,z);const good=r&&r.room===room&&Math.abs(r.y-yy)<0.3;if(!good)allOk=false;res.push({want:room,got:r&&r.room,y:r&&r.y,at:r&&[r.lx,r.lz]});}
+  ok(`${kid}: walk through every doorway into every room (stick)`,allOk,res.filter(x=>x.want!==x.got||true).map(x=>`${x.want}->${x.got}@${x.y}`).join(' | '));}
 ok('no page errors',errs.length===0,errs.slice(0,5));
 console.log(fails?`QA-CASTLE FAIL ${fails}`:'QA-CASTLE PASS');await b.close();process.exit(fails?1:0);})().catch(e=>{console.log('QA-CASTLE ERROR',e.message);process.exit(2);});

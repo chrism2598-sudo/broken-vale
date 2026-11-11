@@ -45,6 +45,7 @@ export const CHESTS: Record<KeepId, ChestDef[]> = {
 export const VIEW_XP = 15;
 export const LECTERN_LORE: Record<KeepId, string> = { pale: 'pale-ledger', azure: 'azure-log' };
 
+export const PLATE = { x: -6.0, z: -3.2, r: 0.5 };
 // ---------- the template layout (local metres; entry door at +z, north/back at −z; upper floor at y 4.5) ----------
 const UP = 4.5;
 function layout(id: KeepId) {
@@ -73,7 +74,7 @@ function canvasTex(w: number, h: number, draw: (x: CanvasRenderingContext2D) => 
   const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d')!); const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
-export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; sand: GroundTex; blocks: GroundTex }, env: THREE.Texture | null) {
+export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; sand: GroundTex; blocks: GroundTex; wood?: GroundTex }, env: THREE.Texture | null) {
   const O = CASTLE_O[id]; const az = id === 'azure';
   const scene = new THREE.Scene(); scene.background = new THREE.Color(az ? '#0b0f16' : '#0f0c0a');
   if (env) { scene.environment = env; scene.environmentIntensity = 0.3; }
@@ -83,8 +84,8 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   // Materials (merged per material below).
   const wallM = triplanar(t.brick, 2.6, az ? '#9aa4b0' : '#b8ab98', { sat: 0.4, gain: 1.35 });
   const floorM = triplanar(t.blocks, 2.4, az ? '#7f8894' : '#9a8f80', { sat: 0.5, gain: 1.2 });
-  const woodFloorM = mat('#6a4a30', 0.75); const ceilM = mat(az ? '#3a3f48' : '#3f342a', 0.9);
-  const beamM = mat('#4a3322', 0.8), woodM = mat('#7a5634', 0.7), darkWoodM = mat('#4b3424', 0.75), ironM = mat('#2e2a27', 0.55, 0.7), stoneM = mat(az ? '#8a929c' : '#a39886', 0.9);
+  const woodFloorM = t.wood ? triplanar(t.wood, 2.4, '#b08a62', { sat: 0.9, gain: 1.15 }) : mat('#6a4a30', 0.75); const ceilM = mat(az ? '#3a3f48' : '#3f342a', 0.9);
+  const beamM = mat('#4a3322', 0.8), woodM = t.wood ? triplanar(t.wood, 1.2, '#b08a62', { sat: 0.9, gain: 1.1 }) : mat('#7a5634', 0.7), darkWoodM = t.wood ? triplanar(t.wood, 1.2, '#6a4a34', { sat: 0.8, gain: 0.9 }) : mat('#4b3424', 0.75), ironM = mat('#2e2a27', 0.55, 0.7), stoneM = triplanar(t.sand, 2.0, az ? '#a4abb4' : '#b8b0a2', { sat: 0.25, gain: 1.2 }); // M21a: trim/stairs/frames were flat untextured grey
   const clothM = mat(az ? '#2e5a94' : '#8a2f2a', 0.95), cloth2M = mat(az ? '#c9b26a' : '#c9a24a', 0.9), rugM = mat(az ? '#24406a' : '#6d2a22', 1);
   const books = canvasTex(256, 128, (x) => { const cols = ['#6b2a22', '#2f4a6a', '#5a4a2a', '#3c5a34', '#7a6a4a', '#4a2a4a']; for (let r = 0; r < 4; r++) { let px = 0; while (px < 256) { const w = 6 + ((px * 7 + r * 13) % 11); x.fillStyle = cols[(px + r * 3) % cols.length]; x.fillRect(px, r * 32 + 4 + ((px * 3) % 5), w - 1, 28 - ((px * 3) % 5)); px += w; } x.fillStyle = '#3a281a'; x.fillRect(0, r * 32 + 30, 256, 2); } });
   const bookM = mat('#ffffff', 0.9, 0, { map: books });
@@ -118,14 +119,28 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   }
   // Door frames (jambs + lintel, 0.6 thick) and the walk-through strip.
   const secretSlab: { mesh: THREE.Mesh | null; open: number; want: number } = { mesh: null, open: 0, want: 0 };
+  // M21a · the Pale secret door is a bookshelf (faces the hall, +x) that slides into the wall; a worn flagstone before it is a pressure plate.
+  const bookMs = ['#6b2a22', '#2d4a3a', '#3a3358', '#7a5a2a', '#4a3a2c'].map((c) => mat(c, 0.75));
+  function bookshelf(w: number, h: number): THREE.Group {
+    const sg = new THREE.Group(); const lists: THREE.BufferGeometry[][] = bookMs.map(() => []); const frame: THREE.BufferGeometry[] = []; let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    frame.push(new THREE.BoxGeometry(0.4, 0.1, w).translate(0.3, h / 2 - 0.05, 0), new THREE.BoxGeometry(0.4, h, 0.08).translate(0.3, 0, w / 2 - 0.04), new THREE.BoxGeometry(0.4, h, 0.08).translate(0.3, 0, -w / 2 + 0.04));
+    for (let k = 0; k < 4; k++) { const sy = -h / 2 + 0.1 + k * (h - 0.2) / 4; frame.push(new THREE.BoxGeometry(0.4, 0.06, w).translate(0.3, sy, 0));
+      for (let zz = -w / 2 + 0.12; zz < w / 2 - 0.16;) { const bw = 0.06 + rnd() * 0.07, bh = 0.32 + rnd() * 0.18; if (rnd() > 0.92) { zz += 0.12; continue; } lists[Math.floor(rnd() * bookMs.length)].push(new THREE.BoxGeometry(0.28, bh, bw).translate(0.32, sy + 0.03 + bh / 2, zz + bw / 2)); zz += bw + 0.012; } }
+    const fm = new THREE.Mesh(mergeGeometries(frame, false), woodM); sg.add(fm);
+    lists.forEach((l, i) => { if (l.length) sg.add(new THREE.Mesh(mergeGeometries(l, false), bookMs[i])); });
+    return sg;
+  }
+  let plate: THREE.Mesh | null = null;
+  if (id === 'pale') { plate = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.07, 0.95), mat('#5a554c', 0.95)); plate.position.set(PLATE.x, 0.035, PLATE.z); plate.receiveShadow = true; g.add(plate); }
   for (const d of doors) {
     const along = d.ax === 'x'; const T = 0.6;
     for (const s of [-1, 1]) { const off = s * (d.w / 2 + 0.14); if (along) box(stoneM, 0.28, d.h, T, d.x + off, d.y, d.z); else box(stoneM, T, d.h, 0.28, d.x, d.y, d.z + off); }
     if (along) box(stoneM, d.w + 0.56, 0.34, T, d.x, d.y + d.h, d.z); else box(stoneM, T, 0.34, d.w + 0.56, d.x, d.y + d.h, d.z);
     // reveal (underside + inner faces so the thickness reads)
     if (along) box(floorM, d.w, 0.04, T, d.x, d.y, d.z); else box(floorM, T, 0.04, d.w, d.x, d.y, d.z);
-    const hw = d.w / 2 - 0.3; regions.push(along ? { x0: d.x - hw, x1: d.x + hw, z0: d.z - 0.9, z1: d.z + 0.9, y: d.y, door: d.secret ? 'secret' : undefined } : { x0: d.x - 0.9, x1: d.x + 0.9, z0: d.z - hw, z1: d.z + hw, y: d.y, door: d.secret ? 'secret' : undefined });
-    if (d.secret) { const sl = new THREE.Mesh(new THREE.BoxGeometry(along ? d.w + 0.1 : 0.5, d.h, along ? 0.5 : d.w + 0.1), id === 'pale' ? wallM : clothM); sl.position.set(d.x, d.y + d.h / 2, d.z); g.add(sl); secretSlab.mesh = sl; }
+    const hw = d.w / 2 - 0.12; regions.push(along ? { x0: d.x - hw, x1: d.x + hw, z0: d.z - 0.9, z1: d.z + 0.9, y: d.y, door: d.secret ? 'secret' : undefined } : { x0: d.x - 0.9, x1: d.x + 0.9, z0: d.z - hw, z1: d.z + hw, y: d.y, door: d.secret ? 'secret' : undefined });
+    if (d.secret) { const sl = new THREE.Mesh(new THREE.BoxGeometry(along ? d.w + 0.1 : 0.5, d.h, along ? 0.5 : d.w + 0.1), id === 'pale' ? darkWoodM : clothM); sl.position.set(d.x, d.y + d.h / 2, d.z); g.add(sl); secretSlab.mesh = sl;
+      if (id === 'pale') sl.add(bookshelf(d.w + 0.1, d.h)); }
   }
 
   // ---- great hall: pillars, long table, hearth, banners, rugs ----
@@ -159,7 +174,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   // ---- entry hall ----
   box(darkWoodM, 2.6, 3.4, 0.16, 0, 0, 9.9); for (const s of [-1, 1]) box(ironM, 0.08, 3.2, 0.06, s * 0.6, 0.1, 9.8); box(ironM, 0.1, 0.1, 0.2, 0.25, 1.6, 9.75);
   inter.push({ id: 'exit', kind: 'exit', x: 0, z: 8.8, y: 0, r: 2.4 });
-  for (const s of [-1, 1]) { box(darkWoodM, 0.6, 1.0, 0.6, s * 3.0, 0, 8.9); cyl(woodM, 0.32, 0.9, s * 3.2, 0, 5.2, 10); block(s * 3 - 0.6, s * 3 + 0.6, 4.6, 9.6, 0); }
+  for (const s of [-1, 1]) { box(darkWoodM, 0.6, 1.0, 0.6, s * 3.0, 0, 8.9); cyl(woodM, 0.32, 0.9, s * 3.2, 0, 5.2, 10); block(s * 3 - 0.4, s * 3 + 0.4, 8.5, 9.3, 0); block(s * 3.2 - 0.42, s * 3.2 + 0.42, 4.78, 5.62, 0); } // M21a: was one 5 m slab that sealed the library/chapel doors
   { const r = new THREE.PlaneGeometry(2.4, 5); r.rotateX(-Math.PI / 2); put(rugM, r, 0, 0.02, 7); }
 
   // ---- library (east): shelves, lectern, chest ----
@@ -284,6 +299,11 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     constrain(ox: number, oz: number, nx: number, nz: number): [number, number] {
       const lx = nx - O.x, lz = nz - O.z, lox = ox - O.x, loz = oz - O.z;
       let p = tryAt(lx, lz); let rx = lx, rz = lz;
+      // M21a · doorway funnel: pushing into the wall beside a door eases you sideways into the opening (touch steering is never exact).
+      if (!p) for (const d of doors) { if (d.secret && !secretOpen) continue; if (Math.abs(d.y - y) > 0.3) continue; const isX = d.ax === 'x', perp = isX ? lz - d.z : lx - d.x, lat = isX ? lx - d.x : lz - d.z, mv = isX ? lz - loz : lx - lox, hw = d.w / 2 - 0.12;
+        if (Math.abs(perp) > 1.4 || Math.abs(lat) > hw + 0.9 || Math.abs(lat) <= hw || mv * perp > 0) continue; const step = Math.max(0.04, Math.hypot(lx - lox, lz - loz)); const nl = lat - Math.sign(lat) * Math.min(step, Math.abs(lat) - hw + 0.02);
+        const q = isX ? tryAt(d.x + nl, lz) : tryAt(lx, d.z + nl); if (q) { p = q; rx = isX ? d.x + nl : lx; rz = isX ? lz : d.z + nl; break; }
+        const q2 = isX ? tryAt(d.x + nl, loz) : tryAt(lox, d.z + nl); if (q2) { p = q2; rx = isX ? d.x + nl : lox; rz = isX ? loz : d.z + nl; break; } }
       if (!p) { p = tryAt(lx, loz); rx = lx; rz = loz; }
       if (!p) { p = tryAt(lox, lz); rx = lox; rz = lz; }
       if (!p) return [ox, oz];
@@ -316,7 +336,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     openChest(cid: string, instant = false) { const c = chests.find((k) => k.def.id === cid); if (c) { c.want = 1; if (instant) c.open = 1; } },
     update(dt: number, time: number) {
       for (const k of flames) { const f = 0.82 + 0.18 * Math.sin(time * 15 + k.ph) * Math.sin(time * 6.1 + k.ph * 2); k.f.scale.set(0.36 * f, 0.68 * (0.92 + 0.16 * f), 1); if (k.l) k.l.intensity = 11 * f; }
-      if (secretSlab.mesh) { secretSlab.open += (secretSlab.want - secretSlab.open) * Math.min(1, dt * 1.6); const m = secretSlab.mesh; m.visible = secretSlab.open < 0.98; if (id === 'pale') m.position.y = (doors.find((d) => d.secret)!.y) + 1.2 - secretSlab.open * 2.5; else m.scale.y = 1 - secretSlab.open * 0.92, m.position.y = UP + 2.4 * (1 - (1 - secretSlab.open * 0.92) / 2); }
+      if (secretSlab.mesh) { secretSlab.open += (secretSlab.want - secretSlab.open) * Math.min(1, dt * 1.6); const m = secretSlab.mesh; m.visible = secretSlab.open < 0.98; if (id === 'pale') { m.visible = true; m.position.z = doors.find((d) => d.secret)!.z + secretSlab.open * 1.75; if (plate) plate.position.y = 0.035 - secretSlab.open * 0.03; } else m.scale.y = 1 - secretSlab.open * 0.92, m.position.y = UP + 2.4 * (1 - (1 - secretSlab.open * 0.92) / 2); }
       for (const c of chests) { c.open += (c.want - c.open) * Math.min(1, dt * 4); c.hinge.rotation.x = -c.open * 1.9; c.glow.visible = c.open > 0.05 && c.open < 0.97; c.glow.material.opacity = 1 - c.open; }
       shafts.children.forEach((s, i) => { ((s as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = (high ? 0.32 : 0.26) * (0.85 + 0.15 * Math.sin(time * 0.4 + i)); });
     },

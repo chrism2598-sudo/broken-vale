@@ -29,7 +29,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
   const uniforms = { uTime: { value: 0 }, uPlayer: { value: new THREE.Vector3() } };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float bend; uniform float uTime; uniform vec3 uPlayer; varying float vBend;')
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float bend; uniform float uTime; uniform vec3 uPlayer; varying float vBend; varying vec2 vGW;')
       .replace('#include <begin_vertex>', `vec3 transformed=vec3(position);
   vec4 iw=modelMatrix*instanceMatrix*vec4(0.,0.,0.,1.);
   float gust=sin(iw.x*.11+uTime*1.3)*.5+sin(iw.z*.07+iw.x*.03+uTime*.71)*.5;
@@ -38,11 +38,13 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
   float b2=bend*bend; transformed.x+=sway*b2; transformed.z+=sway*.45*b2;
   transformed.xz+=normalize(away+1e-4)*push*b2; transformed.y-=push*b2*.4;
   float cd=length(cameraPosition.xz-iw.xz); transformed*=(1.-smoothstep(${(radius * 0.72).toFixed(1)},${radius.toFixed(1)},cd))${inner > 0 ? `*smoothstep(${(inner - 4).toFixed(1)},${inner.toFixed(1)},cd)` : ''};
-  vBend=bend;`)
+  vBend=bend; vGW=iw.xz;`)
       .replace('#include <beginnormal_vertex>', 'vec3 objectNormal=vec3(0.,1.,0.);');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vBend;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vBend; varying vec2 vGW;')
       .replace('#include <color_fragment>', `#include <color_fragment>
   { vec3 blade=diffuseColor.rgb*mix(.82,1.06,vBend); float L=dot(blade,vec3(.3,.59,.11)); blade=mix(vec3(L),blade,.85);
+    float pn=sin(vGW.x*.11+sin(vGW.y*.07)*2.1)*sin(vGW.y*.13+vGW.x*.04)+.4*sin(vGW.x*.37+vGW.y*.29); // M21a: patchy meadow — dry gold drifts, lush hollows
+    blade=mix(blade,blade*vec3(1.42,1.14,.55),smoothstep(.1,.8,pn)*.75); blade=mix(blade,blade*vec3(.74,1.0,.8),smoothstep(-.15,-.8,pn)*.6);
     vec3 ground=vec3(.36,.32,.18); diffuseColor.rgb=mix(ground,blade,smoothstep(.0,.28,vBend)); }`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance+=diffuseColor.rgb*vec3(.05,.08,.02)*vBend*vBend;');
   };

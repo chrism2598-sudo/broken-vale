@@ -90,6 +90,7 @@ function tower(b: Builder, st: THREE.Material, roof: THREE.Material, x: number, 
 export const KEEP_LOOK_PILLAR = 3.8, KEEP_W = 15, KEEP_D = 14;
 /** M20a · shared keep frame for main.ts: gate direction, central keep centre (world), base height. */
 export function keepFrame(l: Landmark) { const face = Math.atan2(SPAWN.x - l.x, SPAWN.z - l.z); return { face, kx: l.x - Math.sin(face) * 3, kz: l.z - Math.cos(face) * 3, y0: l.pad - 0.3, roofY: l.pad - 0.3 + 18, lookY: l.pad - 0.3 + 31.2 }; }
+const WIN_GLASS = new THREE.MeshStandardMaterial({ color: '#1c2430', roughness: 0.25, metalness: 0.4, emissive: '#3a2a12', emissiveIntensity: 0.35 });
 function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, pennant: string, solids: Solid[]): THREE.Group {
   const b = new Builder(); const roofDoors: THREE.Mesh[] = [];
   const st = triplanar(t.brick, 3.2, wallTint, { sat: 0.35, gain: 1.5 }); const roof = triplanar(t.roof, 2.2, roofTint, { rough: 0.85 });
@@ -120,6 +121,15 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
     for (let k = 0; k < 8; k++) for (const sgn of [-1, 1]) { const u = ((k + 0.5) / 8 - 0.5) * KEEP_W; const [x, z] = P(u, sgn * (KEEP_D / 2 - 0.4)); b.add(st, box(1.0, 1.2, 0.8), x, y0 + 18, z, face); }
     for (let k = 0; k < 7; k++) for (const sgn of [-1, 1]) { const v = ((k + 0.5) / 7 - 0.5) * KEEP_D; if (Math.abs(v) < 2.4) continue; const [x, z] = P(sgn * (KEEP_W / 2 - 0.4), v); b.add(st, box(0.8, 1.2, 1.0), x, y0 + 18, z, face); }
     for (const [u, v] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { const [x, z] = P(u * (KEEP_W / 2 - 1), v * (KEEP_D / 2 - 1)); solids.push({ x: l.x + x, z: l.z + z, r: 2.2 }); }
+    // M21a · architectural detail: string courses, stepped buttresses, tall arched windows (dark glass, stone sills and hoods).
+    for (const hy of [7.6, 13.4]) b.add(st, box(KEEP_W + 0.5, 0.32, KEEP_D + 0.5), kx, y0 + hy, kz, face);
+    for (const sgn of [-1, 1]) for (const v of [-KEEP_D * 0.33, 0, KEEP_D * 0.33]) { const [x, z] = P(sgn * (KEEP_W / 2 + 0.55), v); b.add(st, box(1.1, 9, 1.4), x, y0, z, face); const [x2, z2] = P(sgn * (KEEP_W / 2 + 0.3), v); b.add(st, box(0.6, 5, 1.1), x2, y0 + 9, z2, face); }
+    { const arch = new THREE.Shape(); arch.moveTo(-0.55, 0); arch.lineTo(0.55, 0); arch.lineTo(0.55, 1.9); arch.absarc(0, 1.9, 0.55, 0, Math.PI, false); arch.lineTo(-0.55, 0);
+      const glass = new THREE.ExtrudeGeometry(arch, { depth: 0.1, bevelEnabled: false, curveSegments: 8 }).translate(0, 0, -0.05);
+      const hood = new THREE.ExtrudeGeometry((() => { const h = new THREE.Shape(); h.absarc(0, 1.9, 0.78, 0, Math.PI, false); h.lineTo(-0.58, 1.9); h.absarc(0, 1.9, 0.58, Math.PI, 0, true); h.lineTo(0.78, 1.9); return h; })(), { depth: 0.28, bevelEnabled: false, curveSegments: 8 }).translate(0, 0, -0.14);
+      for (const sgn of [-1, 1]) for (const lvl of [8.4, 14.2]) for (let k = 0; k < 5; k++) { const u = ((k + 0.5) / 5 - 0.5) * (KEEP_W - 3); if (lvl < 9 && Math.abs(u) < 2) continue;
+        const [x, z] = P(u, sgn * (KEEP_D / 2 + 0.02)); const ry = face + (sgn < 0 ? Math.PI : 0);
+        b.add(WIN_GLASS, glass, x, y0 + lvl, z, ry); b.add(st, hood, x, y0 + lvl, z, ry); b.add(st, box(1.4, 0.18, 0.4), x, y0 + lvl - 0.18, z, ry); } }
     // the tower door out onto the roof
     const [tx, tz] = P(0, 4.66); const td = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.4), new THREE.MeshStandardMaterial({ color: '#6a4a2e', roughness: 0.8, emissive: '#2a1a0c', emissiveIntensity: 0.6 })); td.position.set(l.x + tx, y0 + 18 + 1.2, l.z + tz); td.rotation.y = face; roofDoors.push(td); }
   // M20a · the crown tower is an open lookout: parapet floor at y0+31.2, six pillars, the cone raised on top.

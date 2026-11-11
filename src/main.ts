@@ -29,7 +29,7 @@ import { cutTerrain, cutGrass, STAIR, STAIR_DIR, CAVE_LINES, CAVE_XP, BRAZIERS, 
 import { ECHO, ECHO_RANGE, ECHO_XP, ECHO_SILENT, echoMemoryLines, MARR_MARKS, CHART_R, CHART_DONE, makeEchoGrove } from './echo';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { dressEnna } from './enna';
-import { makeCastle, CHESTS, LORE, LECTERN_LORE, KEEP_NAME, VIEW_XP, type Castle, type KeepId } from './castle';
+import { makeCastle, CHESTS, LORE, LECTERN_LORE, KEEP_NAME, VIEW_XP, PLATE, type Castle, type KeepId } from './castle';
 import { makeSentinel, MOB_HP, MOB_XP, type Mob } from './mobs';
 import { Combat, WEAPONS, WEAPON_ORDER, isWeapon, makeHolder, makePickup, ST_MAX, DODGE_T, DODGE_SPEED, type WeaponId, type Strike, type Pickup } from './combat';
 import { clueLines } from './clues';
@@ -60,8 +60,8 @@ const app = document.getElementById('app')!;
 const renderer = new THREE.WebGLRenderer({ antialias: !HIGH, powerPreference: 'high-performance', preserveDrawingBuffer: params.has('shot') });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, HIGH ? 1.75 : 1.25));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.92;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; // M21a tried AgX: it lifted night shadows ~65% and flattened the day; ACES kept
+renderer.toneMappingExposure = 0.92; const AGX_K = 1.0; // AgX reads ~1/5 stop darker than ACES at the same exposure
 renderer.transmissionResolutionScale = 0.5; // Echo Grove crystal transmission pass at half res
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
@@ -81,7 +81,7 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(HIGH ? 2048 : 1024, HIGH ? 2048 : 1024);
 const SH = HIGH ? 34 : 24;
 Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH, near: 1, far: 220 });
-sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035;
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035; sun.shadow.radius = HIGH ? 1 : 2.2; // M21a: softer penumbra on the phone (PCF radius)
 scene.add(sun, sun.target);
 const hemi = new THREE.HemisphereLight('#cfe0ff', '#4b5a2e', 0.30);
 scene.add(hemi);
@@ -359,7 +359,7 @@ async function main() {
   const atkBtn = document.getElementById('b-atk')!; if (navigator.webdriver) document.body.classList.add('wd'); // QA/shots: no slide timing to wait on
   function hostileNear(): boolean {
     if (inBarrow) return !!nearestBarMob(12);
-    if (inCastle) { const m = nearestMob(); return !!m && Math.hypot(m.x - state.px, m.z - state.pz) < 12; }
+    if (inCastle) { const m = nearestMob(); if (!m || Math.hypot(m.x - state.px, m.z - state.pz) >= 12) return false; return m.state !== 'idle' || (!!castle && castle.roomAt(m.x, m.z, castle.y) === castle.roomAt(state.px, state.pz, castle.y)); } // M21a: a foe behind a wall no longer pops the combat cluster
     if (inKeep) return !!keep && keep.active && save.sea < 5;
     if (!vale()) return false;
     return !!nearestRoamer(12) || (!save.warden && wd.awake);
@@ -740,9 +740,11 @@ async function main() {
   let inCastle = false, castle: Castle | null = null, perch: { id: KeepId; kind: 'roof' | 'top'; y: number } | null = null, mobs: Mob[] = [], calmT = 0;
   const sList = (k: 'chests' | 'lore' | 'foes' | 'secrets' | 'views') => (save[k] ??= []);
   const whetMul = () => 1 + 0.15 * (save.whet ?? 0);
+  let woodSet: GroundTex | null = null;
   async function ensureCastle(id: KeepId) {
     const have = castles[id]; if (have) return have; caveLoading = true; const tx = await ruinTex();
-    const c = makeCastle(id, HIGH, { brick, sand: sandT, blocks: tx.blocks }, scene.environment); caveLoading = false;
+    woodSet ??= await loadSet('wood_planks').catch(() => null); // M21a: Poly Haven CC0 wood planks (1k) for floors and furniture
+    const c = makeCastle(id, HIGH, { brick, sand: sandT, blocks: tx.blocks, wood: woodSet ?? undefined }, scene.environment); caveLoading = false;
     c.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && !Array.isArray(m) && m.transparent && ((o as THREE.Mesh).isMesh || (o as THREE.Sprite).isSprite)) o.layers.set(1); });
     for (const ch of c.chests) if (sList('chests').includes(ch.def.id)) c.openChest(ch.def.id, true);
     if (sList('secrets').includes(id)) c.openSecret(true);
@@ -797,6 +799,7 @@ async function main() {
   }
   function castleInteract(): Inter | null {
     const c = castle!; let best: Inter | null = null, bd = 1e9;
+    if (c.id === 'pale' && !c.secretOpen && c.y < 0.6 && Math.hypot(state.px - (c.O.x + PLATE.x), state.pz - (c.O.z + PLATE.z)) < PLATE.r) openKeepSecret(true);
     for (const it of c.interact) {
       if (Math.abs(it.y - c.y) > 1.3) continue; const wx = c.O.x + it.x, wz = c.O.z + it.z, d = Math.hypot(state.px - wx, state.pz - wz); if (d > it.r || d >= bd) continue;
       let r: Inter | null = null; const id = c.id;
@@ -823,10 +826,10 @@ async function main() {
     if (def.lore) setTimeout(() => readLore(def.lore!, false), def.weapon ? 3200 : 1700);
     hudT = 0;
   }
-  function openKeepSecret() {
+  function openKeepSecret(plate = false) {
     const c = castle!; if (c.secretOpen) return; c.openSecret(); audio.chime(); shake = Math.max(shake, 0.2);
     if (!sList('secrets').includes(c.id)) { sList('secrets').push(c.id); save.xp += 10; persist(); }
-    toast(c.id === 'pale' ? 'The stone sinks under your palm · the wall beside the hearth grinds down (+10 XP · secret found)' : 'The tapestry rolls up on its cord · a door behind it (+10 XP · secret found)', 4.5); hudT = 0;
+    toast(c.id === 'pale' ? (plate ? 'A flagstone clicks underfoot · the bookshelf grinds aside (+10 XP · secret found)' : 'The stone sinks under your palm · the bookshelf beside the hearth grinds aside (+10 XP · secret found)') : 'The tapestry rolls up on its cord · a door behind it (+10 XP · secret found)', 4.5); hudT = 0;
   }
   const mobHome = new WeakMap<Mob, string>();
   const mobEngaged = () => inCastle && mobs.some((m) => m.alive && m.state !== 'idle');
@@ -1057,7 +1060,7 @@ async function main() {
       sun.color.copy(DC.sun0).lerp(DC.sun1, k); sun.intensity = 2.6 + 0.35 * k; sunDir.copy(SUN_DIR).lerp(DAWN_DIR, k).normalize();
       hemi.color.copy(DC.hs0).lerp(DC.hs1, k); hemi.groundColor.copy(DC.hg0).lerp(DC.hg1, k); hemi.intensity = 0.25 + 0.3 * k;
       const fog = scene.fog as THREE.FogExp2; fog.color.copy(DC.fog0).lerp(DC.fog1, k); fog.density = fogD0 * (1 + 0.18 * k);
-      renderer.toneMappingExposure = 0.92 + 0.1 * k; scene.environmentIntensity = 0.85 - 0.3 * k; scene.backgroundIntensity = 0.95 - 0.4 * k;
+      renderer.toneMappingExposure = AGX_K * (0.92 + 0.1 * k); scene.environmentIntensity = 0.85 - 0.3 * k; scene.backgroundIntensity = 0.95 - 0.4 * k;
       water.setDawn(k); lantern.intensity = 0;
     } else {
       const sky = skyAt(tod, SUN_DIR), n = sky.night; nightK = n; moonV.copy(sky.moonDir); skyV.copy(sky.sunDir);
@@ -1067,7 +1070,7 @@ async function main() {
       else { sun.intensity = (2.6 + 0.35 * kp) * sky.sunFade; sunDir.copy(sky.sunDir); if (dawnCine) sunDir.lerp(DAWN_DIR, k).normalize(); }
       hemi.color.copy(DC.hs0).lerp(DC.hs1, kp).lerp(NC.hs, n); hemi.groundColor.copy(DC.hg0).lerp(DC.hg1, kp).lerp(NC.hg, n); hemi.intensity = THREE.MathUtils.lerp(0.25 + 0.3 * kp, 0.95, n);
       const fog = scene.fog as THREE.FogExp2; fog.color.copy(DC.fog0).lerp(DC.fog1, kp).lerp(NC.fog, n); fog.density = fogD0 * (1 + 0.18 * kp) * (1 + 0.3 * n);
-      renderer.toneMappingExposure = 0.92 + 0.1 * kp + 0.16 * n; scene.environmentIntensity = (0.85 - 0.3 * kp) * (1 - 0.8 * n); scene.backgroundIntensity = (0.95 - 0.4 * kp) * (1 - 0.97 * n);
+      renderer.toneMappingExposure = AGX_K * (0.92 + 0.1 * kp + 0.16 * n); scene.environmentIntensity = (0.85 - 0.3 * kp) * (1 - 0.8 * n); scene.backgroundIntensity = (0.95 - 0.4 * kp) * (1 - 0.97 * n);
       water.setDawn(kp * (1 - n)); lantern.intensity = 5 * THREE.MathUtils.smoothstep(n, 0.3, 0.8); foliageUniforms.uGlow.value = 1 - 0.85 * n; foliageUniforms.uLit.value.setRGB(1, 1, 1).lerp(NC.hs, n * 0.25).multiplyScalar(1 - 0.8 * n);
       dawnSky.sun.copy(dawnCine || save.beacon && save.lamp < 2 && kp <= 0.3 ? DAWN_DIR : sky.sunDir);
     }
@@ -1893,6 +1896,11 @@ async function main() {
           if (v === 'gate') { const f = KF.pale, d = keepDoor('pale'); state.px = d.x + Math.sin(f.face) * 6 + Math.cos(f.face) * 1.5; state.pz = d.z + Math.cos(f.face) * 6 - Math.sin(f.face) * 1.5; state.facing = f.face + Math.PI; state.yaw = f.face + 0.2; state.pitch = 0.05; state.dist = 6.5; snapCam = true; camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30); hudT = 0; updateHud(0); return; }
           await enterCastle(v === 'azure' ? 'azure' : 'pale', 'door', true); const c = castle!, O = c.O;
           const at = (lx: number, lz: number, ly: number, face: number, yo: number, pitch: number, dist: number) => { state.px = O.x + lx; state.pz = O.z + lz; c.place(state.px, state.pz, ly); state.facing = face; state.yaw = face + Math.PI + yo; state.pitch = pitch; state.dist = dist; snapCam = true; };
+          if (v === 'shelf' || v === 'shelfopen') for (const m of mobs) m.kill();
+          if (v === 'stairs') { for (const m of mobs) m.kill(); at(7.7, 0.2, 0, Math.PI, 0.9, 0.22, 5.0); }
+          if (v === 'door') { for (const m of mobs) m.kill(); at(-2.4, 7.0, 0, -Math.PI / 2, 0.15, 0.08, 4.4); }
+          if (v === 'shelf') at(-6.4, 1.0, 0, -Math.PI / 2, 0.7, 0.12, 2.6);
+          if (v === 'shelfopen') { c.openSecret(true); at(-6.4, 1.0, 0, -Math.PI / 2, 0.7, 0.12, 2.6); }
           if (v === 'hall' || v === 'azure') at(0.4, 1.6, 0, Math.PI - 0.45, 0.05, 0.1, 5.2);
           if (v === 'library') at(5.4, 6.0, 0, Math.PI / 2 - 0.3, 0.1, 0.12, 4.2);
           if (v === 'fight') { for (const m of mobs) if (m.id.endsWith('-chapel')) m.kill(); at(-3.0, -3.6, 0, Math.PI, 0.6, 0.14, 4.4); }
@@ -1940,6 +1948,11 @@ async function main() {
     setLegacyMotion(on: boolean) { legacyMotion = on; stickF.x = stickF.y = 0; acc = 0; },
     recStart() { rec = [];}, recStop() { const r = rec; rec = null; return r; },
     /** Deterministic stepping: run update() with a given dt sequence while holding the stick at (sx, sy); returns recorder rows. */
+    /** M21a QA · steer the touch stick toward a castle-local point frame by frame (real joystick speed), like a player would. */
+    walkTo(lx: number, lz: number, frames = 240, m = 1) { if (!castle) return null; const id = stick.id; stick.id = 999; let t = clock.elapsedTime, n = 0;
+      for (; n < frames; n++) { const dx = castle.O.x + lx - state.px, dz = castle.O.z + lz - state.pz, L = Math.hypot(dx, dz); if (L < 0.3) break; const ux = dx / L, uz = dz / L, sn = Math.sin(state.yaw), cs = Math.cos(state.yaw); stick.x = (ux * cs - uz * sn) * m; stick.y = (ux * sn + uz * cs) * m; t += 1 / 30; update(1 / 30, t); }
+      stick.id = id; stick.x = stick.y = 0; for (let k = 0; k < 10; k++) { t += 1 / 30; update(1 / 30, t); }
+      return { n, lx: +(state.px - castle.O.x).toFixed(2), lz: +(state.pz - castle.O.z).toFixed(2), y: +castle.y.toFixed(2), room: castle.roomName(state.px, state.pz) }; },
     sim(dts: number[], sx: number, sy: number) { const id = stick.id; stick.id = 999; stick.x = sx; stick.y = sy; rec = []; let t = clock.elapsedTime; for (const d of dts) { t += d; const t0 = performance.now(); update(d, t); const t1 = performance.now(); recFrame(d); rec![rec!.length - 1].push(t1 - t0); } stick.id = id; stick.x = stick.y = 0; const r = rec; rec = null; return r; },
     warp(x: number, z: number) { state.px = x; state.pz = z; snapCam = true; lastGy = -1e9; airborne = false; },
     view(face: number, yaw: number, pitch: number, dist: number) { state.facing = face; state.yaw = yaw; state.pitch = pitch; state.dist = dist; snapCam = true; },

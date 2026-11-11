@@ -1,5 +1,25 @@
 import * as THREE from 'three';
 
+// ---------- M21a · height fog + aerial perspective (every fogged material, built-in or patched) ----------
+// Exp² fog whose density follows the air: the ray's average density between the camera height and the point
+// (exponential fall-off with height), so the meadow floor holds a low haze while ridgelines read clear but blue;
+// distance also desaturates before the fog colour lands (aerial perspective). Cheap: one varying + a few ALU ops.
+THREE.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying float vFogH;\n#endif';
+THREE.ShaderChunk.fog_vertex = '#ifdef USE_FOG\n\tvFogDepth = - mvPosition.z;\n\tvFogH = cameraPosition.y + ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).y;\n#endif';
+THREE.ShaderChunk.fog_pars_fragment = '#ifdef USE_FOG\n\tuniform vec3 fogColor;\n\tvarying float vFogDepth;\n\tvarying float vFogH;\n\t#ifdef FOG_EXP2\n\t\tuniform float fogDensity;\n\t#else\n\t\tuniform float fogNear;\n\t\tuniform float fogFar;\n\t#endif\n#endif';
+THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+	#ifdef FOG_EXP2
+		float fA = 0.045, fH0 = max( cameraPosition.y - 1.0, 0.0 ), fH1 = max( vFogH - 1.0, 0.0 ), fDh = fH1 - fH0;
+		float fAvg = abs( fDh ) < 0.05 ? exp( - fA * fH0 ) : ( exp( - fA * fH0 ) - exp( - fA * fH1 ) ) / ( fA * fDh );
+		float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth * ( 0.3 + 0.72 * fAvg ) );
+	#else
+		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+	#endif
+	float fL = dot( gl_FragColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, vec3( fL ), fogFactor * 0.35 );
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+#endif`;
+
 /**
  * Stylised fill + rim on a standard material: a hemisphere-tinted ambient fill (sky above, warm/violet bounce below)
  * and a Fresnel rim so silhouettes read against bright skies and inside shadows.

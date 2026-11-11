@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { STANDS, inStand } from './outposts';
 /** M20b-2: foes walk round walls, tents, rocks (anything standable that rises above a shin). */
+const gOf = (s: { x: number; z: number; g?: number }) => (s.g ??= heightAt(s.x, s.z));
+const blockerOn = (ax: number, az: number, bx: number, bz: number) => {
+  const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1e-6;
+  for (const s of STANDS) { const R = s.r ?? Math.max(s.hw ?? 0, s.hd ?? 0); if (R <= 0 || s.top < gOf(s) + 0.9) continue;
+    const t = ((s.x - ax) * dx + (s.z - az) * dz) / L2; if (t <= 0.02 || t >= 0.98) continue; const cx = ax + dx * t - s.x, cz = az + dz * t - s.z;
+    if (cx * cx + cz * cz < (R + 0.15) ** 2) return { x: s.x, z: s.z, R }; }
+  return null;
+};
 const blockedAt = (x: number, z: number) => { for (const s of STANDS) if (inStand(s, x, z, 0.25) && s.top > heightAt(x, z) + 0.3) return true; return false; };
 import { makeSentinel, type Mob, type MobLook } from './mobs';
 import { flameTex, makeFlame } from './cave';
@@ -83,7 +91,10 @@ export function makeRoam(scene: THREE.Scene, high: boolean) {
         g.wpT -= dt; if (g.wpT <= 0) { g.wpT = 6 + rnd() * 5; for (let k = 0; k < 6; k++) { const a = rnd() * Math.PI * 2, r = rnd() * g.def.r; const x = g.def.x + Math.cos(a) * r, z = g.def.z + Math.sin(a) * r; if (!inSafe(x, z, 2)) { g.wx = x; g.wz = z; break; } } }
         g.mobs.forEach((m, i) => { if (!m.alive && !m.group.visible) return; const a = i * 2.1; m.setHome(g.wx + Math.cos(a) * 1.8, g.wz + Math.sin(a) * 1.8);
           const sees = !inSafe(px, pz) && !playerDown;
-          if (m.tick(dt, px, pz, py, (x, z) => !inSafe(x, z) && Math.hypot(x - g.def.x, z - g.def.z) < g.def.r + 26 && heightAt(x, z) > WATER_Y - 0.4 && !blockedAt(x, z), playerDown, sees) === 'swing') hits.push(m); });
+          // M21a: a tall obstacle (bonfire, tent, boulder) between foe and player → walk round it first; no blows through it
+          const blk = m.alive && m.state !== 'idle' ? blockerOn(m.x, m.z, px, pz) : null; let tx = px, tz = pz;
+          if (blk) { const dx = px - m.x, dz = pz - m.z, l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l, sd = Math.sign((m.x - blk.x) * nx + (m.z - blk.z) * nz) || 1; tx = blk.x + nx * sd * (blk.R + 1.4); tz = blk.z + nz * sd * (blk.R + 1.4); }
+          if (m.tick(dt, tx, tz, py, (x, z) => !inSafe(x, z) && Math.hypot(x - g.def.x, z - g.def.z) < g.def.r + 26 && heightAt(x, z) > WATER_Y - 0.4 && !blockedAt(x, z), playerDown, sees) === 'swing' && !blk) hits.push(m); });
       }
       return hits;
     },

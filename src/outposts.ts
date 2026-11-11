@@ -5,7 +5,7 @@ import { flameTex, makeFlame } from './cave';
 
 /** M20b-2 · standable obstacles: rocks, low walls, ruined steps. Below their top they block like a wall; a hop that clears
  *  the top (or a step of ≤ STEP) lets the feet stand on them. Circles (r) or rotated boxes (hw/hd/ry); `top` is world Y. */
-export type Stand = { x: number; z: number; top: number; r?: number; hw?: number; hd?: number; ry?: number; tag?: string };
+export type Stand = { x: number; z: number; top: number; r?: number; hw?: number; hd?: number; ry?: number; tag?: string; g?: number };
 export const STANDS: Stand[] = [];
 export const STEP = 0.4;
 const local = (s: Stand, x: number, z: number) => { const dx = x - s.x, dz = z - s.z, c = Math.cos(s.ry ?? 0), sn = Math.sin(s.ry ?? 0); return [dx * c - dz * sn, dx * sn + dz * c]; };

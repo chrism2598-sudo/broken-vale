@@ -34,7 +34,7 @@ canvas{display:block;width:100%;height:100%}
 #begin{width:100%;background:linear-gradient(#e2c98a,#c9a95e);color:#1d1a12;border:1px solid #f0dca4;font-weight:600;letter-spacing:.04em}
 body.creating #joy,body.creating #pname,body.creating .hud p{display:none}
 @media (min-width:760px) and (min-aspect-ratio:1/1){#create{left:max(28px,env(safe-area-inset-left));right:auto;top:50%;bottom:auto;transform:translateY(-50%);width:360px;max-height:86%}}
-#fps{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));z-index:15;min-width:44px;min-height:32px;padding:6px 10px;border-radius:9px;background:rgba(10,30,34,.55);color:#e9d6a2;border:1px solid rgba(214,186,120,.55);font:12px ui-monospace,Menlo,monospace;opacity:.75}
+#fps{position:fixed;right:max(14px,env(safe-area-inset-right));top:calc(max(12px,env(safe-area-inset-top)) + 52px);z-index:15;min-width:44px;min-height:32px;padding:6px 10px;border-radius:9px;background:rgba(10,30,34,.55);color:#e9d6a2;border:1px solid rgba(214,186,120,.55);font:12px ui-monospace,Menlo,monospace;opacity:.75}
 #fps.on{opacity:1}
 #menubtn{min-height:40px}
 #menu{position:fixed;z-index:25;right:max(14px,env(safe-area-inset-right));top:calc(max(12px,env(safe-area-inset-top)) + 48px);display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:14px;background:rgba(10,30,34,.92);border:1px solid rgba(214,186,120,.8);min-width:200px;max-height:calc(100dvh - max(12px,env(safe-area-inset-top)) - 60px);overflow-y:auto;overscroll-behavior:contain}
@@ -130,6 +130,29 @@ body.talking #joy,body.talking #action,body.creating #quest,body.creating #menub
 @media (max-width:520px){#toast{top:27%;white-space:normal;max-width:86vw;text-align:center}#combat{left:max(14px,env(safe-area-inset-left));transform:none;top:calc(max(12px,env(safe-area-inset-top)) + 172px);font-size:16px}#quest{font-size:12px;max-width:58vw}#hint{display:none}.hud h1{font-size:17px}#quest{top:calc(max(12px,env(safe-area-inset-top)) + 30px);padding:5px 9px;max-width:64vw;font-size:11.5px;pointer-events:auto;background:rgba(10,30,34,.5)}#quest{display:flex;flex-direction:column}#quest #compass{order:-1}#quest #qline,#quest #wind,#quest #wdl{display:none}#quest.open #qline,#quest.open #wind,#quest.open #wdl{display:flex}#quest.open #qline{display:block;white-space:normal}#compass{margin-top:0;font-size:12px}#ctext{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:56vw}#qstats{font-size:11px;margin-top:1px}#qstats::after{content:' · ▾ more';opacity:.6}#quest.open #qstats::after{content:' · ▴ less'}#combat{top:calc(max(12px,env(safe-area-inset-top)) + 96px)}#dtxt{font-size:16px}}
 #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .5s ease;z-index:40}#fade.on{opacity:1}
 body.touch #hint{display:none}
+
+/* M19 · combat thumb cluster (bottom-right), stamina, weapon picker; the context Interact pill sits above it. */
+#cbt{position:fixed;z-index:15;right:max(14px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));width:236px;height:200px;pointer-events:none}
+#cbt .cb{position:absolute;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none;width:62px;height:62px;border-radius:50%;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;background:radial-gradient(circle at 40% 32%,rgba(52,82,86,.82),rgba(14,32,36,.82));border:2px solid rgba(232,212,160,.75);color:#f4ead2;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .06s}
+#cbt .cb svg{width:26px;height:26px;pointer-events:none}#cbt .cb small{font:600 9.5px Georgia,serif;letter-spacing:.06em;text-transform:uppercase;opacity:.9;margin-top:1px;pointer-events:none}
+#cbt .cb.down{transform:scale(.9);filter:brightness(1.35)}
+#b-atk{right:4px;bottom:6px;width:84px!important;height:84px!important;background:radial-gradient(circle at 40% 32%,#c97a4a,#7a3418)!important;border-color:#ffd9b0!important}#b-atk svg{width:36px!important;height:36px!important}
+#b-hvy{right:98px;bottom:2px;background:conic-gradient(rgba(255,200,90,.85) calc(var(--ch,0)*360deg),transparent 0),radial-gradient(circle at 40% 32%,rgba(110,70,30,.85),rgba(40,22,10,.85))!important}
+#b-blk{right:100px;bottom:76px}#b-dge{right:12px;bottom:100px}
+#b-wpn{right:166px;bottom:4px;width:54px!important;height:54px!important;border-radius:14px!important;background:rgba(10,30,34,.78)!important}#b-wpn svg{width:28px!important;height:28px!important}
+#b-wpn.new{animation:wnew .5s ease 4;border-color:#ffe08a!important}@keyframes wnew{50%{transform:scale(1.18);box-shadow:0 0 22px rgba(255,220,120,.9)}}
+#stam{position:absolute;right:8px;bottom:172px;width:150px;height:7px;border-radius:4px;background:rgba(10,20,22,.6);border:1px solid rgba(232,212,160,.5);overflow:hidden;transition:opacity .5s}
+#stam i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#7fc96a,#d6e87a);transition:width .08s linear}#stam.full{opacity:.35}#stam.low i{background:linear-gradient(90deg,#d0562e,#e8a04a)}
+body.blocking #b-blk{filter:brightness(1.4);border-color:#bff3ea!important}
+#action{bottom:calc(max(16px,env(safe-area-inset-bottom)) + 196px)!important;min-height:52px!important;min-width:0!important;border-radius:26px!important;font-size:15px!important;max-width:min(62vw,300px)!important}
+#wpick{position:fixed;z-index:30;right:max(14px,env(safe-area-inset-right));top:calc(max(12px,env(safe-area-inset-top)) + 92px);max-height:calc(100vh - 330px);overflow:auto;width:min(320px,90vw);padding:8px;border-radius:14px;background:rgba(14,26,28,.94);border:1px solid rgba(214,186,120,.7);color:#f4ead2;font:13px Georgia,serif}
+#wpick[hidden]{display:none}#wpick .wh{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#d5b977;margin:2px 4px 6px}
+#wpick button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;margin:3px 0;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(214,186,120,.25);color:inherit;font:inherit}
+#wpick button.on{border-color:#e8c46a;background:rgba(232,196,106,.16)}#wpick button:disabled{opacity:.45}
+#wpick svg{width:30px;height:30px;flex:none}#wpick span{display:flex;flex-direction:column}#wpick i{font-size:11.5px;opacity:.85}#wpick em{font-size:11px;font-style:normal;color:#bfe3d9}
+body:not(.guided) #carrow,body:not(.guided) #warrow,body:not(.guided) #wdarrow{display:none}
+body.talking #cbt,body.sheet #cbt,body.creating #cbt,body.titled #cbt{display:none}body.cine #cbt{opacity:0;pointer-events:none}body.talking #wpick,body.sheet #wpick,body.cine #wpick{display:none}
+@media (min-width:760px){#cbt{transform:scale(.9);transform-origin:right bottom}}
 </style>
 </head>
 <body>
@@ -163,10 +186,11 @@ body.touch #hint{display:none}
 <div class="srow"><span>Sound &amp; music</span><button id="ssound">Sound: On</button></div>
 <div class="srow"><span>Music volume</span><input id="svol" type="range" min="0" max="100" value="70" aria-label="Music volume"></div>
 <div class="srow"><span>Graphics</span><button id="squal">Quality</button></div>
-<div class="srow"><span>Motion</span><button id="smotion">Motion</button></div></div></div>
+<div class="srow"><span>Motion</span><button id="smotion">Motion</button></div>
+<div class="srow"><span>Guidance<br><small style="opacity:.7">Off: find your way by Journal clues and landmarks</small></span><button id="sguide">Guidance arrow: Off</button></div></div></div>
 <div id="credits" class="sheet" hidden role="dialog" aria-labelledby="crtitle"><div class="sheetin"><button class="close" id="crclose">✕ Close</button><h2 id="crtitle">Credits</h2><div id="crbody"></div></div></div>
 <div id="journal" class="sheet" hidden role="dialog" aria-labelledby="jtitle"><div class="sheetin"><button class="close" id="jclose">✕ Close</button><h2 id="jtitle"></h2><p id="jsub"></p><div id="jbody"></div><p class="foot">Progress is saved on this device · Reset clears it.</p></div></div>
-<div id="mapov" class="sheet" hidden role="dialog" aria-label="Map of the Broken Vale"><div class="sheetin map"><button class="close" id="mclose">✕ Close</button><canvas id="mapcv"></canvas><p class="legend"><b style="color:#1f6f78">➤</b> you · <b style="color:#c83c14">◎</b> objective · ◆ seal found · ◇ missing · <b style="color:#7a5ae0">✶</b> Hollow Beacon</p></div></div>
+<div id="mapov" class="sheet" hidden role="dialog" aria-label="Map of the Broken Vale"><div class="sheetin map"><button class="close" id="mclose">✕ Close</button><canvas id="mapcv"></canvas><p class="legend"><b style="color:#1f6f78">➤</b> you · <b style="color:#c83c14">◎</b> objective (Guidance on) · blank = unexplored · ◆ seal found · ◇ missing · <b style="color:#7a5ae0">✶</b> Hollow Beacon</p></div></div>
 <form id="create" hidden autocomplete="off">
   <h2>Who walks the Vale?</h2>
   <p class="sub" id="csub">Seventeen, Enna’s daughter. Choose a first name — Marr is your family’s.</p>
@@ -181,6 +205,8 @@ body.touch #hint{display:none}
 <div id="joy"><div id="knob"></div></div>
 <div id="dlg" hidden role="dialog" aria-live="polite"><div id="dspk"></div><div id="dtxt"></div><button id="dnext">Next ▸</button></div>
 <button id="action" hidden>Action</button>
+<div id="cbt"><button id="b-atk" class="cb big" aria-label="Attack (K)"><small>Attack</small></button><button id="b-hvy" class="cb" aria-label="Heavy, hold to charge (L)"><small>Heavy</small></button><button id="b-blk" class="cb" aria-label="Block or parry (Q)"><small>Block</small></button><button id="b-dge" class="cb" aria-label="Dodge roll (C)"><small>Roll</small></button><button id="b-wpn" class="cb wpn" aria-label="Weapon (X)"></button><div id="stam" class="full" aria-label="Stamina"><i id="stfill"></i></div></div>
+<div id="wpick" hidden></div>
 <button id="fps" aria-label="Toggle FPS readout">FPS</button>
 <div id="loading">Loading the Vale…</div>
 <script type="module" src="/src/main.ts"></script>

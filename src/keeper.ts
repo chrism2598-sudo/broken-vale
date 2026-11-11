@@ -228,9 +228,9 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
     /** Tide-Glass at low water: opens the chest-plates for T_REVEAL seconds. */
     reveal(): 'ok' | 'armoured' | 'already' { if (f.state !== 'low') return 'armoured'; if (f.revealed > 0) return 'already'; f.revealed = T_REVEAL; return 'ok'; },
     /** Ilka's strike. Returns what happened. */
-    strike(): 'armoured' | 'hit' | 'phase' | 'dead' {
+    strike(dmg = 1): 'armoured' | 'hit' | 'phase' | 'dead' {
       if (f.state !== 'low' || f.revealed <= 0) return 'armoured';
-      f.hp = Math.max(0, f.hp - 1); hitK = 1; f.hitsThisWindow++;
+      f.hp = Math.max(0, +(f.hp - dmg).toFixed(3)); if (f.hp < 0.05) f.hp = 0; hitK = 1; f.hitsThisWindow++;
       if (f.hp === 0) { go('dead', 0); f.revealed = 0; zone.visible = false; levWant = LEV.low + 0.3; return 'dead'; }
       const ph = f.hp <= 2 ? 3 : f.hp <= 4 ? 2 : 1; if (ph !== f.phase) { f.phase = ph; f.revealed = 0; go('intro', 1.6); levWant = LEV.mid; return 'phase'; }
       return 'hit';

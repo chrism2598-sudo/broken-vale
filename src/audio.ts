@@ -116,5 +116,12 @@ export class GameAudio {
   warn() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.tone(this.sfx, t, 220, 0.18, { type: 'square', vol: 0.025, a: 0.005, r: 0.1, lp: 900 }); this.tone(this.sfx, t + 0.2, 175, 0.22, { type: 'square', vol: 0.025, a: 0.005, r: 0.12, lp: 900 }); }
   chime() { if (!this.ok()) return; const t = this.ctx!.currentTime; [74, 78, 81, 86].forEach((m, i) => this.bell(this.sfx, t + i * 0.09, hz(m), 0.045, 0.5)); }
   ui() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.tone(this.sfx, t, 990, 0.04, { vol: 0.035, a: 0.002, r: 0.035 }); }
+  // M19 · combat voices
+  heavy() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.noiseHit(this.sfx, t, 0.36, { bp: 300, q: 1.6, sweep: 1800, vol: 0.16 }); this.kick(this.sfx, t + 0.18, 0.18); }
+  clank() { if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx; this.noiseHit(o, t, 0.08, { bp: 2400, q: 3, vol: 0.09 }); for (const [f, v] of [[310, 0.06], [847, 0.04]] as const) this.tone(o, t, f, 0.25, { type: 'square', vol: v, a: 0.002, r: 0.2, lp: 2600 }); }
+  parry() { if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx; for (const [f, v] of [[1318, 0.07], [1975, 0.05], [2637, 0.03]] as const) this.tone(o, t, f, 0.7, { vol: v, a: 0.002, r: 0.65, send: 0.5 }); this.noiseHit(o, t, 0.06, { bp: 5000, q: 2, vol: 0.06 }); }
+  roll() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.noiseHit(this.sfx, t, 0.3, { lp: 700, vol: 0.09 }); this.noiseHit(this.sfx, t + 0.05, 0.2, { bp: 1600, q: 0.8, vol: 0.035 }); }
+  tired() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.tone(this.sfx, t, 180, 0.14, { type: 'triangle', vol: 0.04, a: 0.005, r: 0.1, lp: 700 }); }
+  pickup() { if (!this.ok()) return; const t = this.ctx!.currentTime; [69, 76, 81, 88].forEach((m, i) => this.bell(this.sfx, t + i * 0.07, hz(m), 0.05, 0.6)); }
   get state() { return { steps: this.steps, surf: this.lastSurf, ctx: this.ctx?.state ?? 'none', enabled: this.enabled, region: this.region, musicVol: this.musicVol, gains: this.ctx ? Object.fromEntries(Object.entries(this.regs).map(([k, r]) => [k, +r.g.gain.value.toFixed(2)])) : null }; }
 }

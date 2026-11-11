@@ -21,7 +21,7 @@ import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
 import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, configureFoliage, type Kind, type TreeInst } from './nature';
 import { makeFloatingIsland, makeLanternStaff, ISLAND_POS, islandTopY } from './island';
 import { UPDRAFT, MIRRORS, MORNING_DIRS, DIR_ARROWS, BEACON_XP, BEACON_L, CLUE_L, RETURN_L, LANDING_L, ISLAND_WALK_R, CLUE_LINES, UPDRAFT_DORMANT, UPDRAFT_NEEDS_WIND, ENDING_TITLE, ENDING_LINES, ENDING_REWARD, WAYFINDER_BEACON, mirrorsMatch, makeHollowPuzzle, makeUpdraft, makeDawnSky } from './beacon';
-import { buildJournal, drawValeMap, MAPBOX } from './journal';
+import { buildJournal, drawValeMap, MAPBOX, FOG_R, revealFog, fogExplored } from './journal';
 import { COAST_LINES, COAST_O, COAST_XP, makeCoast, type Coast } from './coast';
 import { SEA_LINES, SEA_XP, makeSeaCave, type SeaCave } from './seacave';
 import { KEEPER_LINES, KEEPER_XP, KEEPER_HP, makeKeeper, type Keeper, type KeeperEvent } from './keeper';
@@ -29,6 +29,8 @@ import { cutTerrain, cutGrass, STAIR, STAIR_DIR, CAVE_LINES, CAVE_XP, BRAZIERS, 
 import { ECHO, ECHO_RANGE, ECHO_XP, ECHO_SILENT, echoMemoryLines, MARR_MARKS, CHART_R, CHART_DONE, makeEchoGrove } from './echo';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { dressEnna } from './enna';
+import { Combat, WEAPONS, WEAPON_ORDER, isWeapon, makeHolder, makePickup, ST_MAX, DODGE_T, DODGE_SPEED, type WeaponId, type Strike, type Pickup } from './combat';
+import { clueLines } from './clues';
 import { GameAudio, type Region, type Surface } from './audio';
 import { ENNA_LINES, ENNA_NAME, LAMP_XP, LAMP_TOAST, FINAL_TITLE, FINAL_KICKER, FINAL_LINES, FINAL_REWARD, finalStats, CREDITS, sefaLines, dovLines, ressLines, nextUncharted } from './finale';
 import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep } from './world';
@@ -167,6 +169,12 @@ async function main() {
   for (const h of Object.values(heroes)) { h.root.visible = false; h.root.position.set(SPAWN.x, heightAt(SPAWN.x, SPAWN.z), SPAWN.z); scene.add(h.root); }
   let profile = loadProfile();
   let player = heroes[profile.sex]; player.root.visible = true;
+  // M19 · weapons in hand (both rigs carry the equipped weapon in the old sword socket) and the combat state.
+  const holders = [makeHolder(heroes.female.root), makeHolder(heroes.male.root)];
+  const cb = new Combat();
+  const owned = (): WeaponId[] => (save.weapons ?? ['rusty']).filter(isWeapon);
+  const equip = (id: WeaponId) => { cb.weapon = WEAPONS[id]; for (const h of holders) h.set(id); };
+  equip(isWeapon(save.weapon) && owned().includes(save.weapon) ? save.weapon : 'rusty');
   // The Wayfinder: Quaternius "King", crown removed, armour recoloured to a weathered plum travelling coat; white hair/beard.
   const wayfinder = makeCharacter(wayG, 1.72 / 1.903, { Metal: '#5b4a3e', Metal_Dark: '#3d3229', Blue: '#4a3d5c', Beige: '#b9ab8c', Hair_White: '#e4e0d8', DarkBrown: '#3a2c22' }, ['mat:Gold']);
   wayfinder.root.position.set(WAYFINDER.x, heightAt(WAYFINDER.x, WAYFINDER.z), WAYFINDER.z);
@@ -183,6 +191,20 @@ async function main() {
   const valeNpcs = [sefa, dov, ennaV].map((c, i) => { const p = [SEFA, DOV, ENNA_V][i]; c.root.position.set(p.x, heightAt(p.x, p.z), p.z); c.root.rotation.y = Math.atan2(SPAWN.x - p.x, SPAWN.z - p.z); scene.add(c.root); const solid = { x: p.x, z: p.z, r: 0.7 }; SOLIDS.push(solid); return { c, p, solid }; });
   const setEnnaVale = (on: boolean) => { ennaV.root.visible = on; valeNpcs[2].solid.r = on ? 0.7 : 0; };
   setEnnaVale(save.lamp >= 2);
+  // M19 · found weapons: glinting pickups placed at landmarks (the Tide-blade waits in the sea cave, added when it is built).
+  const clearSpot = (from: { x: number; z: number }, toward: { x: number; z: number }, d0: number) => {
+    const dx = toward.x - from.x, dz = toward.z - from.z, l = Math.hypot(dx, dz) || 1;
+    for (let d = d0; d < d0 + 60; d += 1.5) for (const sw of [0, 0.35, -0.35, 0.7, -0.7]) {
+      const c = Math.cos(sw), sn = Math.sin(sw), ux = (dx * c - dz * sn) / l, uz = (dx * sn + dz * c) / l, x = from.x + ux * d, z = from.z + uz * d;
+      if (SOLIDS.every((o) => Math.hypot(x - o.x, z - o.z) > o.r + 1.2) && Math.abs(x - creekX(z)) > creekHalf(z) + 2 && heightAt(x, z) > WATER_Y + 0.4 && normalAt(x, z)[1] > 0.86) return { x, z };
+    }
+    return { x: from.x + dx / l * d0, z: from.z + dz / l * d0 };
+  };
+  const lmk = (id: string) => LANDMARKS.find((l) => l.id === id)!;
+  const PICK: { id: WeaponId; x: number; z: number; p: Pickup }[] = ([['spear', clearSpot(lmk('veilfall'), WAYFINDER, 12)], ['maul', clearSpot(lmk('dome'), WAYFINDER, 29)]] as const).map(([id, at]) => {
+    const p = makePickup(id); p.group.position.set(at.x, heightAt(at.x, at.z), at.z); p.group.rotation.y = at.x * 0.7; scene.add(p.group); p.taken = owned().includes(id); return { id, x: at.x, z: at.z, p };
+  });
+  let seaPick: { x: number; z: number; p: Pickup } | null = null;
   // Coast cast: Enna (from the Keeper's chamber onward) and Ress, her hired guide. Added to the coast scene when it is first built.
   const ennaC = makeCharacter(heroFG, 1.68 / 1.877, ENNA_COL, ['Sword']); dressEnna(ennaC.root);
   const ressC = makeCharacter(heroMG, 1.78 / 1.866, { Skin: '#b07a55', Purple: '#2f4a44', LightBlue: '#c7a25a', 'Casual_Legs/Skin': '#3a2c22', White: '#5a4634', Hair: '#1e1610', Eyebrows: '#1a120c' }, []);
@@ -262,7 +284,7 @@ async function main() {
   // M18 · sound (procedural music per region + sfx); unlocked by the first gesture.
   const audio = new GameAudio();
   for (const ev of ['pointerdown', 'keydown'] as const) addEventListener(ev, () => { if (audio.enabled && (!audio.ctx || audio.ctx.state !== 'running')) audio.unlock(); }, { passive: true });
-  document.addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest('button'); if (b && b.id !== 'dnext' && b.id !== 'action') audio.ui(); });
+  document.addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest('button'); if (b && b.id !== 'dnext' && b.id !== 'action' && !b.classList.contains('cb')) audio.ui(); });
   let talking = false, dq: string[] = [], toastT = 0, lastDt = 1 / 60, onDlgClose: (() => void) | null = null;
   function openDialog(speaker: string, lines: string[], onClose: (() => void) | null = null) { onDlgClose = onClose; dq = [...lines]; dspk.textContent = speaker; talking = true; dlgEl.hidden = false; document.body.classList.add('talking'); for (const k of Object.keys(keys)) keys[k] = false; advance(); }
   function advance() { audio.ui(); const l = dq.shift(); if (l === undefined) { talking = false; dlgEl.hidden = true; document.body.classList.remove('talking'); const cb = onDlgClose; onDlgClose = null; cb?.(); return; } dtxt.textContent = l; dnext.textContent = dq.length ? 'Next ▸' : 'Close'; }
@@ -333,8 +355,8 @@ async function main() {
     if (Math.hypot(state.px - TABLET.x, state.pz - TABLET.z) < 2.8) return { label: 'Read Wind Tablet', act: () => openDialog('Wind Shrine', TABLET_LINES), x: TABLET.x, z: TABLET.z };
     if (Math.hypot(state.px - ECHO.x, state.pz - ECHO.z) < ECHO_RANGE) return { label: save.echo ? 'Echo Grove · recall the Memory' : echoT >= 0 ? 'Echo Grove · the crystal trees remember…' : sealCount(save) < 1 ? 'Echo Grove · silent' : 'Echo Grove hums · listen', act: useEcho, x: ECHO.x, z: ECHO.z };
     if (Math.hypot(state.px - UPDRAFT.x, state.pz - UPDRAFT.z) < 4.6) return { label: !save.done ? 'Updraft · dormant' : !save.wind ? 'Updraft · locked — needs Wind Shrine blessing' : 'Ride the Updraft ↑', act: useUpdraft, x: UPDRAFT.x, z: UPDRAFT.z };
-    if (!save.warden && wardenDist() < W_MELEE) return { label: atkCd > 0 ? `Wait ${atkCd.toFixed(1)}s` : `Attack Warden · ${wd.hp}/${HP_MAX}`, act: attackWarden, x: WARDEN.x, z: WARDEN.z, combat: true };
     for (let i = 0; i < RUNES.length; i++) if (Math.hypot(state.px - RUNES[i].x, state.pz - RUNES[i].z) < 2.6) { const v = save.runes[i]; return { label: save.wind ? `${RUNES[i].name} · ${RUNE_GLYPHS[v]}` : `Turn ${RUNES[i].name} · ${RUNE_GLYPHS[v]} ${RUNE_LABELS[v]}`, act: () => turnRune(i), x: RUNES[i].x, z: RUNES[i].z }; }
+    for (const k of PICK) if (k.p.group.visible && Math.hypot(state.px - k.x, state.pz - k.z) < 2.4) return { label: `Take the ${WEAPONS[k.id].name}`, act: () => takeWeapon(k.id), x: k.x, z: k.z };
     return null;
   }
   // ---------- Chapter II opener: the collapsed stair and the water-road ruin ----------
@@ -448,7 +470,12 @@ async function main() {
   document.getElementById('crbtn')!.onclick = () => { setMenu(false); openCredits(); };
   // ---------- The Listening Pools (sea cave interior) ----------
   let inSea = false, sea: SeaCave | null = null;
-  async function ensureSea() { if (sea) return sea; caveLoading = true; const tx = await ruinTex(); sea = makeSeaCave(HIGH, { rock: tx.cliff, bed, blocks: tx.blocks }, waterNormals, scene.environment); caveLoading = false; return sea; }
+  async function ensureSea() { if (sea) return sea; caveLoading = true; const tx = await ruinTex(); sea = makeSeaCave(HIGH, { rock: tx.cliff, bed, blocks: tx.blocks }, waterNormals, scene.environment); caveLoading = false;
+    { const c = sea, avoid = [...c.shells, c.page, c.door, c.exit, c.entry]; let at = { x: c.page.x + 1, z: c.page.z + 1 };
+      search: for (let r = 5; r < 16; r += 0.75) for (let a = 0; a < 6.28; a += 0.45) { const x = c.shells[2].x + Math.cos(a) * r, z = c.shells[2].z + Math.sin(a) * r, [cx, cz] = c.constrain(x, z);
+        if (Math.hypot(cx - x, cz - z) > 0.01 || avoid.some((q) => Math.hypot(q.x - x, q.z - z) < 5.2)) continue; at = { x, z }; break search; }
+      const p = makePickup('tide'); p.group.position.set(at.x, c.groundY(at.x, at.z), at.z); c.scene.add(p.group); p.taken = owned().includes('tide'); seaPick = { x: at.x, z: at.z, p }; }
+    return sea; }
   async function enterSea(instant = false) {
     if ((inSea && !inKeep) || fading) return; fading = true; state.speed = 0; coast?.audio(false);
     if (!instant) { setFade(true); await sleepMs(520); }
@@ -508,14 +535,13 @@ async function main() {
       chapterEl.querySelector('.chk')!.textContent = KEEPER_LINES.card.k; document.getElementById('chtitle')!.textContent = KEEPER_LINES.card.title;
       document.getElementById('chtease')!.textContent = KEEPER_LINES.card.tease; document.getElementById('chxp')!.textContent = `+${KEEPER_XP} XP · Level ${levelOf(save.xp)} · ${save.xp} XP · Next: meet Enna at the Lowtide Lamp`; chapterEl.hidden = false; });
   }
-  function keeperStrike() {
-    if (!keep) return; if (atkCd > 0) { toast('Strike not ready.', 1.0); return; }
-    atkCd = PLAYER_ATK_CD; swingT = 0.32; player.play('Punch_Right'); audio.swing(); state.facing = Math.atan2(keep.center.x - state.px, keep.center.z - state.pz);
-    const r = keep.strike();
-    if (r === 'armoured') toast(KEEPER_LINES.armoured, 2.4);
-    else if (r === 'hit') { toast(`Hit the tide-core! Keeper ${keep.hp}/${KEEPER_HP}`, 1.6); shake = 0.12; }
-    else if (r === 'phase') { toast(`⚠ ${KEEPER_LINES.phaseUp[keep.phase - 2]}`, 3, true); shake = 0.3; }
-    else if (r === 'dead') keeperWin();
+  function hitKeeper(sk: Strike) {
+    if (!keep) return; const r = keep.strike(sk.dmg * sk.keeperMul);
+    if (r === 'armoured') { audio.clank(); cb.hitStop = 0.04; if (toastT < 0.6) toast(KEEPER_LINES.armoured, 1.8); return; }
+    cb.landed(sk);
+    if (r === 'hit') { toast(`Hit the tide-core! Keeper ${Math.ceil(keep.hp)}/${KEEPER_HP}`, 1.6); shake = Math.max(shake, sk.heavy ? 0.22 : 0.12); }
+    else if (r === 'phase') { audio.hit(); toast(`⚠ ${KEEPER_LINES.phaseUp[keep.phase - 2]}`, 3, true); shake = 0.3; }
+    else if (r === 'dead') { audio.hit(); keeperWin(); }
   }
   function keeperReveal() {
     if (!keep) return; const r = keep.reveal(); state.facing = Math.atan2(keep.center.x - state.px, keep.center.z - state.pz);
@@ -527,8 +553,7 @@ async function main() {
     if (d(k.center) < k.melee) {
       if (save.sea >= 5) return { label: 'The sleeping Keeper · Enna’s note', act: () => openDialog('Enna’s knot', KEEPER_LINES.again), x: k.center.x, z: k.center.z };
       if (k.state === 'low' && !k.revealed) return { label: 'Raise the Tide-Glass · open the plates', act: keeperReveal, x: k.center.x, z: k.center.z };
-      if (k.revealed) return { label: atkCd > 0 ? `Wait ${atkCd.toFixed(1)}s` : `Strike the tide-core · ${k.hp}/${KEEPER_HP}`, act: keeperStrike, x: k.center.x, z: k.center.z, combat: true };
-      return { label: 'Strike · armoured', act: keeperStrike, x: k.center.x, z: k.center.z, combat: true };
+      return null; // strikes come from the Attack / Heavy buttons
     }
     return null;
   }
@@ -543,7 +568,13 @@ async function main() {
       else if (e === 'low') toast('Low water — the Keeper slumps. Get close and raise the Tide-Glass!', 3);
       else if (e === 'spout' || e === 'sweep') shake = Math.max(shake, e === 'sweep' ? 0.4 : 0.3);
     }
-    if (hit) { playerHp -= 1; player.play('HitRecieve'); if (playerHp <= 0) return keeperDefeatIlka(); toast(`The tide strikes! HP ${playerHp}/${HP_MAX}`, 2, true); }
+    if (hit) {
+      const r = cb.incoming(kev.includes('sweep'));
+      if (r === 'dodged') { toast('Rolled clear of the spout!', 1.2); return; }
+      if (r === 'parried') { audio.parry(); toast('Parried the spout!', 1.4); return; }
+      if (r === 'blocked') { audio.clank(); toast('Blocked · stamina spent', 1.2); return; }
+      playerHp -= 1; player.play('HitRecieve'); if (playerHp <= 0) return keeperDefeatIlka(); toast(r === 'guardbreak' ? `Guard broken! HP ${playerHp}/${HP_MAX}` : `The tide strikes! HP ${playerHp}/${HP_MAX}`, 2, true);
+    }
   }
   function seaInteract(): Inter | null {
     if (!sea || fading) return null; const c = sea, d = (p: { x: number; z: number }) => Math.hypot(state.px - p.x, state.pz - p.z);
@@ -555,6 +586,7 @@ async function main() {
       if (save.sea >= 3) return { label: 'Raise the Tide-Glass to the seal', act: openSeal, x: c.door.x - 1.5, z: c.door.z };
       return { label: 'The round seal', act: () => openDialog('The round seal', save.sea >= 2 ? SEA_LINES.sealWoken : SEA_LINES.sealShut), x: c.door.x - 1.5, z: c.door.z };
     }
+    if (seaPick && seaPick.p.group.visible && d(seaPick) < 2.4) return { label: `Take the ${WEAPONS.tide.name}`, act: () => takeWeapon('tide'), x: seaPick.x, z: seaPick.z };
     return null;
   }
   function coastInteract(): Inter | null {
@@ -723,23 +755,116 @@ async function main() {
       toast(n === MARR_MARKS.length ? CHART_DONE : `Charted on Marr’s Unfinished Map: ${m.name} · ${n}/${MARR_MARKS.length}`, n === MARR_MARKS.length ? 5 : 3);
     }
   }
+  // ---------- M19 · explored-map fog (Marr's map only shows land you have walked) ----------
+  let fogT = 0, fogDirty = false;
+  function fogNow(): number[] {
+    if (!save.fog || save.fog.length !== FOG_R) { // first run on this save: seed from what the player already knows
+      const f = new Array(FOG_R).fill(0); save.fog = f; revealFog(f, SPAWN.x, SPAWN.z, 30); revealFog(f, WAYFINDER.x, WAYFINDER.z, 30);
+      MARR_MARKS.forEach((m, i) => { if (save.charted[i]) revealFog(f, m.x, m.z, 34); }); for (const d of SEALS) if (save.seals[d.id]) revealFog(f, d.x, d.z, 26);
+      if (save.warden) revealFog(f, WARDEN.x, WARDEN.z, 22); if (save.cave >= 1) revealFog(f, STAIR.x, STAIR.z, 24); if (save.wind) revealFog(f, SHRINE.x, SHRINE.z, 26);
+      fogDirty = true;
+    }
+    return save.fog;
+  }
+  function tickFog(dt: number) {
+    fogT -= dt; if (fogT > 0) return; fogT = 0.5;
+    if (!inCave && !inCoast && !inSea && !inKeep && !onIsland && !lift) { if (revealFog(fogNow(), state.px, state.pz, 26)) fogDirty = true; }
+    if (fogDirty && !paused) { fogDirty = false; persist(); }
+  }
   // ---------- Vale Warden (optional) ----------
-  const wd = { hp: HP_MAX, phase: save.warden ? 3 : 0, teleT: 0, recT: 0, sx: WARDEN.x, sz: WARDEN.z, awake: false, warned: false, freeze: -1 };
+  const wd = { hp: 6, phase: save.warden ? 3 : 0, teleT: 0, recT: 0, sx: WARDEN.x, sz: WARDEN.z, awake: false, warned: false, freeze: -1 };
   let playerHp = HP_MAX, atkCd = 0, shake = 0, swingT = 0, swingFreeze = false;
   const wardenDist = () => Math.hypot(state.px - WARDEN.x, state.pz - WARDEN.z);
-  function resetWarden() { if (save.warden) { wd.phase = 3; wd.hp = 0; return; } wd.hp = HP_MAX; wd.phase = 0; wd.teleT = 0; wd.recT = 0; wd.awake = false; wd.warned = false; }
-  function attackWarden() {
-    if (save.warden) { toast('The Warden remains dormant.', 2); return; }
-    if (atkCd > 0) { toast('Strike not ready.', 1.2); return; }
-    atkCd = PLAYER_ATK_CD; swingT = 0.32; player.play('Punch_Right'); audio.swing();
-    state.facing = Math.atan2(WARDEN.x - state.px, WARDEN.z - state.pz);
-    wd.hp = Math.max(0, wd.hp - 1); warden.hit();
+  function resetWarden() { if (save.warden) { wd.phase = 3; wd.hp = 0; return; } wd.hp = W_HP; wd.phase = 0; wd.teleT = 0; wd.recT = 0; wd.awake = false; wd.warned = false; }
+  const W_HP = 6;
+  /** Debug/preset: one light swing at the Warden through the combat system. */
+  function attackWarden() { if (save.warden) { toast('The Warden remains dormant.', 2); return; } state.facing = Math.atan2(WARDEN.x - state.px, WARDEN.z - state.pz); startAttack(); }
+  function hitWarden(sk: Strike) {
+    if (save.warden) return;
+    wd.hp = Math.max(0, +(wd.hp - sk.dmg).toFixed(3)); if (wd.hp < 0.05) wd.hp = 0; warden.hit(); cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1);
     if (wd.hp <= 0) {
-      wd.phase = 3; const lv = levelOf(save.xp);
+      wd.phase = 3; const lv = levelOf(save.xp); audio.hit();
       if (!save.warden) { save.warden = true; save.xp += WARDEN_XP; persist(); toast(`Vale Warden falls dormant · +${WARDEN_XP} XP · Warden's Crest${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 5); }
       return;
     }
-    toast(`Hit! Warden ${wd.hp}/${HP_MAX}`, 1.6);
+    if (sk.stagger >= 1 && wd.phase === 1) { wd.phase = 2; wd.recT = W_RECOVER + sk.stagger; audio.hit(); toast(`Staggered! Warden ${Math.ceil(wd.hp)}/${W_HP}`, 1.6); return; }
+    toast(`Hit! Warden ${Math.ceil(wd.hp)}/${W_HP}`, 1.6);
+  }
+  // ---------- M19 · combat controls (Attack / Heavy / Block / Roll, soft lock-on, weapon swap) ----------
+  let dodgeReq = false, lungeT = 0, lastAct: Combat['act'] = null;
+  const canFight = () => !(creating || paused || talking || cine || dawnCine || lampCine || lift || fading || !chapterEl.hidden || !endEl.hidden || !titleEl.hidden);
+  function foe(): { x: number; z: number; r: number } | null {
+    if (inKeep && keep && save.sea < 5) return { x: keep.center.x, z: keep.center.z, r: keep.melee };
+    if (!inCave && !inCoast && !inSea && !inKeep && !onIsland && !save.warden) return { x: WARDEN.x, z: WARDEN.z, r: W_MELEE };
+    return null;
+  }
+  function faceFoe(mul = 1.7) { const f = foe(); if (!f) return; const d = Math.hypot(f.x - state.px, f.z - state.pz); if (d < f.r * cb.weapon.reach * mul) state.facing = Math.atan2(f.x - state.px, f.z - state.pz); }
+  function startAttack() { if (!canFight()) return; if (cb.attack()) faceFoe(); else if (cb.lastFail) audio.tired(); }
+  function heavyDown() { if (!canFight()) return; if (!cb.heavyDown()) audio.tired(); }
+  function heavyUp() { if (cb.charge < 0) return; faceFoe(); cb.heavyUp(); }
+  function setBlock(on: boolean) { if (on && !canFight()) return; cb.setBlock(on); }
+  function onActStart() {
+    const a = cb.act!, w = cb.weapon;
+    if (a.kind === 'dodge') { audio.roll(); player.play('Roll', DODGE_T * 1.08); return; }
+    if (a.kind === 'heavy') { audio.heavy(); player.play('Sword_Slash', a.dur * 1.05); if (w.heavyMove === 'lunge') lungeT = 0.3; return; }
+    audio.swing(); player.play(w.style === 1 ? 'Punch_Right' : 'Sword_Slash', a.dur * 1.1);
+  }
+  function resolveStrike(sk: Strike) {
+    if (sk.move === 'slam') shake = Math.max(shake, 0.28); else if (sk.move === 'wave') shake = Math.max(shake, 0.18);
+    const f = foe(); if (!f) return;
+    const dx = f.x - state.px, dz = f.z - state.pz, d = Math.hypot(dx, dz), facing = Math.cos(Math.atan2(dx, dz) - state.facing);
+    if (d > f.r * sk.reach + 0.2 || facing < 0.2) return;
+    if (inKeep) hitKeeper(sk); else hitWarden(sk);
+  }
+  function takeWeapon(id: WeaponId) {
+    const o = owned(); if (!o.includes(id)) save.weapons = [...o, id]; save.weapon = id; persist(); equip(id); syncWeaponUi();
+    for (const k of PICK) if (k.id === id) k.p.taken = true; if (id === 'tide' && seaPick) seaPick.p.taken = true;
+    audio.pickup(); player.play('Interact'); const w = WEAPONS[id]; toast(`Found the ${w.name}! ${w.desc}`, 5); hudT = 0;
+    wpnBtn.classList.add('new'); setTimeout(() => wpnBtn.classList.remove('new'), 2400);
+  }
+  function selectWeapon(id: WeaponId) { if (!owned().includes(id) || cb.busy) return; save.weapon = id; persist(); equip(id); syncWeaponUi(); toast(`${WEAPONS[id].name} · ${WEAPONS[id].desc}`, 2.6); }
+  const cycleWeapon = () => { const o = owned(); selectWeapon(o[(o.indexOf(cb.weapon.id) + 1) % o.length]); };
+  const ICONS: Record<string, string> = {
+    rusty: '<svg viewBox="0 0 32 32"><path d="M24 4l4 0 0 4-13 13-4-4z" fill="#c9b49a" stroke="#3a2a1a" stroke-width="1.2"/><path d="M9 17l6 6-2 2-6-6z" fill="#8a6a52"/><path d="M8 22l2 2-4 4-2-2z" fill="#5a3a24"/></svg>',
+    spear: '<svg viewBox="0 0 32 32"><path d="M5 27L23 9" stroke="#8a6238" stroke-width="2.6" stroke-linecap="round"/><path d="M21 7l7-3-3 7-3 1z" fill="#cfd4d6" stroke="#3a3a3a" stroke-width="1"/></svg>',
+    maul: '<svg viewBox="0 0 32 32"><path d="M8 27L19 14" stroke="#8a6238" stroke-width="3" stroke-linecap="round"/><path d="M15 6l6-2 8 9-2 6-6 1-8-9z" fill="#7d8184" stroke="#2a2a2a" stroke-width="1.2"/></svg>',
+    tide: '<svg viewBox="0 0 32 32"><path d="M23 4c5 3 6 8 3 8L14 23l-4-4L22 8c2-1 1-3 1-4z" fill="#6fd6cc" stroke="#16514c" stroke-width="1.2"/><path d="M9 18l5 5-2 2-5-5z" fill="#d9cdb4"/><path d="M7 23l2 2-4 4-2-2z" fill="#1f4f52"/></svg>',
+    attack: '<svg viewBox="0 0 32 32"><path d="M25 3l4 0 0 4-14 14-4-4z" fill="#f4ead2"/><path d="M9 16l7 7-2 2-7-7z" fill="#f4ead2"/><path d="M8 22l2 2-4 4-2-2z" fill="#f4ead2"/></svg>',
+    heavy: '<svg viewBox="0 0 32 32"><path d="M16 2l3 9 9-4-5 8 8 4-9 2 3 9-9-6-7 7 1-9-8-2 8-5-5-8 9 4z" fill="#ffd27a" stroke="#6a3a10" stroke-width="1"/></svg>',
+    block: '<svg viewBox="0 0 32 32"><path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z" fill="#cfe3e0" stroke="#24423f" stroke-width="1.6"/><path d="M16 7v18" stroke="#24423f" stroke-width="1.2"/></svg>',
+    roll: '<svg viewBox="0 0 32 32"><path d="M26 16a10 10 0 1 1-4-8" fill="none" stroke="#f4ead2" stroke-width="3" stroke-linecap="round"/><path d="M19 3l6 5-7 3z" fill="#f4ead2"/></svg>',
+  };
+  const wpnBtn = document.getElementById('b-wpn') as HTMLButtonElement, wpick = document.getElementById('wpick')!, stFill = document.getElementById('stfill')!, stBar = document.getElementById('stam')!;
+  for (const [id, k] of [['b-atk', 'attack'], ['b-hvy', 'heavy'], ['b-blk', 'block'], ['b-dge', 'roll']] as const) document.getElementById(id)!.insertAdjacentHTML('afterbegin', ICONS[k]);
+  function syncWeaponUi() {
+    wpnBtn.innerHTML = ICONS[cb.weapon.id] + `<small>${cb.weapon.short}</small>`; const o = owned(); wpnBtn.dataset.n = String(o.length);
+    wpick.innerHTML = '<div class="wh">Weapons · tap to equip</div>' + WEAPON_ORDER.map((id) => { const w = WEAPONS[id], have = o.includes(id);
+      return `<button data-w="${id}" class="${id === cb.weapon.id ? 'on' : ''}" ${have ? '' : 'disabled'}>${ICONS[id]}<span><b>${have ? w.name : '? Unfound'}</b><i>${have ? w.desc : 'Rumour: ' + w.where}</i>${have ? `<em>Dmg ${w.dmg} · Heavy ${w.heavy} · Reach ${w.reach.toFixed(2)}×</em>` : ''}</span></button>`; }).join('');
+  }
+  syncWeaponUi();
+  wpnBtn.addEventListener('click', (e) => { e.stopPropagation(); wpick.hidden = !wpick.hidden; });
+  wpick.addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest('button[data-w]') as HTMLButtonElement | null; if (!b || b.disabled) return; selectWeapon(b.dataset.w as WeaponId); wpick.hidden = true; });
+  const hold = (id: string, down: () => void, up: () => void) => { const el = document.getElementById(id)!; let pid = -1;
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); pid = e.pointerId; try { el.setPointerCapture(e.pointerId); } catch { /* */ } el.classList.add('down'); down(); });
+    const end = (e: PointerEvent) => { if (e.pointerId !== pid) return; pid = -1; el.classList.remove('down'); up(); };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('contextmenu', (e) => e.preventDefault()); };
+  hold('b-atk', startAttack, () => {}); hold('b-hvy', heavyDown, heavyUp); hold('b-blk', () => setBlock(true), () => setBlock(false)); hold('b-dge', () => { dodgeReq = true; }, () => {});
+  addEventListener('keydown', (e) => {
+    if (e.repeat || (e.target as HTMLElement).tagName === 'INPUT') return;
+    if (e.code === 'KeyK') startAttack(); else if (e.code === 'KeyL') heavyDown(); else if (e.code === 'KeyQ') setBlock(true); else if (e.code === 'KeyC') dodgeReq = true;
+    else if (e.code === 'KeyX' && canFight()) cycleWeapon(); else if (/^Digit[1-4]$/.test(e.code) && canFight()) selectWeapon(WEAPON_ORDER[+e.code.slice(5) - 1]);
+  });
+  addEventListener('keyup', (e) => { if (e.code === 'KeyL') heavyUp(); else if (e.code === 'KeyQ') setBlock(false); });
+  function tickCombat(dt: number) {
+    if (!canFight()) { cb.setBlock(false); if (cb.charge >= 0) cb.charge = -1; dodgeReq = false; }
+    const sk = cb.tick(dt); if (sk) resolveStrike(sk);
+    if (cb.act && cb.act !== lastAct) onActStart(); lastAct = cb.act;
+  }
+  let stShown = -1;
+  function combatHud() {
+    const k = cb.stamina / ST_MAX, v = Math.round(k * 100); if (v !== stShown) { stShown = v; stFill.style.width = `${v}%`; }
+    stBar.classList.toggle('full', k > 0.995 && !cb.blocking); stBar.classList.toggle('low', k < 0.25 || cb.lastFail > 0);
+    document.body.classList.toggle('blocking', cb.blocking); document.getElementById('b-hvy')!.style.setProperty('--ch', cb.chargeK.toFixed(2));
   }
   function tickWarden(dt: number) {
     atkCd = Math.max(0, atkCd - dt); if (!swingFreeze) swingT = Math.max(0, swingT - dt);
@@ -753,7 +878,11 @@ async function main() {
     if (wd.phase === 1) {
       wd.teleT -= dt; if (wd.teleT > 0) return;
       warden.impact(wd.sx, wd.sz); shake = 0.35;
-      if (Math.hypot(state.px - wd.sx, state.pz - wd.sz) < W_STRIKE_R) {
+      const inRing = Math.hypot(state.px - wd.sx, state.pz - wd.sz) < W_STRIKE_R, res = inRing ? cb.incoming() : 'dodged';
+      if (inRing && res === 'dodged') toast('Rolled clear!', 1.0);
+      else if (res === 'parried') { audio.parry(); toast('Parried! The Warden reels', 1.6); wd.phase = 2; wd.recT = W_RECOVER + 1.3; return; }
+      else if (res === 'blocked') { audio.clank(); toast('Blocked · stamina spent', 1.2); }
+      if (res === 'hit' || res === 'guardbreak') {
         playerHp -= 1; player.play('HitRecieve');
         if (playerHp <= 0) {
           const rp = recoveryPoint(); state.px = rp.x; state.pz = rp.z; state.speed = 0; snapCam = true;
@@ -761,7 +890,7 @@ async function main() {
           playerHp = HP_MAX; atkCd = 0; resetWarden();
           toast('Wayfinder pulls you to safety.', 4); openDialog('Wayfinder', RECOVERY_LINES); return;
         }
-        toast(`Warden strike! HP ${playerHp}/${HP_MAX}`, 2, true);
+        toast(res === 'guardbreak' ? `Guard broken! HP ${playerHp}/${HP_MAX}` : `Warden strike! HP ${playerHp}/${HP_MAX}`, 2, true);
       }
       wd.phase = 2; wd.recT = W_RECOVER; return;
     }
@@ -799,6 +928,10 @@ async function main() {
   const wArrow = document.getElementById('warrow')!, wText = document.getElementById('wtext')!;
   const qline = document.getElementById('qline')!, qstats = document.getElementById('qstats')!, carrow = document.getElementById('carrow')!, ctext = document.getElementById('ctext')!;
   let hudT = 0;
+  // M19 · Guidance (accessibility): Off by default = written clues in the Journal only; On = the old arrow + distances.
+  let guidance = (() => { try { return localStorage.getItem('vale3d-guidance') === 'on'; } catch { return false; } })();
+  const setGuidance = (on: boolean) => { guidance = on; try { localStorage.setItem('vale3d-guidance', on ? 'on' : 'off'); } catch { /* */ } document.body.classList.toggle('guided', on); hudT = 0; if (typeof updateHud === 'function') try { updateHud(0); } catch { /* before HUD init */ } const b = document.getElementById('sguide'); if (b) b.textContent = `Guidance arrow: ${on ? 'On' : 'Off'}`; };
+  setGuidance(guidance);
   function objective(): { name: string; x: number; z: number } {
     const n = sealCount(save);
     if (inCave && cave) {
@@ -852,23 +985,24 @@ async function main() {
     const fx = -Math.sin(state.yaw), fz = -Math.cos(state.yaw), rx = Math.cos(state.yaw), rz = -Math.sin(state.yaw);
     const sx = dx * rx + dz * rz, sy = dx * fx + dz * fz;
     carrow.style.transform = `rotate(${(Math.atan2(-sy, sx) * 180 / Math.PI).toFixed(0)}deg)`;
-    ctext.textContent = save.beacon && save.cave >= 4 && save.sea >= 5 && save.lamp >= 2 && !onIsland && !inCave && !inCoast && !inSea && !inKeep && dist < 6 ? 'Explore freely' : `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}`;
+    const free = save.beacon && save.cave >= 4 && save.sea >= 5 && save.lamp >= 2 && !onIsland && !inCave && !inCoast && !inSea && !inKeep;
+    ctext.textContent = free && (dist < 6 || !guidance) ? 'Explore freely' : guidance ? `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}` : `✎ ${tgt.name} · clues in Journal`;
     // Optional Wind Shrine locator line.
     { const ws = { x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z }; const ddx = ws.x - hx, ddz = ws.z - hz, dd = Math.hypot(ddx, ddz);
       const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
       wArrow.style.transform = `rotate(${(Math.atan2(-wy, wx) * 180 / Math.PI).toFixed(0)}deg)`; wArrow.style.visibility = save.wind ? 'hidden' : 'visible';
-      wText.textContent = save.wind ? 'Wind Shrine awake · Windward Blessing +15%' : `Wind Shrine (${save.done ? 'blessing opens the Updraft' : 'optional'}) · ${save.runes.map((v) => RUNE_GLYPHS[v]).join(' ')} · ${dd < 18 ? 'here' : Math.round(dd) + ' m'}`; }
+      wText.textContent = save.wind ? 'Wind Shrine awake · Windward Blessing +15%' : `Wind Shrine (${save.done ? 'blessing opens the Updraft' : 'optional'}) · ${save.runes.map((v) => RUNE_GLYPHS[v]).join(' ')}${guidance ? ` · ${dd < 18 ? 'here' : Math.round(dd) + ' m'}` : ''}`; }
     { const ddx = WARDEN.x - hx, ddz = WARDEN.z - hz, dd = Math.hypot(ddx, ddz); const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
       wdArrow.style.transform = `rotate(${(Math.atan2(-wy, wx) * 180 / Math.PI).toFixed(0)}deg)`; wdArrow.style.visibility = save.warden ? 'hidden' : 'visible';
-      wdText.textContent = save.warden ? "Warden dormant · Warden's Crest" : `Vale Warden (optional) · ${dd < 12 ? 'here' : Math.round(dd) + ' m'}`;
+      wdText.textContent = save.warden ? "Warden dormant · Warden's Crest" : `Vale Warden (optional)${guidance ? ` · ${dd < 12 ? 'here' : Math.round(dd) + ' m'}` : ''}`;
       const show = !save.warden && (wd.awake || playerHp < HP_MAX);
-      combatEl.hidden = !show; if (show) { hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(HP_MAX - playerHp); whpEl.textContent = '■'.repeat(wd.hp) + '□'.repeat(HP_MAX - wd.hp); combatEl.classList.toggle('alert', wd.phase === 1); } }
+      combatEl.hidden = !show; if (show) { hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(HP_MAX - playerHp); whpEl.textContent = '■'.repeat(Math.ceil(wd.hp)) + '□'.repeat(W_HP - Math.ceil(wd.hp)); combatEl.classList.toggle('alert', wd.phase === 1); } }
     { const showK = inKeep && !!keep && save.sea < 5 && keep.active; bossEl.hidden = !showK;
       if (showK && keep) { kFill.style.width = `${(keep.hp / KEEPER_HP) * 100}%`; const st = keep.state; const txt = `♥ ${'♥'.repeat(Math.max(0, playerHp - 1))}${'♡'.repeat(HP_MAX - playerHp)} · ` + (keep.revealed ? 'CORE EXPOSED — strike!' : st === 'low' ? 'Low water · raise the Tide-Glass' : st === 'windup' ? '⚠ spout — move!' : st === 'sweepWarn' ? '⚠ tide sweep — climb a stone!' : st === 'ebb' ? 'the tide drains…' : 'armoured · wait for low water');
         if (txt !== kHud) { kHud = txt; kSt.textContent = txt; kPh.textContent = `· ${['', 'I', 'II', 'III'][keep.phase]}`; } bossEl.classList.toggle('alert', st === 'windup' || st === 'sweepWarn'); bossEl.classList.toggle('open', keep.revealed); } }
     const it = talking || cine || dawnCine || lampCine || fading ? null : nearestInteract();
     actBtn.hidden = !it; if (it) actBtn.textContent = it.label; actBtn.classList.toggle('combat', !!it?.combat); actBtn.style.setProperty('--cd', it?.combat ? (atkCd / PLAYER_ATK_CD).toFixed(2) : '0');
-    document.getElementById('hint')!.textContent = it ? `E / Action: ${it.label}` : 'Drag to look · WASD / stick to move · Shift walks';
+    document.getElementById('hint')!.textContent = it ? `E / Action: ${it.label}` : 'Drag to look · WASD move · K attack · L heavy (hold) · Q block · C roll · X weapon · J journal';
   }
 
   // ---------- character creation ----------
@@ -951,6 +1085,12 @@ async function main() {
       if (legacyMotion) state.facing += d * damp(10, dt);
       else if (mag > 0.2 || Math.abs(d) > 0.6) { const step = d * damp(Math.abs(d) < 0.25 ? 6 : 10, dt), cap = 9 * dt; /* gentle for small corrections (noise), brisk for real turns */ state.facing += Math.max(-cap, Math.min(cap, step)); state.facing = Math.atan2(Math.sin(state.facing), Math.cos(state.facing)); }
     }
+    // M19 · combat: roll / lunge drive the body; swings, charge and guard slow it.
+    tickCombat(dt);
+    if (dodgeReq) { dodgeReq = false; if (canFight()) { let dir = state.facing + Math.PI; /* no stick: back-roll away from what you face */ if (mag > 0.05) { const s2 = Math.sin(state.yaw), c2 = Math.cos(state.yaw); dir = Math.atan2(ix * c2 + iz * s2, -ix * s2 + iz * c2); } if (!cb.dodge(dir)) audio.tired(); else { tickCombat(0); } } }
+    if (cb.rolling) { const a = cb.act!; state.facing = cb.dodgeDir; state.speed = DODGE_SPEED * (1 - 0.5 * a.t / a.dur); }
+    else if (lungeT > 0 && cb.act?.kind === 'heavy') { lungeT -= dt; state.speed = cb.hitStop > 0 ? 0 : 7.5; }
+    else { lungeT = 0; const mm = cb.moveMul; if (mm < 1) state.speed = Math.min(state.speed, 5.6 * mm); }
     if (lift) state.speed = 0;
     if (state.speed > 0.02 && inCoast && coast) {
       [state.px, state.pz] = coast.constrain(state.px, state.pz, state.px + Math.sin(state.facing) * state.speed * dt, state.pz + Math.cos(state.facing) * state.speed * dt);
@@ -986,14 +1126,16 @@ async function main() {
     else gy = Math.max(heightAt(state.px, state.pz), WATER_Y - 0.7);
     player.root.position.set(state.px, gy, state.pz);
     player.root.rotation.y = state.facing;
-    player.pose.fly += ((lift ? 1 : 0) - player.pose.fly) * Math.min(1, dt * 3); player.pose.swing = swingT > 0 ? 1 - swingT / 0.32 : 0;
-    player.setSpeed(state.speed, dt);
+    player.pose.fly += ((lift ? 1 : 0) - player.pose.fly) * Math.min(1, dt * 3); player.pose.swing = swingT > 0 ? 1 - swingT / 0.32 : cb.swing;
+    player.pose.style = cb.weapon.style; player.pose.block += ((cb.blocking ? 1 : 0) - player.pose.block) * Math.min(1, dt * 14);
+    player.setSpeed(cb.act ? 0 : state.speed, cb.hitStop > 0 ? dt * 0.08 : dt); // hit stop: the swing freezes for a few frames
+    for (const k of PICK) if (k.p.group.visible) k.p.update(t); if (seaPick?.p.group.visible) seaPick.p.update(t);
     // Wayfinder looks at Ilka when near.
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 9) { const want = Math.atan2(state.px - WAYFINDER.x, state.pz - WAYFINDER.z); let d = want - wayfinder.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); wayfinder.root.rotation.y += d * Math.min(1, dt * 3); }
     wayfinder.setSpeed(0, dt); tickNpcs(dt);
-    tickWarden(dt); tickEcho(dt); tickCave(dt); tickKeeper(dt);
-    updateHud(dt);
+    if (cb.hitStop <= 0) { tickWarden(dt); tickKeeper(dt); } tickEcho(dt); tickCave(dt); tickFog(dt);
+    updateHud(dt); combatHud();
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
     // Interaction focus: swing the camera behind the player toward the target (keeps runes/seals in frame on portrait phones).
     if (camFocus) { camFocus.t -= dt; const want = Math.atan2(state.px - camFocus.x, state.pz - camFocus.z); if (Math.hypot(state.px - camFocus.x, state.pz - camFocus.z) > 0.6) { let d = want - state.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); state.yaw += d * damp(5, dt); } if (camFocus.t <= 0) camFocus = null; }
@@ -1118,6 +1260,9 @@ async function main() {
   let mapT = 0;
   function renderJournal() {
     const j = buildJournal(save, profile, onIsland);
+    { const c = clueLines({ save, inCave, inCoast, inSea, inKeep, onIsland, owned: owned() }); const o = owned();
+      j.sections.unshift({ h: 'Where to go · clues', items: c.goal.map((t) => ({ t })) });
+      j.sections.splice(1, 0, { h: 'Weapons', items: [...o.map((id) => ({ t: `${WEAPONS[id].name}${id === cb.weapon.id ? ' (in hand)' : ''} — ${WEAPONS[id].desc}`, done: true })), ...c.rumours.map((t) => ({ t, lore: true }))] }); }
     document.getElementById('jtitle')!.textContent = j.title; document.getElementById('jsub')!.textContent = j.sub;
     const body = document.getElementById('jbody')!; body.textContent = '';
     for (const sec of j.sections) {
@@ -1130,7 +1275,7 @@ async function main() {
   function drawMap(t: number) {
     const maxW = Math.min(560, innerWidth - 24) - 20, maxH = innerHeight - 140, ar = (MAPBOX.z1 - MAPBOX.z0) / (MAPBOX.x1 - MAPBOX.x0);
     const w = Math.floor(Math.min(maxW, maxH / ar)), h = Math.floor(w * ar);
-    drawValeMap(mapCv, w, h, { player: inCave || inCoast || inSea || inKeep ? { x: STAIR.x, z: STAIR.z, facing: state.facing } : { x: state.px, z: state.pz, facing: state.facing }, target: inCave || inCoast || inSea || inKeep ? { name: 'Collapsed Stair', x: STAIR.x, z: STAIR.z } : save.started ? objective() : { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z }, save, onIsland, t });
+    drawValeMap(mapCv, w, h, { player: inCave || inCoast || inSea || inKeep ? { x: STAIR.x, z: STAIR.z, facing: state.facing } : { x: state.px, z: state.pz, facing: state.facing }, target: !guidance ? null : inCave || inCoast || inSea || inKeep ? { name: 'Collapsed Stair', x: STAIR.x, z: STAIR.z } : save.started ? objective() : { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z }, save, onIsland, t, fog: fogNow() });
   }
   function openSheet(which: 'journal' | 'map') {
     if (creating || cine || dawnCine || lift) return;
@@ -1249,6 +1394,7 @@ async function main() {
   document.getElementById('ssound')!.onclick = toggleSound; document.getElementById('sndbtn')!.onclick = toggleSound;
   (document.getElementById('svol') as HTMLInputElement).oninput = (e) => audio.setMusicVol(+(e.target as HTMLInputElement).value / 100);
   document.getElementById('squal')!.onclick = () => qBtn.click();
+  document.getElementById('sguide')!.onclick = () => setGuidance(!guidance);
   document.getElementById('smotion')!.onclick = () => { document.getElementById('motion')?.click(); syncSettings(); };
   const openSettings = () => { syncSettings(); setEl.hidden = false; if (titleEl.hidden) { paused = true; state.speed = 0; } };
   document.getElementById('tset')!.onclick = openSettings; document.getElementById('setbtn')!.onclick = () => { setMenu(false); openSettings(); };
@@ -1347,7 +1493,13 @@ async function main() {
       if (name === 'grove-bases') { save.echo = true; for (let i = 0; i < 5; i++) grove.light(i); grove.memory(true, true); const a = 0.3 + Math.PI * 2 / 5; const tx = ECHO.x + Math.cos(a) * 10, tz = ECHO.z + Math.sin(a) * 10; state.px = tx + 3.2; state.pz = tz + 2.2; state.facing = Math.atan2(tx - state.px, tz - state.pz); state.yaw = state.facing + Math.PI - 0.5; state.pitch = 0.32; state.dist = 4.2; }
       if (name === 'journal-charting') { save = { v: 1, started: true, done: true, xp: 215, seals: { dawn: true, sun: true, tide: true, forge: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: true, charted: [true, true, false, true, false, true, true], cave: 0, coast: 0, sea: 0, lamp: 0 }; for (const o of seals) o.claim(); }
       if (name === 'journal' || name === 'map') { save = { v: 1, started: true, done: false, xp: 85, seals: { dawn: true, tide: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0, sea: 0, lamp: 0 }; for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = SHRINE.x + 22; state.pz = SHRINE.z + 10; state.facing = 2.4; state.yaw = 2.4 + Math.PI; }
+      if (name === 'm19-buttons') { const dx = SPAWN.x - WARDEN.x, dz = SPAWN.z - WARDEN.z, d = Math.hypot(dx, dz); state.px = WARDEN.x + dx / d * 3.1; state.pz = WARDEN.z + dz / d * 3.1; state.facing = Math.atan2(-dx, -dz); state.yaw = Math.atan2(dx, dz) + 0.55; state.pitch = 0.1; state.dist = 6; wd.freeze = 0; wd.awake = true; wd.warned = true; wd.hp = 4; save.weapons = ['rusty', 'spear']; save.weapon = 'rusty'; syncWeaponUi(); }
+      if (name === 'm19-weapons') { save.weapons = ['rusty', 'spear']; save.weapon = 'spear'; equip('spear'); syncWeaponUi(); const k = PICK.find((q) => q.id === 'maul')!, dm = lmk('dome'), out = Math.atan2(k.x - dm.x, k.z - dm.z); state.px = k.x + Math.sin(out) * 1.7 + Math.cos(out) * 0.5; state.pz = k.z + Math.cos(out) * 1.7 - Math.sin(out) * 0.5; state.facing = Math.atan2(k.x - state.px, k.z - state.pz) + 0.35; state.yaw = state.facing + Math.PI + 0.3; state.pitch = 0.34; state.dist = 4.4; }
+      if (name === 'm19-journal') { save = { v: 1, started: true, done: false, xp: 85, seals: { dawn: true, tide: true }, runes: [1, 0, 2], wind: true, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [true, false, false, false, true, true, false], cave: 0, coast: 0, sea: 0, lamp: 0, weapons: ['rusty', 'spear'], weapon: 'spear' }; equip('spear'); syncWeaponUi(); for (const o of seals) if (save.seals[o.def.id]) o.claim(); state.px = SHRINE.x + 22; state.pz = SHRINE.z + 10; state.facing = 2.4; state.yaw = 2.4 + Math.PI; }
       camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30);
+      if (name === 'm19-buttons') { cb.stamina = 64; cb.setBlock(true); for (let i = 0; i < 12; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); toast('Blocked · stamina spent', 60); }
+      if (name === 'm19-weapons') { for (let i = 0; i < 4; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); hudT = 0; updateHud(0); wpick.hidden = false; }
+      if (name === 'm19-journal') openSheet('journal');
       if (name === 'dialog') { save = { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0, sea: 0, lamp: 0 }; interact(); }
       if (name === 'warden-windup') { wd.sx = state.px + 0.6; wd.sz = state.pz; warden.placeZone(wd.sx, wd.sz); wd.phase = 1; wd.teleT = W_TELE * 0.3; toast('⚠ Warden winds up — move!', 60, true); }
       if (name === 'shrine-awake') { save.runes = [1, 0, 2]; save.wind = true; for (let i = 0; i < 3; i++) shrine.setRune(i, save.runes[i], false); shrine.awaken(true); for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + 3 + i / 30); }
@@ -1393,11 +1545,16 @@ async function main() {
     sheets: () => ({ journal: !jEl.hidden, map: !mapEl.hidden, paused, journalText: jEl.innerText }),
     warden: () => ({ x: WARDEN.x, z: WARDEN.z, hp: wd.hp, phase: wd.phase, awake: wd.awake, playerHp, atkCd, recovery: recoveryPoint(), melee: W_MELEE }),
     audio() { return audio.state; },
+    combat: () => ({ stamina: +cb.stamina.toFixed(1), weapon: cb.weapon.id, owned: owned(), saveWeapon: save.weapon ?? null, act: cb.act ? { kind: cb.act.kind, t: +cb.act.t.toFixed(3), step: cb.act.step } : null, charge: cb.charge, blocking: cb.blocking, iframes: cb.iframes, hitStop: cb.hitStop, rolling: cb.rolling, counts: { ...cb.counts },
+      picks: PICK.map((k) => ({ id: k.id, x: k.x, z: k.z, taken: !k.p.group.visible })), seaPick: seaPick ? { x: seaPick.x, z: seaPick.z, taken: !seaPick.p.group.visible } : null, guidance, inHand: holders.map((h) => h.id),
+      ui: { buttons: ['b-atk', 'b-hvy', 'b-blk', 'b-dge', 'b-wpn'].map((id) => { const r = document.getElementById(id)!.getBoundingClientRect(); return { id, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), vis: r.width > 0 && getComputedStyle(document.getElementById('cbt')!).display !== 'none' }; }), act: !actBtn.hidden, arrow: getComputedStyle(carrow).display !== 'none', ctext: ctext.textContent, wpick: !wpick.hidden } }),
+    setGuidance(on: boolean) { setGuidance(on); },
+    fog: () => ({ explored: +fogExplored(fogNow()).toFixed(3) }),
     title() { return { open: !titleEl.hidden, confirm: !document.getElementById('tconfirm')!.hidden, settings: !setEl.hidden, save: document.getElementById('tsave')!.textContent, paused }; },
     lamp() { const c = coast; return { stage: save.lamp, onTop: !!c?.onTop, cine: !!lampCine, ending: !endEl.hidden, endMode, endingText: endEl.innerText, credits: !credEl.hidden, rift: rift.visible, ennaVale: ennaV.root.visible, ennaCoast: ennaC.root.visible, low: c?.isLow() ?? null, phase: c?.tidePhase ?? null, revealed: !!c?.revealed, ennaFoot: c?.ennaFoot, towerDoor: c?.towerDoor, topHatch: c?.topHatch, lanternW: c?.lanternW, ress: save.lamp >= 2 ? c?.ressEnd : c?.ress, sefa: SEFA, dov: DOV, ennaV: ENNA_V, xp: save.xp }; },
     quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
     // Head height above the hips (world Y); stays > 0 in every state now that pose overlays never accumulate.
-    pose: () => { const r = player.root, v = new THREE.Vector3(), h = r.getObjectByName('Head'), hp = r.getObjectByName('Hips'); if (!h || !hp) return null; h.getWorldPosition(v); const hy = v.y; hp.getWorldPosition(v); return hy - v.y; },
+    pose: () => { if (cb.rolling) return null; /* the dodge-roll tucks the head on purpose */ const r = player.root, v = new THREE.Vector3(), h = r.getObjectByName('Head'), hp = r.getObjectByName('Hips'); if (!h || !hp) return null; h.getWorldPosition(v); const hy = v.y; hp.getWorldPosition(v); return hy - v.y; },
     debug: { get grass() { return [grassField, grassFar]; }, treeField, scene, camera, renderer, get composer() { return composer; }, get aq() { return { level: aqLevel, low: aqLow, warm: aqWarm, on: aqOn, fps, paused, fading, talking }; }, get player() { return player.root; }, wayfinder: wayfinder.root },
   };
   (window as unknown as { __vale: typeof api }).__vale = api;
@@ -1458,7 +1615,7 @@ function makeCharacter(g: GLTF, s: number, colors: Record<string, string>, hide:
     wrap.getWorldQuaternion(qw); b.parent.getWorldQuaternion(qp);
     axv.copy(axis).applyQuaternion(qw).applyQuaternion(qp.invert()).normalize(); qa.setFromAxisAngle(axv, ang); b.quaternion.premultiply(qa);
   };
-  const pose = { fly: 0, swing: 0 }; let poseT = 0;
+  const pose = { fly: 0, swing: 0, block: 0, style: 0 }; let poseT = 0;
   const poseBones = Object.values(PB).filter((b): b is THREE.Object3D => !!b); const cleanQ = poseBones.map((b) => b.quaternion.clone());
   function applyPose(dt: number) {
     poseT += dt; const f = pose.fly, s = pose.swing;
@@ -1470,11 +1627,20 @@ function makeCharacter(g: GLTF, s: number, colors: Record<string, string>, hide:
       rotC(PB.llL, X, 0.55 * f); rotC(PB.llR, X, 0.4 * f);
     }
     if (s > 0 && s < 1) {
-      // Wind up high, then slash down and across.
       const up = s < 0.35 ? s / 0.35 : 1 - (s - 0.35) / 0.65, strike = s < 0.35 ? 0 : Math.sin(Math.PI * (s - 0.35) / 0.65);
-      rotC(PB.chest, Y, 0.35 * up - 0.45 * strike);
-      rotC(PB.uaR, X, -2.3 * up - 1.0 * strike); rotC(PB.uaR, Z, -0.35 * strike);
-      rotC(PB.hips, X, 0.18 * strike);
+      if (pose.style === 1) { // spear: draw back, then thrust straight ahead
+        rotC(PB.chest, Y, 0.45 * up - 0.55 * strike); rotC(PB.uaR, X, -0.5 * up - 1.45 * strike); rotC(PB.hips, X, 0.12 * strike);
+      } else if (pose.style === 2) { // maul: two-handed overhead, slam down
+        rotC(PB.chest, Y, 0.2 * up - 0.25 * strike); rotC(PB.uaR, X, -2.7 * up - 1.2 * strike); rotC(PB.uaL, X, -2.3 * up - 1.0 * strike); rotC(PB.hips, X, 0.28 * strike);
+      } else { // sword: wind up high, then slash down and across
+        rotC(PB.chest, Y, 0.35 * up - 0.45 * strike);
+        rotC(PB.uaR, X, -2.3 * up - 1.0 * strike); rotC(PB.uaR, Z, -0.35 * strike);
+        rotC(PB.hips, X, 0.18 * strike);
+      }
+    }
+    const b = pose.block;
+    if (b > 0.01) { // guard: weapon arm up and across the body, off arm braced, slight crouch
+      rotC(PB.uaR, X, -1.25 * b); rotC(PB.uaR, Y, 0.5 * b); rotC(PB.uaL, X, -0.8 * b); rotC(PB.chest, Y, -0.2 * b); rotC(PB.hips, X, 0.08 * b);
     }
   }
   const mixer = new THREE.AnimationMixer(root);
@@ -1487,7 +1653,7 @@ function makeCharacter(g: GLTF, s: number, colors: Record<string, string>, hide:
   mixer.addEventListener('finished', () => { waving = 0; });
   return {
     root: wrap,
-    play(n: string) { const c = clip(n); if (!c) return; let a = once.get(n); if (!a) { a = mixer.clipAction(c); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = false; once.set(n, a); } for (const o of once.values()) if (o !== a) o.stop(); a.reset().play(); a.setEffectiveWeight(1); waving = 1; },
+    play(n: string, dur = 0) { const c = clip(n); if (!c) return; let a = once.get(n); if (!a) { a = mixer.clipAction(c); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = false; once.set(n, a); } for (const o of once.values()) if (o !== a) o.stop(); a.reset().play(); a.timeScale = dur > 0 ? c.duration / dur : 1; a.setEffectiveWeight(1); waving = 1; },
     setSpeed(v: number, dt: number) {
       // Blend idle → walk (≈1.9 m/s) → run (≈5.6 m/s) by speed; time-scale to keep feet planted.
       const wWalk = smoothstep(0.05, 1.6, v) * (1 - smoothstep(2.4, 4.6, v)), wRun = smoothstep(2.4, 4.6, v), wIdle = Math.max(0, 1 - wWalk - wRun);

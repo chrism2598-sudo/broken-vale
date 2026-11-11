@@ -100,7 +100,21 @@ function parchment(w: number, h: number): HTMLCanvasElement {
   x.putImageData(img, 0, 0);
   terrainCache = { w, h, c }; return c;
 }
-export type MapData = { player: { x: number; z: number; facing: number }; target: { x: number; z: number; name: string } | null; save: Save; onIsland: boolean; t: number };
+export type MapData = { player: { x: number; z: number; facing: number }; target: { x: number; z: number; name: string } | null; save: Save; onIsland: boolean; t: number; fog?: number[] };
+/** M19 · explored-map fog: 48 rows × 32 columns over MAPBOX, one bit per cell. */
+export const FOG_R = 48, FOG_C = 32;
+export function revealFog(fog: number[], x: number, z: number, r: number): boolean {
+  const cw = (MAPBOX.x1 - MAPBOX.x0) / FOG_C, ch = (MAPBOX.z1 - MAPBOX.z0) / FOG_R; let changed = false;
+  const c0 = Math.max(0, Math.floor((x - r - MAPBOX.x0) / cw)), c1 = Math.min(FOG_C - 1, Math.floor((x + r - MAPBOX.x0) / cw));
+  const r0 = Math.max(0, Math.floor((z - r - MAPBOX.z0) / ch)), r1 = Math.min(FOG_R - 1, Math.floor((z + r - MAPBOX.z0) / ch));
+  for (let j = r0; j <= r1; j++) for (let i = c0; i <= c1; i++) {
+    const cx = MAPBOX.x0 + (i + 0.5) * cw, cz = MAPBOX.z0 + (j + 0.5) * ch; if (Math.hypot(cx - x, cz - z) > r) continue;
+    const bit = (1 << i) >>> 0; if (!((fog[j] >>> 0) & bit)) { fog[j] = ((fog[j] >>> 0) | bit) >>> 0; changed = true; }
+  }
+  return changed;
+}
+export const fogExplored = (fog: number[]) => { let n = 0; for (const v of fog) { let x = v >>> 0; while (x) { n += x & 1; x >>>= 1; } } return n / (FOG_R * FOG_C); };
+let fogCv: HTMLCanvasElement | null = null;
 export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m: MapData) {
   const dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr); cv.style.width = `${cssW}px`; cv.style.height = `${cssH}px`;
   const x = cv.getContext('2d')!; x.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -149,6 +163,10 @@ export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m
       label('to the sea ←', sx(MAPBOX.x0) + 8, Y + 60 * k - 10, 'left', '#1f5f78', fs - 1, true); }
     x.fillStyle = '#2e1e0e'; for (let i = 0; i < 4; i++) x.fillRect(X - 6 + i * 1.5, Y - 5 + i * 3, 12 - i * 3, 2.2);
     label('Collapsed Stair', X + 9, Y - 6, 'left', '#2e1e0e', fs - 1); }
+  // Unexplored land stays blank parchment (soft-edged: the 32×48 mask is upscaled with smoothing).
+  if (m.fog) { const fc = fogCv ??= document.createElement('canvas'); fc.width = FOG_C; fc.height = FOG_R; const fx = fc.getContext('2d')!, im = fx.createImageData(FOG_C, FOG_R);
+    for (let j = 0; j < FOG_R; j++) for (let i = 0; i < FOG_C; i++) { const k = (j * FOG_C + i) * 4, open = ((m.fog[j] >>> 0) >>> i) & 1; im.data[k] = 226; im.data[k + 1] = 211; im.data[k + 2] = 174; im.data[k + 3] = open ? 0 : 242; }
+    fx.putImageData(im, 0, 0); x.save(); x.imageSmoothingEnabled = true; x.drawImage(fc, 0, 0, W, H); x.restore(); }
   // Tidewrack Coast inset (beyond the western hills), once reached.
   if (m.save.coast >= 1) { const bw = Math.min(150, W * 0.3), bh = bw * 0.72, X0 = 10, Y0 = H - bh - 10;
     x.save(); x.fillStyle = 'rgba(238,224,190,.94)'; x.strokeStyle = '#4a3218'; x.lineWidth = 1.2; x.fillRect(X0, Y0, bw, bh); x.strokeRect(X0, Y0, bw, bh);

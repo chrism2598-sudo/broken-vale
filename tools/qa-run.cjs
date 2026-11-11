@@ -51,7 +51,7 @@ let qd=await Q();const wAfter=await p.evaluate(()=>window.__vale.warden());const
 log('defeated by Warden → recovery',{hpSeq:[...new Set(hpLog)],dialog:qd.dlg,playerHp:wAfter.playerHp,wardenHp:wAfter.hp,xpKept:qd.save.xp===xpW0,xp:qd.save.xp,distFromRecovery:+Math.hypot(pos.x-W.recovery.x,pos.z-W.recovery.z).toFixed(1),distFromWarden:+Math.hypot(pos.x-W.x,pos.z-W.z).toFixed(1)});
 for(let i=0;i<4&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);}
 await nearW(2.6);await sleep(700);log('near warden label',(await Q()).near);
-const atk=[];for(let i=0;i<12&&!(await Q()).save.warden;i++){await p.waitForFunction('window.__vale.warden().atkCd<=0',{timeout:120000}).catch(()=>{});await p.keyboard.press('KeyE');await sleep(150);const w=await p.evaluate(()=>window.__vale.warden());atk.push({hp:w.hp,cd:+w.atkCd.toFixed(2),toast:await toastTxt()});await sleep(550);if((await Q()).talking){for(let j=0;j<4&&(await Q()).talking;j++){await p.keyboard.press('Space');await sleep(300);}await nearW(2.6);await sleep(500);}}
+const atk=[];for(let i=0;i<40&&!(await Q()).save.warden;i++){await p.waitForFunction('!window.__vale.combat().act',{timeout:20000}).catch(()=>{});await p.keyboard.press('KeyK');await sleep(300);const w=await p.evaluate(()=>window.__vale.warden());atk.push({hp:w.hp,toast:await toastTxt()});await sleep(150);if((await Q()).talking){for(let j=0;j<4&&(await Q()).talking;j++){await p.keyboard.press('Space');await sleep(300);}await nearW(2.6);await sleep(500);}}
 qd=await Q();log('attacks',atk.slice(0,6));log('warden defeated',{warden:qd.save.warden,xpGain:qd.save.xp-xpW0,toast:await toastTxt()});
 await p.keyboard.press('KeyE');await sleep(400);await p.keyboard.press('KeyE');await sleep(400);log('no farming',{xpGain:(await Q()).save.xp-xpW0,near:(await Q()).near,phase:(await p.evaluate(()=>window.__vale.warden())).phase});
 await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(800);
@@ -142,6 +142,9 @@ await at(s.page,0);const nPg=(await Q()).near;await p.keyboard.press('KeyE');awa
 log('Enna’s page',{near:nPg,lines:pg.length,keeper:pg.some(t=>/keeper/.test(t)),alone:pg.some(t=>/alone/.test(t)),xpGain:(await Q()).save.xp-xpS0,stage:(await S()).stage,chapter:await p.$eval('#chapter',e=>e.hidden?null:e.innerText.replace(/\n+/g,' | '))});
 await p.screenshot({path:'shots/qa-sea-chapter.png'});await p.click('#chok').catch(()=>{});await sleep(400);
 await p.keyboard.press('KeyE');await sleep(500);await closeDlg();log('page again (no farming)',{xpGain:(await Q()).save.xp-xpS0});
+// M19 · the Tide-blade waits in a side pool of the Listening Pools (taken before the Keeper: ×1.5 on the tide-core)
+{const cb=await p.evaluate(()=>window.__vale.combat());const sp=cb.seaPick;await p.evaluate((x,z)=>window.__vale.warp(x,z),sp.x+0.7,sp.z+0.5);await sleep(700);const nT=(await Q()).near;await p.keyboard.press('KeyE');await sleep(500);const c2=await p.evaluate(()=>window.__vale.combat());
+log('M19 Tide-blade pickup',{near:nT,owned:c2.owned,weapon:c2.weapon,inHand:c2.inHand,taken:c2.seaPick.taken,ok:c2.owned.includes('tide')&&c2.weapon==='tide'&&c2.inHand.every(x=>x==='tide')});}
 // M13 · the second key and the Drowned Keeper
 {s=await S();await at(s.door,0.2);const nSeal=(await Q()).near;await p.keyboard.press('KeyE');await sleep(500);const dO=(await Q()).dlg;await closeDlg();await sleep(3500);s=await S();
 log('round seal · second key (Lamp beam via Tide-Glass)',{near:nSeal,dialog:dO,stage:s.stage,opened:s.opened,near2:(await Q()).near});
@@ -161,7 +164,7 @@ while(Date.now()-t0<300000){const q=await Q();if(q.talking){if(/last blow/i.test
   if(kp.state==='idle'||kp.state==='intro'||kp.state==='recover'){const pp3=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return{x:v.x,z:v.z,f:window.__vale.debug.aq.fading}});if(!pp3.f&&Math.hypot(pp3.x-kp.entry.x,pp3.z-kp.entry.z)<1.5){await off(ang);}} // a late recovery fade can drop Ilka back on the (safe) ledge
   if(kp.state==='windup'&&lastSt!=='windup'){ang+=0.75;await off(ang);dodges++;}
   else if(kp.state==='sweepWarn'&&lastSt!=='sweepWarn'){let b=kp.stones[0],bd=1e9;const pp2=await p.evaluate(()=>{const v=window.__vale.debug.player.position;return{x:v.x,z:v.z}});for(const st of kp.stones){const dd=Math.hypot(st.x-pp2.x,st.z-pp2.z);if(dd<bd){bd=dd;b=st;}}await p.evaluate((x,z)=>window.__vale.warp(x,z),b.x,b.z);climbs++;}
-  else if(kp.state==='low'){if(lastSt!=='low'){await off(ang,5.0);}if(!kp.revealed){await p.keyboard.press('KeyE');reveals++;}else if(kp.atkCd<=0){await p.keyboard.press('KeyE');strikes++;}}
+  else if(kp.state==='low'){if(lastSt!=='low'){await off(ang,5.0);}if(!kp.revealed){await p.keyboard.press('KeyE');reveals++;}else{await p.keyboard.press('KeyK');strikes++;}}
   else if(lastSt==='low'&&kp.state!=='low'){await off(ang);}
   lastSt=kp.state;await sleep(120);}
 await sleep(500);kp=await KP();

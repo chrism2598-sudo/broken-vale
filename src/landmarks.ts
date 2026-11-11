@@ -45,6 +45,20 @@ vec4 tri(sampler2D t){ return texture2D(t,UX)*W3.x + texture2D(t,UY)*W3.y + text
   return m;
 }
 
+/** M20b · raised walk-surfaces on landmarks (world coords): discs and rotated boxes whose top the feet stand on. */
+type Walk = { x: number; z: number; y: number; r?: number; hw?: number; hd?: number; ry?: number };
+export const WALK: Walk[] = [];
+/** Highest walk-surface top under (x,z) or -Infinity. */
+export function walkY(x: number, z: number): number {
+  let y = -Infinity;
+  for (const w of WALK) {
+    const dx = x - w.x, dz = z - w.z;
+    if (w.r !== undefined) { if (dx * dx + dz * dz < w.r * w.r && w.y > y) y = w.y; continue; }
+    const c = Math.cos(w.ry ?? 0), s = Math.sin(w.ry ?? 0), lx = dx * c - dz * s, lz = dx * s + dz * c;
+    if (Math.abs(lx) < w.hw! && Math.abs(lz) < w.hd! && w.y > y) y = w.y;
+  }
+  return y;
+}
 class Builder {
   parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
   add(mat: THREE.Material, g: THREE.BufferGeometry, x = 0, y = 0, z = 0, ry = 0) {
@@ -133,7 +147,7 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
     const arch = new THREE.Mesh(new THREE.CircleGeometry(1.2, 16, 0, Math.PI), door.material); arch.position.set(door.position.x, y0 + 3.4, door.position.z); arch.rotation.y = face; g.add(arch);
     const lampM = new THREE.MeshBasicMaterial({ color: '#ffc27a' }); for (const s of [-1, 1]) { const lp = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.42, 0.28), lampM); lp.position.set(kx + Math.sin(face) * (KEEP_D / 2 + 0.5) + Math.cos(face) * s * 1.9, y0 + 3.0, kz + Math.cos(face) * (KEEP_D / 2 + 0.5) - Math.sin(face) * s * 1.9); g.add(lp); } }
   for (const d of roofDoors) { d.position.x -= l.x; d.position.z -= l.z; g.add(d); }
-  g.position.set(l.x, 0, l.z);
+  g.position.set(l.x, 0, l.z); g.name = l.id;
   return g;
 }
 
@@ -143,8 +157,8 @@ function makeSunspire(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): T
   const sand = triplanar(t.sand, 3, '#e7c98a', { ground: l.pad + 0.8 }), gold = new THREE.MeshStandardMaterial({ color: '#d9b24c', metalness: 0.9, roughness: 0.3 });
   addRimFill(gold, { fill: 0.15, rim: 0.4, rimColor: '#ffe3a0' });
   const y0 = l.pad;
-  b.add(sand, cyl(24, 23, 1.6, 48), 0, y0 - 0.8, 0);
-  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; b.add(sand, box(3.2, 0.9, 16), Math.sin(a) * 30, y0 - 0.6, Math.cos(a) * 30, a); }
+  b.add(sand, cyl(24, 23, 1.6, 48), 0, y0 - 0.8, 0); WALK.push({ x: l.x, z: l.z, r: 23.4, y: y0 + 0.8 });
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; b.add(sand, box(3.2, 0.9, 16), Math.sin(a) * 30, y0 - 0.6, Math.cos(a) * 30, a); WALK.push({ x: l.x + Math.sin(a) * 30, z: l.z + Math.cos(a) * 30, hw: 1.6, hd: 8, ry: a, y: y0 + 0.3 }); }
   const prof: [number, number][] = [[11, 4], [9.6, 8], [7.4, 14], [6.1, 22], [5.5, 34], [5.1, 46], [4.7, 56], [6.3, 60], [6.7, 63], [5.3, 66], [3.1, 70], [1.7, 78], [0.25, 88]];
   const sc = 0.62;
   b.add(sand, lathe([[12, 0], ...prof.slice(0, 8).map(([r, y]) => [r * 0.62, y * sc] as [number, number])], 32), 0, y0, 0);
@@ -156,7 +170,7 @@ function makeSunspire(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): T
   // Detail pass: string courses, gilded window frames, a stair and arched door toward the meadow.
   const faceS = Math.atan2(SPAWN.x - l.x, SPAWN.z - l.z), rAt = (y: number) => { for (let i = 1; i < prof.length; i++) if (prof[i][1] >= y) { const [r0, y0p] = prof[i - 1], [r1, y1p] = prof[i]; return (r0 + (r1 - r0) * (y - y0p) / (y1p - y0p)) * 0.62; } return 1; };
   for (const yy of [14, 26, 40, 52]) b.add(sand, new THREE.TorusGeometry(rAt(yy) + 0.15, 0.32, 6, 40).rotateX(Math.PI / 2), 0, y0 + yy * sc, 0);
-  for (let i = 0; i < 4; i++) { const sx = Math.sin(faceS), sz = Math.cos(faceS); b.add(sand, box(6.5, 0.45, 1.6), sx * (24.6 + i * 1.5), y0 - 0.8 - i * 0.45 + 0.35, sz * (24.6 + i * 1.5), faceS); }
+  for (let i = 0; i < 4; i++) { const sx = Math.sin(faceS), sz = Math.cos(faceS); b.add(sand, box(6.5, 0.45, 1.6), sx * (24.6 + i * 1.5), y0 - 0.8 - i * 0.45 + 0.35, sz * (24.6 + i * 1.5), faceS); WALK.push({ x: l.x + sx * (24.6 + i * 1.5), z: l.z + sz * (24.6 + i * 1.5), hw: 3.25, hd: 0.8, ry: faceS, y: y0 - i * 0.45 }); }
   const doorR = rAt(6) + 0.2; b.add(gold, new THREE.TorusGeometry(1.7, 0.22, 6, 20, Math.PI), Math.sin(faceS) * doorR, y0 + 3.2, Math.cos(faceS) * doorR, faceS);
   solids.push({ x: l.x, z: l.z, r: 10.5 });
   const g = b.build();
@@ -180,20 +194,24 @@ function makeSunspire(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): T
     g.add(stand, bowl, fl); solids.push({ x: l.x + bx, z: l.z + bz, r: 0.9 });
   }
   const cloth = new THREE.MeshStandardMaterial({ color: '#b5562a', side: THREE.DoubleSide, roughness: 0.85, emissive: '#5a1f08', emissiveIntensity: 0.25 });
-  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 0.26; const bn = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 4.2), cloth); bn.position.set(Math.sin(a) * 9.3, y0 + 6.6, Math.cos(a) * 9.3); bn.rotation.y = a; g.add(bn); }
+  // M20b: banners hang on the outer face of every other column from a gilded rod (they used to float between columns and read edge-on as a red line in the sky).
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const bn = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 3.6), cloth); bn.position.set(Math.sin(a) * 9.18, y0 + 6.3, Math.cos(a) * 9.18); bn.rotation.y = a; g.add(bn);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.4, 6).rotateZ(Math.PI / 2).rotateY(a), gold); rod.position.set(Math.sin(a) * 9.22, y0 + 8.15, Math.cos(a) * 9.22); g.add(rod); }
   if (opts.lights) { const pl = new THREE.PointLight('#ffb35c', 40, 26, 2); pl.position.set(Math.sin(faceS) * (doorR + 3), y0 + 3, Math.cos(faceS) * (doorR + 3)); g.add(pl); }
-  const amber = new THREE.MeshStandardMaterial({ color: '#ffb547', emissive: '#ff8a1c', emissiveIntensity: 0.5, roughness: 0.25, transparent: true, opacity: 0.92 });
-  const cg: THREE.BufferGeometry[] = [];
+  const amber = new THREE.MeshStandardMaterial({ color: '#c7832c', emissive: '#6e3206', emissiveIntensity: 0.4, roughness: 0.22, metalness: 0.15, flatShading: true }); // M20b: faceted, opaque — read as crystal, not as a glowing VFX cone
+  const cg: THREE.BufferGeometry[] = [], rocks: THREE.BufferGeometry[] = [];
   const ring = [[0, 38, 18, 26], [0.8, 42, 14, 32], [1.6, 36, 16, 22], [2.4, 44, 15, 28], [3.2, 40, 17, 24], [4.0, 38, 13, 30], [4.8, 42, 15, 20], [5.6, 36, 14, 27]];
   for (const [a, r, s, h] of ring) {
     for (let k = 0; k < 3; k++) {
-      const H = h * 0.11 * (1 - k * 0.25); const o = new THREE.OctahedronGeometry(1, 0); o.scale(s * 0.045, H, s * 0.045); o.rotateZ((k - 1) * 0.3);
+      const H = h * 0.11 * (1 - k * 0.25); const o = new THREE.OctahedronGeometry(1, 0); o.scale(s * 0.068, H * 0.9, s * 0.068); o.rotateZ((k - 1) * 0.3);
       o.translate(Math.sin(a) * r * 0.5 + (k - 1) * 0.75, y0 + H * 0.55, Math.cos(a) * r * 0.5); cg.push(o);
     }
     solids.push({ x: l.x + Math.sin(a) * r * 0.5, z: l.z + Math.cos(a) * r * 0.5, r: 1.3 });
+    const rk = new THREE.DodecahedronGeometry(1.25, 0); rk.scale(1.2, 0.55, 1); rk.translate(Math.sin(a) * r * 0.5, y0 + 0.15, Math.cos(a) * r * 0.5); rocks.push(rk); // rock socket the cluster grows from
   }
+  { const rm = new THREE.Mesh(mergeGeometries(rocks), new THREE.MeshStandardMaterial({ color: '#6d5a44', roughness: 0.95, flatShading: true })); rm.receiveShadow = true; g.add(rm); }
   const crystals = new THREE.Mesh(mergeGeometries(cg), amber); crystals.castShadow = true; g.add(crystals);
-  g.position.set(l.x, 0, l.z);
+  g.position.set(l.x, 0, l.z); g.name = l.id;
   return g;
 }
 
@@ -247,7 +265,7 @@ function makeIronDome(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): T
   const glow = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 2.2, 16, 1, true), new THREE.MeshBasicMaterial({ color: '#ffcf80', toneMapped: false }));
   glow.position.y = y0 + 7 + R + 0.4; g.add(glow);
   for (const [cx, cz, h] of [[-9, 6, 30], [8, 8, 26]]) { const e = new THREE.Mesh(new THREE.CircleGeometry(1.35, 12).rotateX(-Math.PI / 2), ember); e.position.set(cx, y0 + h + 1.02, cz); g.add(e); }
-  g.position.set(l.x, 0, l.z);
+  g.position.set(l.x, 0, l.z); g.name = l.id;
   return g;
 }
 
@@ -305,7 +323,7 @@ function makeVeilfall(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): {
   pool.position.set(0, y0 + 0.25, 15); g.add(pool);
   const foam = new THREE.Mesh(new THREE.RingGeometry(1.5, 4.2, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#f2fbff', map: brokenFoamTex(), transparent: true, opacity: 0.8, depthWrite: false }));
   foam.position.set(0, y0 + 0.3, 12.5); g.add(foam);
-  g.position.set(l.x, 0, l.z);
+  g.position.set(l.x, 0, l.z); g.name = l.id;
   return { group: g, update: (time) => { fallMat.uniforms.uTime.value = time; foam.scale.setScalar(1 + Math.sin(time * 3) * 0.05); foam.rotation.y = time * 0.05; orb.scale.setScalar(1 + Math.sin(time * 1.7) * 0.08);
     for (const sp of mist) { const k = sp.userData.k as number, f = (time * 0.25 + k / 6) % 1; sp.position.set(Math.sin(k * 2.1) * 2.5, y0 + 0.8 + f * 4, 12.5 + Math.cos(k * 1.7) * 1.5); sp.scale.setScalar(3 + f * 4); (sp.material as THREE.SpriteMaterial).opacity = 0.32 * Math.sin(f * Math.PI); } } };
 }

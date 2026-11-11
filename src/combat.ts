@@ -25,6 +25,7 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
 };
 export const isWeapon = (s: unknown): s is WeaponId => typeof s === 'string' && s in WEAPONS;
 
+export const JUMP_COST = 9;
 export const ST_MAX = 100, DODGE_COST = 22, BLOCK_HIT_COST = 24, BLOCK_DRAIN = 5, PARRY_WIN = 0.24, DODGE_T = 0.42, DODGE_IFR = 0.34, DODGE_SPEED = 8.6;
 export type Strike = { dmg: number; reach: number; heavy: boolean; stagger: number; keeperMul: number; finisher: boolean; move: Weapon['heavyMove'] | 'light' };
 export type Incoming = 'hit' | 'blocked' | 'parried' | 'dodged' | 'guardbreak';
@@ -35,7 +36,7 @@ export class Combat {
   stamina = ST_MAX; private regenWait = 0;
   act: Act | null = null; private combo = 0; private comboWin = 0; private queued = false;
   charge = -1; blocking = false; blockT = 0; iframes = 0; hitStop = 0; flash = 0; lastFail = 0;
-  dodgeDir = 0; counts = { light: 0, heavy: 0, dodge: 0, block: 0, parry: 0, landed: 0 };
+  dodgeDir = 0; counts = { light: 0, heavy: 0, dodge: 0, block: 0, parry: 0, landed: 0, jump: 0 };
   get busy() { return !!this.act || this.charge >= 0; }
   get rolling() { return this.act?.kind === 'dodge'; }
   /** Swing pose progress 0..1 (0 = none) for the procedural overlay; charge holds the wind-up. */
@@ -63,6 +64,11 @@ export class Combat {
     this.spend(cost); const dur = w.swing * 1.5 + 0.08; this.act = { kind: 'heavy', t: 0, dur, hitAt: dur * 0.45, hit: false, step: 0, power }; this.combo = 0; this.comboWin = 0; this.counts.heavy++; return true;
   }
   setBlock(on: boolean) { if (on && !this.blocking) { if (this.act?.kind === 'dodge') return; this.blocking = true; this.blockT = 0; this.counts.block++; } else if (!on) this.blocking = false; }
+  /** M20b · a short hop: costs a little stamina, cancels a guard; not during a roll or a swing. */
+  jump(): boolean {
+    if (this.act || this.blocking) return false; if (this.stamina < JUMP_COST) { this.lastFail = 1; return false; }
+    this.spend(JUMP_COST); this.blocking = false; this.charge = -1; this.counts.jump++; return true;
+  }
   /** Dodge-roll toward `dir` (world yaw). */
   dodge(dir: number): boolean {
     if (this.act?.kind === 'dodge') return false; if (this.stamina < DODGE_COST * 0.5) { this.lastFail = 1; return false; }

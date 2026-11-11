@@ -137,8 +137,11 @@ export function makeStairEntrance(t: { brick: GroundTex; rock: GroundTex }) {
   const flame = makeFlame(flameTex(), 0.75); flame.position.set(post.position.x, 1.78, post.position.z); g.add(flame);
   const light = new THREE.PointLight('#ffb26b', 0, 9, 2); light.position.set(post.position.x, 2.1, post.position.z); g.add(light);
   let lit = 0, want = 0;
+  // M20b: the jambs, the fallen arch block and the rubble pile are solid (feet used to sink into them).
+  const toW = (lx: number, lz: number) => ({ x: STAIR.x + Math.cos(STAIR.rot) * lx + Math.sin(STAIR.rot) * lz, z: STAIR.z - Math.sin(STAIR.rot) * lx + Math.cos(STAIR.rot) * lz });
+  const blocks = [{ ...toW(-(W + 0.55), L + 0.45), r: 0.75 }, { ...toW(W + 0.55, L + 0.45), r: 0.75 }, { ...toW(W + 0.5, L + 0.15), r: 1.05 }, { ...toW(W + 1.9, L - 1.5), r: 1.35 }];
   return {
-    group: g, y0,
+    group: g, y0, blocks,
     /** World point at the top step (where the player stands to descend). */
     mouth: { x: STAIR.x - STAIR_DIR.x * (L + 1.4), z: STAIR.z - STAIR_DIR.z * (L + 1.4) },
     setLit(on: boolean) { want = on ? 1 : 0; },

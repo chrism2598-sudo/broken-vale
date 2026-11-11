@@ -3,7 +3,7 @@ import { SEALS, heightAt, WAYFINDER, type SealDef } from './world';
 import { fill, type Profile } from './dialogue';
 
 /** Save format (localStorage 'vale3d-save'). */
-export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean; mirrors: number[]; beacon: boolean; echo: boolean; charted: boolean[]; cave: number; coast: number; sea: number; lamp: number; weapons?: string[]; weapon?: string; fog?: number[]; chests?: string[]; lore?: string[]; foes?: string[]; secrets?: string[]; views?: string[]; whet?: number };
+export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean; mirrors: number[]; beacon: boolean; echo: boolean; charted: boolean[]; cave: number; coast: number; sea: number; lamp: number; weapons?: string[]; weapon?: string; fog?: number[]; chests?: string[]; lore?: string[]; foes?: string[]; secrets?: string[]; views?: string[]; whet?: number; tod?: number; day?: number; rk?: Record<string, number> };
 const KEY = 'vale3d-save';
 export const SEAL_XP = 25, QUEST_XP = 80;
 export const levelOf = (xp: number) => 1 + Math.floor(xp / 50);
@@ -22,6 +22,10 @@ function gear(s: { weapons?: unknown; weapon?: unknown; fog?: unknown }) {
   const o = s as Record<string, unknown>; const ext: Record<string, unknown> = {};
   for (const k of ['chests', 'lore', 'foes', 'secrets', 'views']) { const v = L(o[k]); if (v) ext[k] = v; }
   if (typeof o.whet === 'number') ext.whet = Math.max(0, Math.min(4, o.whet | 0));
+  // M20b · time of day, day counter, cleared roaming groups (id → day cleared)
+  if (typeof o.tod === 'number' && isFinite(o.tod)) ext.tod = ((o.tod % 1) + 1) % 1;
+  if (typeof o.day === 'number') ext.day = Math.max(0, o.day | 0);
+  if (o.rk && typeof o.rk === 'object' && !Array.isArray(o.rk)) { const rk: Record<string, number> = {}; for (const [k, v] of Object.entries(o.rk as Record<string, unknown>).slice(0, 64)) if (typeof v === 'number') rk[k] = v | 0; ext.rk = rk; }
   return { weapons: w, weapon: cur, ...(fog ? { fog } : {}), ...ext };
 }
 export function writeSave(s: Save) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode */ } }

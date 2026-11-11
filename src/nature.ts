@@ -3,7 +3,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /** Shared wind time for foliage. */
-export const foliageUniforms = { uTime: { value: 0 } };
+export const foliageUniforms = { uTime: { value: 0 }, uGlow: { value: 1 }, uLit: { value: new THREE.Color(1, 1, 1) } }; // uGlow: leaf back-light (fades at night)
 
 let useA2C = false;
 /** Enable MSAA alpha-to-coverage on leaf cards (Lite has antialias; High renders through the composer). */
@@ -91,7 +91,8 @@ function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, aut
   if (!leaf) { if (m.map) m.map.anisotropy = 8; return m; }
   applyLeafAlpha(m);
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = foliageUniforms.uTime;
+    sh.uniforms.uTime = foliageUniforms.uTime; sh.uniforms.uGlow = foliageUniforms.uGlow;
+    sh.fragmentShader = 'uniform float uGlow;\n' + sh.fragmentShader;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
       .replace('#include <begin_vertex>', `vec3 transformed=vec3(position);
   #ifdef USE_INSTANCING
@@ -104,9 +105,9 @@ function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, aut
   transformed.x+=sw*.025*hh; transformed.z+=sw*.018*hh;`)
       .replace('#include <beginnormal_vertex>', 'vec3 objectNormal=normalize(normal+vec3(0.,.6,0.));');
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-${autumn ? 'float L=dot(diffuseColor.rgb,vec3(.3,.59,.11)); L=mix(.36,L,smoothstep(.12,.6,diffuseColor.a)); diffuseColor.rgb=mix(vec3(.58,.34,.08),vec3(.96,.72,.22),smoothstep(.06,.55,L))*(.65+.85*L);' : ''}`)
+${autumn ? 'float L=dot(diffuseColor.rgb,vec3(.3,.59,.11)); L=mix(.36,L,smoothstep(.12,.6,diffuseColor.a)); vec3 au=mix(vec3(.40,.12,.04),vec3(.80,.40,.08),smoothstep(.08,.45,L));au=mix(au,vec3(.93,.66,.18),smoothstep(.45,.8,L));diffuseColor.rgb=au*(.62+.62*L);' : ''}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.16,.1,.02)' : 'vec3(.07,.1,.03)'};`)
+totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.08,.045,.01)' : 'vec3(.07,.1,.03)'}*uGlow;`)
       .replace('#include <alphatest_fragment>', leafAlpha());
   };
   m.customProgramCacheKey = () => (autumn ? 'leafA' : 'leafG') + (useA2C ? 'c' : '');
@@ -159,6 +160,7 @@ function impostorMaterial(tex: THREE.Texture): THREE.MeshBasicMaterial {
   const m = new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.32, transparent: false, side: THREE.DoubleSide });
   applyLeafAlpha(m);
   m.onBeforeCompile = (sh) => {
+    sh.uniforms.uLit = foliageUniforms.uLit; sh.fragmentShader = 'uniform vec3 uLit;\n' + sh.fragmentShader; // unlit cards follow the day/night light
     sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `
   vec4 cW = modelMatrix * instanceMatrix * vec4(0.,0.,0.,1.);
   float sW = length((modelMatrix * instanceMatrix * vec4(1.,0.,0.,0.)).xyz);
@@ -168,7 +170,7 @@ function impostorMaterial(tex: THREE.Texture): THREE.MeshBasicMaterial {
   vec4 mvPosition = viewMatrix * vec4(wp, 1.);
   gl_Position = projectionMatrix * mvPosition;`);
     // Darken the card bottom a touch (ground occlusion) so impostors sit in the meadow.
-    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= mix(.8, 1.05, smoothstep(0., .5, vMapUv.y));')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= mix(.8, 1.05, smoothstep(0., .5, vMapUv.y)) * uLit;')
       .replace('#include <alphatest_fragment>', leafAlpha());
   };
   m.customProgramCacheKey = () => 'impostor' + (useA2C ? 'c' : '');

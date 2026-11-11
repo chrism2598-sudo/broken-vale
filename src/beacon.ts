@@ -202,5 +202,5 @@ export function makeDawnSky(sunDir: THREE.Vector3) {
       }`,
   });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1000, 48, 24), m); mesh.renderOrder = -2; mesh.frustumCulled = false;
-  return { mesh, set(k: number, t: number) { m.uniforms.uK.value = k; m.uniforms.uTime.value = t; mesh.visible = k > 0.002; } };
+  return { mesh, sun: m.uniforms.uSun.value as THREE.Vector3, set(k: number, t: number) { m.uniforms.uK.value = k; m.uniforms.uTime.value = t; mesh.visible = k > 0.002; } };
 }

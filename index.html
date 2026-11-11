@@ -50,7 +50,7 @@ body.creating #joy,body.creating #pname,body.creating .hud p{display:none}
 #wdarrow{display:inline-block;color:#e8955a;font-size:13px}
 #combat{position:fixed;z-index:14;left:50%;transform:translateX(-50%);top:calc(max(12px,env(safe-area-inset-top)) + 4px);padding:6px 14px;border-radius:12px;background:rgba(10,30,34,.82);border:1px solid rgba(214,186,120,.8);color:#f4ead2;font-size:18px;white-space:nowrap}
 #combat[hidden]{display:none}
-#bossbar{position:fixed;z-index:14;left:50%;transform:translateX(-50%);bottom:calc(max(14px,env(safe-area-inset-bottom)) + 150px);width:min(64vw,420px);padding:6px 12px 7px;border-radius:12px;background:rgba(6,22,26,.84);border:1px solid rgba(120,220,235,.7);color:#e8fbff;text-align:center;pointer-events:none}
+#bossbar{position:fixed;z-index:14;left:50%;transform:translateX(-50%);top:calc(max(12px,env(safe-area-inset-top)) + 96px);width:min(64vw,420px);padding:6px 12px 7px;border-radius:12px;background:rgba(6,22,26,.84);border:1px solid rgba(120,220,235,.7);color:#e8fbff;text-align:center;pointer-events:none}
 #bossbar[hidden]{display:none}
 #bossbar .bn{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9fe8f4}
 #bossbar .bw{height:10px;margin:5px 0 4px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden}
@@ -132,19 +132,19 @@ body.talking #joy,body.talking #action,body.creating #quest,body.creating #menub
 body.touch #hint{display:none}
 
 /* M19 · combat thumb cluster (bottom-right), stamina, weapon picker; the context Interact pill sits above it. */
-#cbt{position:fixed;z-index:15;right:max(14px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));width:236px;height:200px;pointer-events:none}
+#cbt{position:fixed;z-index:15;right:max(14px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));width:236px;height:230px;pointer-events:none}
 #cbt .cb{position:absolute;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none;width:62px;height:62px;border-radius:50%;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;background:radial-gradient(circle at 40% 32%,rgba(52,82,86,.82),rgba(14,32,36,.82));border:2px solid rgba(232,212,160,.75);color:#f4ead2;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .06s}
 #cbt .cb svg{width:26px;height:26px;pointer-events:none}#cbt .cb small{font:600 9.5px Georgia,serif;letter-spacing:.06em;text-transform:uppercase;opacity:.9;margin-top:1px;pointer-events:none}
 #cbt .cb.down{transform:scale(.9);filter:brightness(1.35)}
 #b-atk{right:4px;bottom:6px;width:84px!important;height:84px!important;background:radial-gradient(circle at 40% 32%,#c97a4a,#7a3418)!important;border-color:#ffd9b0!important}#b-atk svg{width:36px!important;height:36px!important}
 #b-hvy{right:98px;bottom:2px;background:conic-gradient(rgba(255,200,90,.85) calc(var(--ch,0)*360deg),transparent 0),radial-gradient(circle at 40% 32%,rgba(110,70,30,.85),rgba(40,22,10,.85))!important}
-#b-blk{right:100px;bottom:76px}#b-dge{right:12px;bottom:100px}
+#b-blk{right:100px;bottom:76px}#b-dge{right:12px;bottom:100px}#b-jmp{right:84px;bottom:156px;width:54px!important;height:54px!important}#b-jmp svg{width:22px!important;height:22px!important}
 #b-wpn{right:166px;bottom:4px;width:54px!important;height:54px!important;border-radius:14px!important;background:rgba(10,30,34,.78)!important}#b-wpn svg{width:28px!important;height:28px!important}
 #b-wpn.new{animation:wnew .5s ease 4;border-color:#ffe08a!important}@keyframes wnew{50%{transform:scale(1.18);box-shadow:0 0 22px rgba(255,220,120,.9)}}
-#stam{position:absolute;right:8px;bottom:172px;width:150px;height:7px;border-radius:4px;background:rgba(10,20,22,.6);border:1px solid rgba(232,212,160,.5);overflow:hidden;transition:opacity .5s}
+#stam{position:absolute;right:8px;bottom:220px;width:150px;height:7px;border-radius:4px;background:rgba(10,20,22,.6);border:1px solid rgba(232,212,160,.5);overflow:hidden;transition:opacity .5s}
 #stam i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#7fc96a,#d6e87a);transition:width .08s linear}#stam.full{opacity:.35}#stam.low i{background:linear-gradient(90deg,#d0562e,#e8a04a)}
 body.blocking #b-blk{filter:brightness(1.4);border-color:#bff3ea!important}
-#action{bottom:calc(max(16px,env(safe-area-inset-bottom)) + 196px)!important;min-height:52px!important;min-width:0!important;border-radius:26px!important;font-size:15px!important;max-width:min(62vw,300px)!important}
+#action{bottom:calc(max(16px,env(safe-area-inset-bottom)) + 252px)!important;min-height:52px!important;min-width:0!important;border-radius:26px!important;font-size:15px!important;max-width:min(62vw,300px)!important}
 #wpick{position:fixed;z-index:30;right:max(14px,env(safe-area-inset-right));top:calc(max(12px,env(safe-area-inset-top)) + 92px);max-height:calc(100vh - 330px);overflow:auto;width:min(320px,90vw);padding:8px;border-radius:14px;background:rgba(14,26,28,.94);border:1px solid rgba(214,186,120,.7);color:#f4ead2;font:13px Georgia,serif}
 #wpick[hidden]{display:none}#wpick .wh{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#d5b977;margin:2px 4px 6px}
 #wpick button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;margin:3px 0;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(214,186,120,.25);color:inherit;font:inherit}
@@ -205,7 +205,7 @@ body.talking #cbt,body.sheet #cbt,body.creating #cbt,body.titled #cbt{display:no
 <div id="joy"><div id="knob"></div></div>
 <div id="dlg" hidden role="dialog" aria-live="polite"><div id="dspk"></div><div id="dtxt"></div><button id="dnext">Next ▸</button></div>
 <button id="action" hidden>Action</button>
-<div id="cbt"><button id="b-atk" class="cb big" aria-label="Attack (K)"><small>Attack</small></button><button id="b-hvy" class="cb" aria-label="Heavy, hold to charge (L)"><small>Heavy</small></button><button id="b-blk" class="cb" aria-label="Block or parry (Q)"><small>Block</small></button><button id="b-dge" class="cb" aria-label="Dodge roll (C)"><small>Roll</small></button><button id="b-wpn" class="cb wpn" aria-label="Weapon (X)"></button><div id="stam" class="full" aria-label="Stamina"><i id="stfill"></i></div></div>
+<div id="cbt"><button id="b-atk" class="cb big" aria-label="Attack (K)"><small>Attack</small></button><button id="b-hvy" class="cb" aria-label="Heavy, hold to charge (L)"><small>Heavy</small></button><button id="b-blk" class="cb" aria-label="Block or parry (Q)"><small>Block</small></button><button id="b-dge" class="cb" aria-label="Dodge roll (C)"><small>Roll</small></button><button id="b-jmp" class="cb" aria-label="Jump (Space)"><small>Jump</small></button><button id="b-wpn" class="cb wpn" aria-label="Weapon (X)"></button><div id="stam" class="full" aria-label="Stamina"><i id="stfill"></i></div></div>
 <div id="wpick" hidden></div>
 <button id="fps" aria-label="Toggle FPS readout">FPS</button>
 <div id="loading">Loading the Vale…</div>

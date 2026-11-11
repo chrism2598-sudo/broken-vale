@@ -20,6 +20,7 @@ export type LoreDef = { id: string; title: string; text: string };
 export const CASTLE_O: Record<KeepId, { x: number; z: number }> = { pale: { x: 6000, z: 0 }, azure: { x: 6000, z: 400 } };
 export const KEEP_NAME: Record<KeepId, string> = { pale: 'Pale Keep', azure: 'Azure Keep' };
 export const LORE: Record<string, LoreDef> = {
+  'sea-bell': { id: 'sea-bell', title: 'Chalk on the drowned bell (Listening Pools)', text: '“Rang it once at low water to hear how far the cave goes. It answered from three places, and one of them was not stone. — E. M.”' },
   'pale-ledger': { id: 'pale-ledger', title: 'The Steward’s Ledger (Pale Keep)', text: '“…coal for the great hearth, eleven sacks. The old lord never let it be lit. Said the soot-black stone was not for warming. Press it, and the wall remembers the door.”' },
   'pale-solar': { id: 'pale-solar', title: 'A letter in the solar (Pale Keep)', text: '“The sky cracked over the vale at noon and the custodians rode out. We barred the gate. From the tower you can see where the light went wrong.”' },
   'pale-chapel': { id: 'pale-chapel', title: 'Chapel prayer-card (Pale Keep)', text: '“Keep the hollow ones still. They were set to guard, not to hate. Strike when they lift their arms — they cannot turn quickly.”' },
@@ -274,6 +275,8 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     id, scene, O, rooms, interact: inter, mobs, chests,
     get y() { return y; },
     get secretOpen() { return secretOpen; },
+    /** M20b · ceiling height over the floor at (wx,wz,wy) — a hop never lifts the head through it. */
+    ceilAt(wx: number, wz: number, wy: number) { return roomOf(wx - O.x, wz - O.z, wy + 0.5)?.y1 ?? Infinity; },
     roomAt(wx: number, wz: number, wy: number) { return roomOf(wx - O.x, wz - O.z, wy + 0.5)?.id ?? ''; },
     roomName(wx: number, wz: number) { return roomOf(wx - O.x, wz - O.z, y + 0.5)?.name ?? ''; },
     /** Place the player (world coords) at a known spot; height is taken from the best region there. */

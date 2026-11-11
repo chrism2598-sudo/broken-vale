@@ -13,6 +13,14 @@ const POOLS = [{ x: -5.5, z: -4.2 }, { x: -13, z: 4.6 }, { x: -21, z: -3.4 }];
 const DOOR = { x: -32.6, z: 0 };
 const RXW = RX + 3.6; // the west half of the chamber is longer: the seal stands in a deep apse
 const rxOf = (c: number) => (c < 0 ? RXW : RX);
+/** M20b · two side grottoes off the Listening Pools, each down a short rock passage (dry floor above the tide). */
+export const GROTTOS = [
+  { id: 'north', x: -9.5, z: 21.5, rx: 7.2, rz: 6.2, ry: 5.4, side: 1, name: 'Wrack grotto' },
+  { id: 'south', x: -20, z: -21, rx: 6.6, rz: 5.8, ry: 5.0, side: -1, name: 'Bell grotto' },
+];
+const PASS_W = 1.45, GROT_Y = 0.18;
+const inGrotto = (x: number, z: number, pad = 0) => GROTTOS.find((g) => ((x - g.x) / (g.rx - 1.4 - pad)) ** 2 + ((z - g.z) / (g.rz - 1.4 - pad)) ** 2 < 1);
+const inPassage = (x: number, z: number, pad = 0) => GROTTOS.find((g) => Math.abs(x - g.x) < PASS_W - pad && g.side * z > RZ - 3.2 && g.side * z < Math.abs(g.z) - 2);
 
 export const SEA_LINES = {
   arrive: 'The Listening Pools · the sea breathes in and out of the dark',
@@ -49,6 +57,12 @@ const SHG = `float seaH(vec2 p){ float h=.12*sin(p.x*.45+p.y*.3)+.08*sin(p.y*.9-
   ${POOLS.map((p) => `{ float d=length(p-vec2(${p.x.toFixed(2)},${p.z.toFixed(2)})); h-=1.25*max(0.,1.-(d/3.1)*(d/3.1)); }`).join('')}
   float w=max(0.,(-(p.x-(${CX.toFixed(1)}))-13.5)/3.); h-=1.6*min(1.,w); return h; }`;
 
+/** Drop every triangle that has a vertex where cut(x,y,z) is true (openings for passages). */
+function cutHoles(geo: THREE.BufferGeometry, cut: (x: number, y: number, z: number) => boolean) {
+  const p = geo.attributes.position as THREE.BufferAttribute, ix = geo.index!.array, keep: number[] = [];
+  for (let i = 0; i < ix.length; i += 3) { let c = false; for (let k = 0; k < 3 && !c; k++) { const v = ix[i + k]; c = cut(p.getX(v), p.getY(v), p.getZ(v)); } if (!c) keep.push(ix[i], ix[i + 1], ix[i + 2]); }
+  geo.setIndex(keep);
+}
 export function rockBlob(r: number, rnd: () => number, sx = 1, sy = 1, sz = 1, detail = 2) {
   const g = mergeVertices(new THREE.IcosahedronGeometry(r, detail).deleteAttribute('normal').deleteAttribute('uv')); const p = g.attributes.position as THREE.BufferAttribute; const o = rnd() * 10;
   for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const k = 1 + 0.18 * Math.sin(x * 1.3 + o) * Math.sin(y * 1.7 - o) + 0.07 * Math.sin(z * 3.1 + y * 2.3); p.setXYZ(i, x * k * sx, y * k * sy, z * k * sz); }
@@ -73,8 +87,41 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
   // Dome: noise-displaced half-ellipsoid seen from inside (winding flipped so the triplanar normals face in).
   { const d = new THREE.SphereGeometry(1, high ? 80 : 56, high ? 32 : 22, 0, Math.PI * 2, 0, Math.PI / 2 + 0.16); const p = d.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = 0.6 * Math.sin(x * 5.1 + z * 2.3) * Math.cos(y * 4.7 - x * 1.9) + 0.3 * Math.sin(z * 11 + y * 9) + 0.15 * Math.sin(x * 23 + y * 17); p.setXYZ(i, CX + x * (rxOf(x) + n * 1.3), y * RY + n * 0.7 * y - 0.6, z * (RZ + n * 1.1)); }
-    const ix = d.index!.array as Uint16Array | Uint32Array; for (let i = 0; i < ix.length; i += 3) { const t0 = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t0; } d.computeVertexNormals();
+    const ix = d.index!.array as Uint16Array | Uint32Array; for (let i = 0; i < ix.length; i += 3) { const t0 = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t0; }
+    cutHoles(d, (x, y, z) => GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 0.9 && gr.side * z > RZ * 0.7 && y < 3.9)); d.computeVertexNormals();
     const m = new THREE.Mesh(d, rock); m.receiveShadow = true; g.add(m); }
+  const lichenMats = [new THREE.MeshBasicMaterial({ color: '#2fe0c8', fog: true }), new THREE.MeshBasicMaterial({ color: '#4aa8ff', fog: true })];
+  const vaultM = triplanar(t.rock, 2.2, '#5a5752', { rough: 0.6, sat: 0.45 }), bronzeM = new THREE.MeshStandardMaterial({ color: '#7a5a2e', metalness: 0.75, roughness: 0.45, emissive: '#0c2a26', emissiveIntensity: 0.4, side: THREE.DoubleSide }), kelpM = new THREE.MeshStandardMaterial({ color: '#2c3a22', roughness: 0.8 }), crateM = new THREE.MeshStandardMaterial({ color: '#5a4026', roughness: 0.85 });
+  // M20b · the grottoes: a passage vault + floor, a domed side cave with its own lichen glow and a small cold light.
+  for (const gr of GROTTOS) {
+    const z0 = gr.side * (RZ - 3.4), z1 = gr.z - gr.side * (gr.rz - 1.2), len = Math.abs(z1 - z0), zm = (z0 + z1) / 2;
+    const vault = new THREE.CylinderGeometry(PASS_W + 0.6, PASS_W + 0.6, len + 1.6, 14, 6, true, -Math.PI / 2, Math.PI); vault.rotateX(-Math.PI / 2);
+    { const p = vault.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = 0.25 * Math.sin(z * 2.1 + y * 3) + 0.15 * Math.sin(x * 4 + z); p.setXYZ(i, x * (1 + n * 0.3), Math.max(0, y) * 1.55 + n * 0.3 + GROT_Y - 0.2, z); } }
+    vault.translate(gr.x, 0, zm); const vix = vault.index!.array as Uint16Array | Uint32Array; for (let i = 0; i < vix.length; i += 3) { const t0 = vix[i + 1]; vix[i + 1] = vix[i + 2]; vix[i + 2] = t0; } vault.computeVertexNormals();
+    const vm = new THREE.Mesh(vault, vaultM); vm.receiveShadow = true; g.add(vm);
+    const d = new THREE.SphereGeometry(1, high ? 44 : 30, high ? 18 : 12, 0, Math.PI * 2, 0, Math.PI / 2 + 0.12); const p = d.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = 0.5 * Math.sin(x * 5.3 + z * 2.1) * Math.cos(y * 4.1 - x * 2.2) + 0.25 * Math.sin(z * 10 + y * 8); p.setXYZ(i, gr.x + x * (gr.rx + n), y * gr.ry + n * 0.5 * y - 0.4, gr.z + z * (gr.rz + n * 0.9)); }
+    const gix = d.index!.array as Uint16Array | Uint32Array; for (let i = 0; i < gix.length; i += 3) { const t0 = gix[i + 1]; gix[i + 1] = gix[i + 2]; gix[i + 2] = t0; }
+    cutHoles(d, (x, y, z) => Math.abs(x - gr.x) < PASS_W + 0.9 && gr.side * (z - gr.z) < -gr.rz * 0.55 && y < 3.6); d.computeVertexNormals();
+    const dm = new THREE.Mesh(d, rock); dm.receiveShadow = true; g.add(dm);
+    const fl = new THREE.Mesh(new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2), floorM); fl.scale.set(gr.rx + 0.6, 1, gr.rz + 0.6); fl.position.set(gr.x, GROT_Y, gr.z); fl.receiveShadow = true; g.add(fl);
+    const pf = new THREE.Mesh(new THREE.PlaneGeometry(PASS_W * 2 + 0.8, len + 2.4).rotateX(-Math.PI / 2), floorM); pf.position.set(gr.x, GROT_Y - 0.01, zm); pf.receiveShadow = true; g.add(pf);
+    const parts: THREE.BufferGeometry[] = []; for (let i = 0; i < (high ? 14 : 9); i++) { const a = rnd() * Math.PI * 2; const r = 0.5 + rnd() * 1.1; const x = gr.x + Math.cos(a) * (gr.rx - 0.8), z = gr.z + Math.sin(a) * (gr.rz - 0.8); if (gr.side * (z - gr.z) < -gr.rz * 0.5 && Math.abs(x - gr.x) < 3) continue; parts.push(rockBlob(r, rnd, 1, 0.7, 1).translate(x, GROT_Y + r * 0.2, z)); }
+    for (const sx of [-1, 1]) parts.push(rockBlob(1.1, rnd, 0.8, 1.6, 1).translate(gr.x + sx * (PASS_W + 0.7), GROT_Y + 0.8, z0)); // jambs hide the seam
+    const rb = new THREE.Mesh(mergeGeometries(parts.map((q) => { const k = q.index ? q.toNonIndexed() : q; for (const n of Object.keys(k.attributes)) if (n !== 'position' && n !== 'normal') k.deleteAttribute(n); return k; })), wetRock); rb.castShadow = rb.receiveShadow = true; g.add(rb);
+    const gl = new THREE.PointLight(gr.side > 0 ? '#3fe6c8' : '#6aa8ff', 7, 14, 1.4); gl.position.set(gr.x, 3.4, gr.z); g.add(gl);
+    const px = gr.x, pz = gr.z + gr.side * 0.4; // the prop sits just past the interact spot
+    if (gr.side > 0) { // a heap of storm-wrack with a split sea-chest in it
+      for (let i = 0; i < 7; i++) { const k = new THREE.Mesh(new THREE.SphereGeometry(0.5 + rnd() * 0.35, 8, 6), kelpM); k.scale.set(1.3, 0.35, 1); k.position.set(px + (rnd() - 0.5) * 2.2, GROT_Y + 0.12, pz + (rnd() - 0.5) * 1.6); k.rotation.y = rnd() * 3; g.add(k); }
+      const cr = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.55, 0.65), crateM); cr.position.set(px + 0.3, GROT_Y + 0.3, pz); cr.rotation.set(0.12, 0.5, -0.18); cr.castShadow = high; g.add(cr);
+    } else { // a drowned bronze bell, half sunk, chalk on its lip
+      const pts: THREE.Vector2[] = []; for (let i = 0; i <= 12; i++) { const u = i / 12; pts.push(new THREE.Vector2(0.35 + 0.75 * u * u + 0.12 * Math.sin(u * 3), 1.5 * (1 - u))); }
+      const bell = new THREE.Mesh(new THREE.LatheGeometry(pts, 20), bronzeM); bell.position.set(px, GROT_Y - 0.15, pz); bell.rotation.set(0.5, 0.4, 0.35); bell.castShadow = high; g.add(bell);
+    }
+    const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.07, 0), lichenMats[gr.side > 0 ? 0 : 1], high ? 160 : 90); const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    for (let i = 0; i < im.count; i++) { const a = rnd() * Math.PI * 2, y = GROT_Y + 0.2 + rnd() ** 1.5 * 3; const e = Math.sqrt(Math.max(0.05, 1 - ((y + 0.4) / gr.ry) ** 2)) * 0.97; q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, 0)); sc.setScalar(0.6 + rnd() * 1.6); mx.compose(v.set(gr.x + Math.cos(a) * gr.rx * e, y, gr.z + Math.sin(a) * gr.rz * e), q, sc); im.setMatrixAt(i, mx); }
+    im.frustumCulled = false; g.add(im);
+  }
   // Floor with three pools and the seal pool.
   { const f = new THREE.PlaneGeometry(RX + RXW + 4, 2 * RZ + 4, high ? 156 : 100, high ? 90 : 56); f.rotateX(-Math.PI / 2); f.translate(CX - (RXW - RX) / 2, 0, 0); const p = f.attributes.position as THREE.BufferAttribute;
     const fc = new Float32Array(p.count * 3);
@@ -92,10 +139,9 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
     const st: THREE.BufferGeometry[] = []; for (let i = 0; i < (high ? 70 : 40); i++) { const x = CX + (rnd() - 0.5) * RX * 1.6, z = (rnd() - 0.5) * RZ * 1.5; const e = ((x - CX) / RX) ** 2 + (z / RZ) ** 2; if (e > 0.8) continue; const y = RY * Math.sqrt(Math.max(0.05, 1 - e)) - 0.9; const h = 0.6 + rnd() * 2.2; const c = new THREE.ConeGeometry(0.12 + rnd() * 0.22, h, 6, 3); c.rotateX(Math.PI); c.translate(x, y - h / 2 + 0.3, z); st.push(c); }
     const sm = new THREE.Mesh(mergeGeometries(st), wetRock); g.add(sm); }
   // Glow-lichen: bioluminescent flecks on the lower walls, two pulsing sets.
-  const lichenMats = [new THREE.MeshBasicMaterial({ color: '#2fe0c8', fog: true }), new THREE.MeshBasicMaterial({ color: '#4aa8ff', fog: true })];
   { const blob = new THREE.IcosahedronGeometry(0.06, 0); blob.scale(1, 0.5, 1); const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3();
     for (let set = 0; set < 2; set++) { const n = high ? 420 : 240; const im = new THREE.InstancedMesh(blob, lichenMats[set], n); let c = 0;
-      for (let i = 0; i < n * 3 && c < n; i++) { const a = rnd() * Math.PI * 2, y = 0.1 + rnd() ** 1.6 * 3.2; const e = Math.sqrt(Math.max(0.02, 1 - ((y + 0.6) / RY) ** 2)) * 0.985; const x = CX + Math.cos(a) * rxOf(Math.cos(a)) * e, z = Math.sin(a) * RZ * e; if (x > 1) continue;
+      for (let i = 0; i < n * 3 && c < n; i++) { const a = rnd() * Math.PI * 2, y = 0.1 + rnd() ** 1.6 * 3.2; const e = Math.sqrt(Math.max(0.02, 1 - ((y + 0.6) / RY) ** 2)) * 0.985; const x = CX + Math.cos(a) * rxOf(Math.cos(a)) * e, z = Math.sin(a) * RZ * e; if (x > 1) continue; if (GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 1.8 && gr.side * z > RZ * 0.55)) continue; // no flecks floating in the passage mouths
         const near = POOLS.some((p) => Math.hypot(p.x - x, p.z - z) < 9) || x < -26; if (!near && rnd() < 0.6) continue;
         q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, rnd() * 3)); s.setScalar(0.5 + rnd() * 1.6); mtx.compose(v.set(x, y, z), q, s); im.setMatrixAt(c++, mtx); }
       im.count = c; im.frustumCulled = false; g.add(im); } }
@@ -181,6 +227,7 @@ void main(){ float depth=uLev-seaH(vL); if(depth<0.) discard;
   const W = (x: number, z: number) => new THREE.Vector3(x + SEA_O.x, 0, z + SEA_O.z);
   const exV = new THREE.Vector3();
   return {
+    grottos: GROTTOS.map((gr) => ({ id: gr.id, name: gr.name, ...L(gr.x, gr.z - gr.side * 1.2) })),
     scene, entry: L(EXIT.x - 2.2, 0), exit: L(EXIT.x, EXIT.z), shells: POOLS.map((p) => L(p.x, p.z)), door: L(DOOR.x + 1.6, DOOR.z), page: L(PAGE.x, PAGE.z),
     get level() { return lev; }, get tidePhase() { const d = -Math.sin((2 * Math.PI * tideT) / SEA_PERIOD); return lev < SHELL_Y ? (d > 0 ? 'ebbing' : 'turning') : d > 0 ? 'falling' : 'rising'; },
     isLow() { return lev < SHELL_Y; }, get lit() { return lit.slice(); }, get solved() { return solved; },
@@ -191,16 +238,23 @@ void main(){ float depth=uLev-seaH(vL); if(depth<0.) discard;
     /** The second key: all seven rings wake and the seal rolls aside (into the south wall) to the drowned chamber. */
     setOpen(on: boolean, instant = false) { opened = on; if (instant) openK = on ? 1 : 0; }, get opened() { return opened; }, get openK() { return openK; },
     sealPos: L(DOOR.x - 0.2, DOOR.z),
-    groundY(wx: number, wz: number) { const x = wx - SEA_O.x, z = wz - SEA_O.z; return Math.max(sh(x, z), Math.hypot(x - (DOOR.x + 3), z - 1.4) < 3.05 ? 0.25 : -9); },
+    groundY(wx: number, wz: number) { const x = wx - SEA_O.x, z = wz - SEA_O.z; if (inGrotto(x, z, -1.4) || inPassage(x, z, -0.6)) return Math.max(GROT_Y, sh(x, z)); return Math.max(sh(x, z), Math.hypot(x - (DOOR.x + 3), z - 1.4) < 3.05 ? 0.25 : -9); },
     constrain(wx: number, wz: number): [number, number] {
-      let x = wx - SEA_O.x, z = wz - SEA_O.z; const e = Math.sqrt(ellipse(x, z)); if (e > 1) { x = CX + (x - CX) / e; z /= e; }
+      let x = wx - SEA_O.x, z = wz - SEA_O.z;
+      if (inGrotto(x, z) || inPassage(x, z)) return [wx, wz];
+      { const e = Math.sqrt(ellipse(x, z)); if (e > 1) { // outside the main chamber: snap to the nearest walkable region (chamber rim, a passage, or a grotto)
+        const mx = CX + (x - CX) / e, mz = z / e; let bx = mx, bz = mz, bd = Math.hypot(x - mx, z - mz);
+        for (const gr of GROTTOS) { const zA = gr.side * (RZ - 3.2), zB = gr.side * (Math.abs(gr.z) - 2); const px = Math.max(gr.x - PASS_W + 0.01, Math.min(gr.x + PASS_W - 0.01, x)), pz = Math.max(Math.min(zA, zB), Math.min(Math.max(zA, zB), z)); const dp = Math.hypot(x - px, z - pz); if (dp < bd) { bd = dp; bx = px; bz = pz; }
+          const ge = Math.sqrt(((x - gr.x) / (gr.rx - 1.4)) ** 2 + ((z - gr.z) / (gr.rz - 1.4)) ** 2); const gx = gr.x + (x - gr.x) / ge * 0.999, gz = gr.z + (z - gr.z) / ge * 0.999; const dg = Math.hypot(x - gx, z - gz); if (dg < bd) { bd = dg; bx = gx; bz = gz; } }
+        x = bx; z = bz; if (inGrotto(x, z) || inPassage(x, z)) return [x + SEA_O.x, z + SEA_O.z]; } }
       x = Math.min(x, EXIT.x + 0.4); if (x < DOOR.x + 1.4) x = DOOR.x + 1.4;
       { const lx = DOOR.x + 3, lz = 1.4, d = Math.hypot(x - lx, z - lz); // past x = −27 the seal pool is deep: only the ledge crosses it
         if (x < -27 && d > 3.0) { const toLine = -27 - x, toLedge = d - 3.0; if (toLine <= toLedge) x = -27; else { x = lx + (x - lx) / d * 3.0; z = lz + (z - lz) / d * 3.0; } } }
       return [x + SEA_O.x, z + SEA_O.z];
     },
     clampCam(target: THREE.Vector3, cam: THREE.Vector3) {
-      const inside = (v: THREE.Vector3) => { const x = v.x - SEA_O.x, z = v.z - SEA_O.z; if (v.y < Math.max(sh(x, z), lev) + 0.4) return false; return ((x - CX) / (rxOf(x - CX) - 1.4)) ** 2 + ((v.y + 0.6) / (RY - 1.2)) ** 2 + (z / (RZ - 1.4)) ** 2 < 1 && x > DOOR.x + 0.8; };
+      const inside = (v: THREE.Vector3) => { const x = v.x - SEA_O.x, z = v.z - SEA_O.z; if (v.y < Math.max(sh(x, z), lev) + 0.4) return false; if (GROTTOS.some((gr) => (Math.abs(x - gr.x) < PASS_W + 0.2 && gr.side * z > RZ - 4 && gr.side * z < Math.abs(gr.z) && v.y < GROT_Y + 2.9) || ((x - gr.x) / (gr.rx - 0.9)) ** 2 + ((v.y + 0.4) / (gr.ry - 0.8)) ** 2 + ((z - gr.z) / (gr.rz - 0.9)) ** 2 < 1)) return true;
+      return ((x - CX) / (rxOf(x - CX) - 1.4)) ** 2 + ((v.y + 0.6) / (RY - 1.2)) ** 2 + (z / (RZ - 1.4)) ** 2 < 1 && x > DOOR.x + 0.8; };
       if (inside(cam)) return; let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; exV.lerpVectors(target, cam, m); if (inside(exV)) lo = m; else hi = m; } cam.lerpVectors(target, cam, Math.max(0.15, lo * 0.95));
     },
     /** Advance the chamber tide and effects. Returns 'reset' when the tide drowns a partial set of lit shells. */

@@ -9,9 +9,10 @@ import type { GroundTex } from './terrain';
  *  surface → tide-spout slams (telegraphed rings under Ilka) → tide sweep (stand on a raised stone) → ebb → low water (Tide-Glass opens the core plates; strike) → … */
 export const KEEP_O = { x: 4000, z: 4000 };
 export const KEEPER_XP = 60, KEEPER_HP = 6;
-const R = 14.2, FLOOR = -0.9, STONE_TOP = 0.8, STONE_R = 1.65, BODY_R = 4.3, MELEE = 5.9;
-const STONES = [0, 1, 2, 3].map((k) => { const a = Math.PI / 4 + (k * Math.PI) / 2; return { x: Math.cos(a) * 8.6, z: Math.sin(a) * 8.6 }; });
-const LEDGE = { x: 14.6, z: 0, r: 2.7 }, LEDGE_Y = 0.6;
+const R = 20.5, DOME_H = 17, FLOOR = -0.9, STONE_TOP = 0.8, STONE_R = 1.65, BODY_R = 4.3, MELEE = 5.9;
+// M20b · bigger arena: an inner ring of four stones and three outer ones (none in front of the entrance ledge) so a stone is always in reach of the sweep.
+const STONES = [...[0, 1, 2, 3].map((k) => { const a = Math.PI / 4 + (k * Math.PI) / 2; return { x: Math.cos(a) * 9.4, z: Math.sin(a) * 9.4 }; }), ...[1, 2, 3].map((k) => { const a = (k * Math.PI) / 2; return { x: Math.cos(a) * 15.6, z: Math.sin(a) * 15.6 }; })];
+const LEDGE = { x: R + 0.4, z: 0, r: 2.7 }, LEDGE_Y = 0.6;
 const LEV = { low: -1.35, mid: -0.35, high: 0.42 };
 // Per-phase tuning (index = phase 1..3): slams per cycle, slam windup, sweep warning.
 const SLAMS = [0, 2, 2, 3], T_SLAM = [0, 1.35, 1.15, 1.0], T_SWEEP = [0, 2.8, 2.5, 2.3];
@@ -83,13 +84,13 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
   let seed = 77; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const L = (x: number, z: number) => ({ x: x + KEEP_O.x, z: z + KEEP_O.z });
   // The Lamp's beam, still pouring through the roof-crack from the seal room: the arena's key light.
-  const moon = new THREE.DirectionalLight('#bfe2ff', 0.9); moon.position.set(KEEP_O.x + 6, 30, KEEP_O.z - 5); moon.target.position.set(KEEP_O.x, 0, KEEP_O.z); scene.add(moon, moon.target);
-  if (high) { moon.castShadow = true; moon.shadow.mapSize.set(1024, 1024); Object.assign(moon.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 1, far: 60 }); moon.shadow.bias = -0.0006; moon.shadow.normalBias = 0.05; }
+  const moon = new THREE.DirectionalLight('#bfe2ff', 0.9); moon.position.set(KEEP_O.x + 8, 40, KEEP_O.z - 6); moon.target.position.set(KEEP_O.x, 0, KEEP_O.z); scene.add(moon, moon.target);
+  if (high) { moon.castShadow = true; moon.shadow.mapSize.set(1024, 1024); Object.assign(moon.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 75 }); moon.shadow.bias = -0.0006; moon.shadow.normalBias = 0.05; }
   const coreLight = new THREE.PointLight('#6fe8ff', 2.0, 16, 1.4); scene.add(coreLight);
   const rock = triplanar(t.rock, 3.0, '#8e8a84', { rough: 0.55, sat: 0.5 }), wet = triplanar(t.rock, 1.4, '#9d958b', { rough: 0.42, sat: 0.55 }), floorM = triplanar(t.bed, 1.5, '#5f5b55', { rough: 0.36, sat: 0.7 });
   // Dome (inward) and basin floor with vertex-colour wet/salt mottling.
   { const d = new THREE.SphereGeometry(1, high ? 72 : 48, high ? 28 : 18, 0, Math.PI * 2, 0, Math.PI / 2 + 0.2); const p = d.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = 0.6 * Math.sin(x * 6 + z * 2) * Math.cos(y * 5 - x * 2) + 0.3 * Math.sin(z * 12 + y * 8); p.setXYZ(i, x * (R + 3 + n * 1.2), y * 12 + n * 0.6 * y - 1.4, z * (R + 3 + n * 1.2)); }
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = 0.6 * Math.sin(x * 6 + z * 2) * Math.cos(y * 5 - x * 2) + 0.3 * Math.sin(z * 12 + y * 8); p.setXYZ(i, x * (R + 3 + n * 1.2), y * DOME_H + n * 0.6 * y - 1.4, z * (R + 3 + n * 1.2)); }
     const ix = d.index!.array as Uint16Array | Uint32Array; for (let i = 0; i < ix.length; i += 3) { const t0 = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t0; } d.computeVertexNormals();
     const m = new THREE.Mesh(d, rock); m.receiveShadow = true; g.add(m); }
   { const f = new THREE.PlaneGeometry(2 * (R + 4), 2 * (R + 4), high ? 72 : 48, high ? 72 : 48); f.rotateX(-Math.PI / 2); /* a grid, not a fan: the basin slope must be sampled across the floor */ const p = f.attributes.position as THREE.BufferAttribute; const c = new Float32Array(p.count * 3);
@@ -104,11 +105,11 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
     parts.push(rockBlob(LEDGE.r, rnd, 1.1, 0.5, 1.4, 2).translate(LEDGE.x + 0.6, LEDGE_Y - 0.75, LEDGE.z));
     for (let i = 0; i < (high ? 26 : 16); i++) { const a = rnd() * Math.PI * 2; if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < 0.35) continue; const r = R + 0.8 + rnd() * 1.5, s = 0.7 + rnd() * 1.6; parts.push(rockBlob(s, rnd, 1, 0.8, 1).translate(Math.cos(a) * r, FLOOR + s * 0.2, Math.sin(a) * r)); }
     const m = new THREE.Mesh(mergeGeometries(parts.map((p) => { const q = p.index ? p.toNonIndexed() : p; for (const n of Object.keys(q.attributes)) if (n !== 'position' && n !== 'normal') q.deleteAttribute(n); return q; })), wet); m.castShadow = m.receiveShadow = true; g.add(m);
-    const st: THREE.BufferGeometry[] = []; for (let i = 0; i < (high ? 50 : 30); i++) { const a = rnd() * Math.PI * 2, r = rnd() * (R + 1); const y = 12 * Math.sqrt(Math.max(0.05, 1 - (r / (R + 3)) ** 2)) - 1.8; const h = 0.8 + rnd() * 2.6; const c = new THREE.ConeGeometry(0.15 + rnd() * 0.25, h, 6, 2); c.rotateX(Math.PI); c.translate(Math.cos(a) * r, y - h / 2 + 0.3, Math.sin(a) * r); st.push(c); }
+    const st: THREE.BufferGeometry[] = []; for (let i = 0; i < (high ? 50 : 30); i++) { const a = rnd() * Math.PI * 2, r = rnd() * (R + 1); const y = DOME_H * Math.sqrt(Math.max(0.05, 1 - (r / (R + 3)) ** 2)) - 1.8; const h = 0.8 + rnd() * 2.6; const c = new THREE.ConeGeometry(0.15 + rnd() * 0.25, h, 6, 2); c.rotateX(Math.PI); c.translate(Math.cos(a) * r, y - h / 2 + 0.3, Math.sin(a) * r); st.push(c); }
     g.add(new THREE.Mesh(mergeGeometries(st), wet)); }
   // Glow-lichen (static instanced flecks) around the walls.
   { const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.07, 0), new THREE.MeshBasicMaterial({ color: '#3fe6d0' }), high ? 360 : 200); const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
-    for (let i = 0; i < im.count; i++) { const a = rnd() * Math.PI * 2, y = FLOOR + 0.4 + rnd() ** 1.5 * 4; const r = (R + 2.6) * Math.sqrt(Math.max(0.05, 1 - ((y + 1.4) / 12) ** 2)); q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, 0)); sc.setScalar(0.6 + rnd() * 1.6); mx.compose(v.set(Math.cos(a) * r, y, Math.sin(a) * r), q, sc); im.setMatrixAt(i, mx); }
+    for (let i = 0; i < im.count; i++) { const a = rnd() * Math.PI * 2, y = FLOOR + 0.4 + rnd() ** 1.5 * 4; const r = (R + 2.6) * Math.sqrt(Math.max(0.05, 1 - ((y + 1.4) / DOME_H) ** 2)); q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, 0)); sc.setScalar(0.6 + rnd() * 1.6); mx.compose(v.set(Math.cos(a) * r, y, Math.sin(a) * r), q, sc); im.setMatrixAt(i, mx); }
     im.frustumCulled = false; g.add(im); }
   // Water: one plane at the fight's tide level, scrolling normals (no rebuilds).
   waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping; const wn = waterNormals.clone(); wn.repeat.set(5, 5); wn.needsUpdate = true;
@@ -205,23 +206,26 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
   const go = (s: KeeperState, t: number) => { f.state = s; f.t = t; };
   const onStone = (lx: number, lz: number) => STONES.some((s) => Math.hypot(lx - s.x, lz - s.z) < STONE_R + 0.15) || Math.hypot(lx - LEDGE.x, lz - LEDGE.z) < LEDGE.r;
   const local = (wx: number, wz: number) => [wx - KEEP_O.x, wz - KEEP_O.z] as const;
-  const exV = new THREE.Vector3();
+  const exV = new THREE.Vector3(); let camFr = 1;
   const api = {
     rig: { root, segs, head, chest }, scene, entry: L(LEDGE.x - 0.4, 0), exit: L(LEDGE.x + 1.0, 0), center: L(0, 0), stones: STONES.map((s) => L(s.x, s.z)), melee: MELEE,
     set hold(v: boolean) { f.hold = v; }, get state() { return f.state; }, get hp() { return f.hp; }, get phase() { return f.phase; }, get revealed() { return f.revealed > 0; }, get level() { return lev; }, get active() { return f.active; }, get zone() { return f.state === 'windup' ? L(f.zx, f.zz) : null; },
     onStone(wx: number, wz: number) { const [x, z] = local(wx, wz); return onStone(x, z); },
-    onLedge(wx: number, wz: number) { const [x, z] = local(wx, wz); return Math.hypot(x - LEDGE.x, z - LEDGE.z) < LEDGE.r && x > 11.6; },
+    onLedge(wx: number, wz: number) { const [x, z] = local(wx, wz); return Math.hypot(x - LEDGE.x, z - LEDGE.z) < LEDGE.r && x > R - 2.6; },
     groundY(wx: number, wz: number) { const [x, z] = local(wx, wz); if (Math.hypot(x - LEDGE.x, z - LEDGE.z) < LEDGE.r) return LEDGE_Y; if (STONES.some((s) => Math.hypot(x - s.x, z - s.z) < STONE_R)) return STONE_TOP; return FLOOR + 0.08 * Math.sin(x * 0.9 + z * 0.4) + 0.06 * Math.sin(z * 1.3 - x * 0.5); },
     constrain(wx: number, wz: number): [number, number] {
-      let [x, z] = local(wx, wz); const onL = Math.hypot(x - LEDGE.x, z - LEDGE.z) < LEDGE.r - 0.2 && x > 12;
+      let [x, z] = local(wx, wz); const onL = Math.hypot(x - LEDGE.x, z - LEDGE.z) < LEDGE.r - 0.2 && x > R - 2.2;
       if (!onL) { const d = Math.hypot(x, z); if (d > R) { x *= R / d; z *= R / d; } }
       else if (x > LEDGE.x + 1.3) x = LEDGE.x + 1.3;
       const d = Math.hypot(x, z), br = deadK > 0.5 ? 3.6 : BODY_R; if (d < br) { x *= br / Math.max(d, 1e-3); z *= br / Math.max(d, 1e-3); }
       return [x + KEEP_O.x, z + KEEP_O.z];
     },
     clampCam(target: THREE.Vector3, cam: THREE.Vector3) {
-      const inside = (v: THREE.Vector3) => { const x = v.x - KEEP_O.x, z = v.z - KEEP_O.z; if (v.y < Math.max(FLOOR, lev) + 0.45) return false; return (x * x + z * z) / (R + 1.8) ** 2 + ((v.y + 1.4) / 10.5) ** 2 < 1; };
-      if (inside(cam)) return; let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; exV.lerpVectors(target, cam, m); if (inside(exV)) lo = m; else hi = m; } cam.lerpVectors(target, cam, Math.max(0.15, lo * 0.95));
+      const inside = (v: THREE.Vector3) => { const x = v.x - KEEP_O.x, z = v.z - KEEP_O.z; if (v.y < Math.max(FLOOR, lev) + 0.45) return false; return (x * x + z * z) / (R + 1.8) ** 2 + ((v.y + 1.4) / (DOME_H - 1.5)) ** 2 < 1; };
+      let fr = 1; if (!inside(cam)) { let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; exV.lerpVectors(target, cam, m); if (inside(exV)) lo = m; else hi = m; } fr = Math.max(0.15, lo * 0.95); }
+      // M20b: pull in at once (never through rock), ease back out (no boom pumping along the wall), and never sit inside the coil.
+      camFr = fr < camFr ? fr : Math.min(fr, camFr + 0.025); cam.lerpVectors(target, cam, camFr);
+      const cx = cam.x - KEEP_O.x, cz = cam.z - KEEP_O.z, cd = Math.hypot(cx, cz), br = (deadK > 0.5 ? 3.0 : BODY_R) + 0.3; if (cd < br && cam.y < root.position.y + 8.5) { cam.x = KEEP_O.x + cx / Math.max(cd, 1e-3) * br; cam.z = KEEP_O.z + cz / Math.max(cd, 1e-3) * br; }
     },
     /** Full reset to a fresh, waiting Keeper (defeat recovery / re-entry). */
     reset(defeated = false) { Object.assign(f, { state: defeated ? 'dead' : 'idle', phase: 1, hp: defeated ? 0 : KEEPER_HP, t: 0, slams: 0, revealed: 0, hitsThisWindow: 0, active: false }); lev = levWant = defeated ? LEV.low + 0.3 : LEV.mid; deadK = defeated ? 1 : 0; zone.visible = false; },
@@ -284,7 +288,7 @@ export function makeKeeper(high: boolean, t: { rock: GroundTex; bed: GroundTex }
       if (zone.visible) { const p = 1 - Math.max(0, f.t) / T_SLAM[f.phase]; zone.position.set(f.zx, Math.max(lev, FLOOR + 0.18) + 0.06, f.zz); const fl = zone.getObjectByName('fill')!; fl.scale.setScalar(0.15 + 0.85 * p); zoneMat.opacity = 0.88 + 0.12 * Math.sin(time * 18); }
       spoutT = Math.max(0, spoutT - dt * 1.4); (geyser.material as THREE.MeshBasicMaterial).opacity = spoutT * 0.55; geyser.position.set(f.zx, Math.max(lev, FLOOR), f.zz); geyser.scale.set(1, 0.2 + (1 - spoutT) * 0.8 + spoutT * 0.4, 1);
       const sw = s === 'sweepWarn' ? 1 - Math.max(0, f.t) / T_SWEEP[f.phase] : 0; stoneGlow.opacity = s === 'sweepWarn' ? 0.55 + 0.4 * Math.sin(time * 10) : 0;
-      sweepT = Math.max(0, sweepT - dt * 0.9); const sr = s === 'sweepWarn' ? 3 + sw * 3 : 3 + (1 - sweepT) * 14; sweepRing.scale.setScalar(sr); sweepRing.position.y = lev + 0.05; (sweepRing.material as THREE.MeshBasicMaterial).opacity = s === 'sweepWarn' ? 0.35 + 0.3 * sw : sweepT * 0.8;
+      sweepT = Math.max(0, sweepT - dt * 0.9); const sr = s === 'sweepWarn' ? 3 + sw * 3 : 3 + (1 - sweepT) * 21; sweepRing.scale.setScalar(sr); sweepRing.position.y = lev + 0.05; (sweepRing.material as THREE.MeshBasicMaterial).opacity = s === 'sweepWarn' ? 0.35 + 0.3 * sw : sweepT * 0.8;
     },
   };
   api.reset();

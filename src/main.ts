@@ -23,7 +23,7 @@ import { makeFloatingIsland, makeLanternStaff, ISLAND_POS, islandTopY } from './
 import { UPDRAFT, MIRRORS, MORNING_DIRS, DIR_ARROWS, BEACON_XP, BEACON_L, CLUE_L, RETURN_L, LANDING_L, ISLAND_WALK_R, CLUE_LINES, UPDRAFT_DORMANT, UPDRAFT_NEEDS_WIND, ENDING_TITLE, ENDING_LINES, ENDING_REWARD, WAYFINDER_BEACON, mirrorsMatch, makeHollowPuzzle, makeUpdraft, makeDawnSky } from './beacon';
 import { buildJournal, drawValeMap, MAPBOX, FOG_R, revealFog, fogExplored , migrateFog } from './journal';
 import { COAST_LINES, COAST_O, COAST_XP, makeCoast, type Coast } from './coast';
-import { SEA_LINES, SEA_XP, makeSeaCave, type SeaCave } from './seacave';
+import { SEA_LINES, SEA_XP, SEA_O, makeSeaCave, type SeaCave } from './seacave';
 import { KEEPER_LINES, KEEPER_XP, KEEPER_HP, makeKeeper, type Keeper, type KeeperEvent } from './keeper';
 import { cutTerrain, cutGrass, STAIR, STAIR_DIR, CAVE_LINES, CAVE_XP, BRAZIERS, RIVER_ORDER, makeStairEntrance, makeCaveInterior, type CaveInterior } from './cave';
 import { ECHO, ECHO_RANGE, ECHO_XP, ECHO_SILENT, echoMemoryLines, MARR_MARKS, CHART_R, CHART_DONE, makeEchoGrove } from './echo';
@@ -361,6 +361,7 @@ async function main() {
     if (inBarrow) return !!nearestBarMob(12);
     if (inCastle) { const m = nearestMob(); if (!m || Math.hypot(m.x - state.px, m.z - state.pz) >= 12) return false; return m.state !== 'idle' || (!!castle && castle.roomAt(m.x, m.z, castle.y) === castle.roomAt(state.px, state.pz, castle.y)); } // M21a: a foe behind a wall no longer pops the combat cluster
     if (inKeep) return !!keep && keep.active && save.sea < 5;
+    if (inSea) { const m = nearestSeaMob(12); if (!m || !sea) return false; return m.state !== 'idle' || sea.chamber(m.x, m.z) === sea.chamber(state.px, state.pz); }
     if (!vale()) return false;
     return !!nearestRoamer(12) || (!save.warden && wd.awake);
   }
@@ -567,12 +568,13 @@ async function main() {
   document.getElementById('endcred')!.onclick = () => { openCredits(); };
   document.getElementById('crbtn')!.onclick = () => { setMenu(false); openCredits(); };
   // ---------- The Listening Pools (sea cave interior) ----------
-  let inSea = false, sea: SeaCave | null = null;
+  let inSea = false, sea: SeaCave | null = null, seaMobs: Mob[] = [], seaDown = 0, seaPull = 0;
   async function ensureSea() { if (sea) return sea; caveLoading = true; const tx = await ruinTex(); sea = makeSeaCave(HIGH, { rock: tx.cliff, bed, blocks: tx.blocks }, waterNormals, scene.environment); caveLoading = false;
     { const c = sea, avoid = [...c.shells, c.page, c.door, c.exit, c.entry]; let at = { x: c.page.x + 1, z: c.page.z + 1 };
       search: for (let r = 5; r < 16; r += 0.75) for (let a = 0; a < 6.28; a += 0.45) { const x = c.shells[2].x + Math.cos(a) * r, z = c.shells[2].z + Math.sin(a) * r, [cx, cz] = c.constrain(x, z);
         if (Math.hypot(cx - x, cz - z) > 0.01 || avoid.some((q) => Math.hypot(q.x - x, q.z - z) < 5.2)) continue; at = { x, z }; break search; }
-      const p = makePickup('tide'); p.group.position.set(at.x, c.groundY(at.x, at.z), at.z); c.scene.add(p.group); p.taken = owned().includes('tide'); seaPick = { x: at.x, z: at.z, p }; }
+      const p = makePickup('tide'); p.group.position.set(at.x, c.groundY(at.x, at.z), at.z); c.scene.add(p.group); p.taken = owned().includes('tide'); seaPick = { x: at.x, z: at.z, p };
+      seaMobs = c.mobSpawns.map((s) => { const m = makeSentinel(s.id, s.x, s.z, s.y, s.face, '#3d5a58', { look: 'drowned', ground: (x, z) => sea!.groundY(x, z) }); if (sList('foes').includes(s.id)) m.kill(); c.scene.add(m.group); return m; }); }
     return sea; }
   async function enterSea(instant = false) {
     if ((inSea && !inKeep) || fading) return; fading = true; state.speed = 0; coast?.audio(false);
@@ -589,6 +591,33 @@ async function main() {
     const c = await ensureCoast(); if (save.coast >= 2 && save.lamp !== 1) c.reveal(true); c.setTop(false); syncLamp(c); inSea = false; inCoast = true; setScene(c.scene); c.audio(audio.enabled);
     state.px = c.caveMouth.x + 1.2; state.pz = c.caveMouth.z; state.facing = Math.PI / 2; state.yaw = -Math.PI / 2 + 0.2; state.pitch = 0.16; state.dist = 6.5; snapCam = true;
     hudT = 0; fading = false; setFade(false);
+  }
+  function nearestSeaMob(r = 1e9): Mob | null { let b: Mob | null = null, bd = r; for (const m of seaMobs) { if (!m.alive) continue; const d = Math.hypot(m.x - state.px, m.z - state.pz); if (d < bd) { bd = d; b = m; } } return b; }
+  function hitSeaMob(m: Mob, sk: Strike) {
+    cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit();
+    if (m.hit(sk.dmg, sk.stagger)) { const lv = levelOf(save.xp); if (!sList('foes').includes(m.id)) { sList('foes').push(m.id); save.xp += m.xp; persist(); } toast(`${m.name} slumps into the tide · +${m.xp} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3); return; }
+    toast(sk.stagger >= 0.8 ? `Staggered! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}` : `Hit! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}`, 1.4);
+  }
+  function seaRecover() {
+    if (!sea) return; playerHp = hpMax(); seaDown = 3; state.px = sea.entry.x; state.pz = sea.entry.z; state.speed = 0; state.facing = -Math.PI / 2; state.yaw = Math.PI / 2 - 0.1; snapCam = true;
+    for (const m of seaMobs) if (m.alive) m.reset(); toast('You wash back to the cave mouth · progress kept', 4); hudT = 0;
+  }
+  function tickSeaMobs(dt: number) {
+    if (!sea || !inSea) return; seaDown = Math.max(0, seaDown - dt);
+    const homeOf = (m: Mob) => m.id.includes('flood') ? 'flood' : m.id.includes('crystal') ? 'crystal' : '';
+    const here = sea.chamber(state.px, state.pz);
+    for (const m of seaMobs) {
+      const home = homeOf(m);
+      const walk = (x: number, z: number) => { const [cx, cz] = sea!.constrain(x, z); return Math.hypot(cx - x, cz - z) < 0.06 && (sea!.chamber(x, z) === home); };
+      if (m.tick(dt, state.px, state.pz, player.root.position.y, walk, seaDown > 0 || fading || talking, here === home) !== 'swing') continue;
+      const res = cb.incoming(false);
+      if (res === 'dodged') toast('Rolled clear!', 1.0);
+      else if (res === 'parried') { audio.parry(); m.hit(0, 1); toast('Parried! The wight reels', 1.6); }
+      else if (res === 'blocked') { audio.clank(); toast('Blocked · stamina spent', 1.2); }
+      else { playerHp -= 1; player.play('HitRecieve'); shake = Math.max(shake, 0.2); audio.hurt();
+        if (playerHp <= 0) { seaRecover(); return; }
+        toast(res === 'guardbreak' ? `Guard broken! HP ${playerHp}/${hpMax()}` : `The Tide-Wight strikes! HP ${playerHp}/${hpMax()}`, 2, true); }
+    }
   }
   function wakeShell(i: number) {
     if (!sea) return; const r = sea.light(i);
@@ -685,14 +714,30 @@ async function main() {
       return { label: 'The round seal', act: () => openDialog('The round seal', save.sea >= 2 ? SEA_LINES.sealWoken : SEA_LINES.sealShut), x: c.door.x - 1.5, z: c.door.z };
     }
     if (seaPick && seaPick.p.group.visible && d(seaPick) < 2.4) return { label: `Take the ${WEAPONS.tide.name}`, act: () => takeWeapon('tide'), x: seaPick.x, z: seaPick.z };
-    for (const gr of c.grottos) if (d(gr) < 2.4) { const id = 'sea-' + gr.id, done = sList('chests').includes(id);
-      return { label: done ? `${gr.name} · searched` : gr.id === 'north' ? 'Search the wrack-heap' : 'The drowned bell · chalk marks', x: gr.x, z: gr.z, act: () => {
+    const spots: Inter[] = [];
+    for (const gr of c.grottos) {
+      if (gr.id !== 'north' && gr.id !== 'south') continue;
+      if (d(gr) >= 2.4) continue;
+      const id = 'sea-' + gr.id, done = sList('chests').includes(id);
+      spots.push({ label: done ? `${gr.name} · searched` : gr.id === 'north' ? 'Search the wrack-heap' : 'The drowned bell · chalk marks', x: gr.x, z: gr.z, act: () => {
         if (done) { if (gr.id === 'south') readLore('sea-bell', true); else toast('Only weed and old rope now.', 2); return; }
         sList('chests').push(id); const lv = levelOf(save.xp);
         if (gr.id === 'north') { save.xp += 25; save.whet = Math.min(4, (save.whet ?? 0) + 1); persist(); audio.chime(); toast(`Under the wrack: a sea-whetstone · every blade +15% · +25 XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 4.5); }
         else { save.xp += 20; persist(); audio.chime(); toast(`+20 XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 2.5); readLore('sea-bell', true); }
-        hudT = 0; } }; }
-    return null;
+        hudT = 0; } });
+    }
+    for (const lo of c.loot) if (d(lo) < 2.2) { const done = sList('chests').includes(lo.id);
+      spots.push({ label: done ? `${lo.name[0].toUpperCase()}${lo.name.slice(1)} · empty` : `Open the ${lo.name}`, x: lo.x, z: lo.z, act: () => {
+        if (done) { toast('Already picked clean.', 2); return; }
+        sList('chests').push(lo.id); const lv = levelOf(save.xp); const xp = lo.id === 'sea-flood' ? 30 : 20; save.xp += xp; persist(); audio.chime();
+        toast(`${lo.id === 'sea-flood' ? 'A tide-pearl and salt-stiff coin' : 'A small purse of tide-coin'} · +${xp} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 4); hudT = 0;
+      } }); }
+    for (const lf of c.loreFinds) if (d(lf) < 2.2) { const done = (save.lore ?? []).includes(lf.id);
+      spots.push({ label: done ? `${lf.name[0].toUpperCase()}${lf.name.slice(1)} · read again` : `Read the ${lf.name}`, x: lf.x, z: lf.z, act: () => {
+        if (!done) { const lv = levelOf(save.xp); save.xp += 20; persist(); audio.chime(); toast(`Enna’s hand on the tablet · +20 XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3.5); }
+        readLore(lf.id, true); hudT = 0;
+      } }); }
+    let best: Inter | null = null, bd = 1e9; for (const it of spots) { if (it.x == null || it.z == null) continue; const dd = d({ x: it.x, z: it.z }); if (dd < bd) { bd = dd; best = it; } } return best;
   }
   function coastInteract(): Inter | null {
     if (!coast || fading) return null; const c = coast, d = (p: { x: number; z: number }) => Math.hypot(state.px - p.x, state.pz - p.z);
@@ -1148,6 +1193,7 @@ async function main() {
     if (inKeep && keep && save.sea < 5) return { x: keep.center.x, z: keep.center.z, r: keep.melee };
     if (inBarrow) { const m = nearestBarMob(); return m ? { x: m.x, z: m.z, r: m.look === 'king' ? 2.4 : 1.6 } : null; }
     if (inCastle) { const m = nearestMob(); return m ? { x: m.x, z: m.z, r: 1.6 } : null; }
+    if (inSea) { const m = nearestSeaMob(); return m ? { x: m.x, z: m.z, r: 1.6 } : null; }
     if (perch) return null;
     foeMob = null; if (vale()) { const m = nearestRoamer(); if (m && (save.warden || Math.hypot(m.x - state.px, m.z - state.pz) < Math.hypot(WARDEN.x - state.px, WARDEN.z - state.pz))) { foeMob = m; return { x: m.x, z: m.z, r: m.look === 'zealot' ? 2.3 : m.look === 'brute' ? 2.0 : 1.6 }; } }
     if (!inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow && !onIsland && !save.warden) return { x: WARDEN.x, z: WARDEN.z, r: W_MELEE };
@@ -1169,7 +1215,7 @@ async function main() {
     const f = foe(); if (!f) return; sk = { ...sk, dmg: sk.dmg * whetMul() };
     const dx = f.x - state.px, dz = f.z - state.pz, d = Math.hypot(dx, dz), facing = Math.cos(Math.atan2(dx, dz) - state.facing);
     if (d > f.r * sk.reach + 0.2 || facing < 0.2) return;
-    if (inBarrow) { const m = nearestBarMob(); if (m) hitBar(m, sk); } else if (inCastle) { const m = nearestMob(); if (m) hitMob(m, { ...sk, dmg: sk.dmg / whetMul() }); } else if (inKeep) hitKeeper(sk); else if (foeMob) hitRoamer(foeMob, sk); else hitWarden(sk);
+    if (inBarrow) { const m = nearestBarMob(); if (m) hitBar(m, sk); } else if (inCastle) { const m = nearestMob(); if (m) hitMob(m, { ...sk, dmg: sk.dmg / whetMul() }); } else if (inKeep) hitKeeper(sk); else if (inSea) { const m = nearestSeaMob(); if (m) hitSeaMob(m, sk); } else if (foeMob) hitRoamer(foeMob, sk); else hitWarden(sk);
   }
   function takeWeapon(id: WeaponId) {
     const o = owned(); if (!o.includes(id)) save.weapons = [...o, id]; save.weapon = id; persist(); equip(id); syncWeaponUi();
@@ -1520,7 +1566,7 @@ async function main() {
     player.pose.style = cb.weapon.style; player.pose.block += ((cb.blocking ? 1 : 0) - player.pose.block) * Math.min(1, dt * 14);
     player.setSpeed(cb.act ? 0 : state.speed, cb.hitStop > 0 ? dt * 0.08 : dt); // hit stop: the swing freezes for a few frames
     for (const k of PICK) if (k.p.group.visible) k.p.update(t); if (seaPick?.p.group.visible) seaPick.p.update(t);
-    if (inCastle && castle) tickMobs(dt); tickBarrow(dt); tickDiscover(dt);
+    if (inCastle && castle) tickMobs(dt); if (inSea && sea) tickSeaMobs(dt); tickBarrow(dt); tickDiscover(dt);
     tickRoam(dt, t); tickControls(dt);
     // Wayfinder looks at Ilka when near.
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
@@ -1536,7 +1582,8 @@ async function main() {
     camTarget.set(state.px, camGy + 1.42, state.pz);
     // Portrait + close to the Keeper: ease the camera back and up so the coil doesn't fill the screen (damped on the fixed tick → interpolated, no jitter).
     { const want = inKeep && keep && innerHeight > innerWidth && Math.hypot(state.px - keep.center.x, state.pz - keep.center.z) < 10.5 ? 1 : 0; kPull = snapCam ? want : kPull + (want - kPull) * damp(2.2, dt); }
-    const pitchK = state.pitch + 0.06 * kPull, distK = state.dist + 3.2 * kPull;
+    { const want = inSea && sea && sea.inTight(state.px, state.pz) ? 1 : 0; seaPull = snapCam ? want : seaPull + (want - seaPull) * damp(2.6, dt); }
+    const pitchK = state.pitch + 0.06 * kPull + 0.12 * seaPull, distK = state.dist + 3.2 * kPull - 2.2 * seaPull;
     const cp = Math.cos(pitchK), sp = Math.sin(pitchK);
     const back = backV.set(Math.sin(state.yaw) * cp, sp, Math.cos(state.yaw) * cp);
     const right = rightV.set(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
@@ -1956,6 +2003,11 @@ async function main() {
     recStart() { rec = [];}, recStop() { const r = rec; rec = null; return r; },
     /** Deterministic stepping: run update() with a given dt sequence while holding the stick at (sx, sy); returns recorder rows. */
     killCastleMobs() { for (const m of mobs) m.kill(); },
+    killSeaMobs() { for (const m of seaMobs) m.kill(); },
+    seaWalk(lx: number, lz: number, frames = 300, m = 1) { if (!sea) return null; const id = stick.id; stick.id = 999; let t = clock.elapsedTime, n = 0;
+      for (; n < frames; n++) { const dx = SEA_O.x + lx - state.px, dz = SEA_O.z + lz - state.pz, L = Math.hypot(dx, dz); if (L < 0.35) break; const ux = dx / L, uz = dz / L, sn = Math.sin(state.yaw), cs = Math.cos(state.yaw); stick.x = (ux * cs - uz * sn) * m; stick.y = (ux * sn + uz * cs) * m; t += 1 / 30; update(1 / 30, t); }
+      stick.id = id; stick.x = stick.y = 0; for (let k = 0; k < 10; k++) { t += 1 / 30; update(1 / 30, t); }
+      return { n, x: +(state.px - SEA_O.x).toFixed(2), z: +(state.pz - SEA_O.z).toFixed(2), y: +player.root.position.y.toFixed(2), chamber: sea.chamber(state.px, state.pz), near: nearestInteract()?.label ?? null }; },
     /** M21a QA · steer the touch stick toward a castle-local point frame by frame (real joystick speed), like a player would. */
     walkTo(lx: number, lz: number, frames = 240, m = 1) { if (!castle) return null; const id = stick.id; stick.id = 999; let t = clock.elapsedTime, n = 0;
       for (; n < frames; n++) { const dx = castle.O.x + lx - state.px, dz = castle.O.z + lz - state.pz, L = Math.hypot(dx, dz); if (L < 0.3) break; const ux = dx / L, uz = dz / L, sn = Math.sin(state.yaw), cs = Math.cos(state.yaw); stick.x = (ux * cs - uz * sn) * m; stick.y = (ux * sn + uz * cs) * m; t += 1 / 30; update(1 / 30, t); }
@@ -1976,7 +2028,7 @@ async function main() {
         mirrorW: MIRRORS.map((m) => w(BEACON_L.x + m.dx + (BEACON_L.x + m.dx > BEACON_L.x ? 0 : 0), BEACON_L.z + m.dz)), clueW: w(CLUE_L.x, CLUE_L.z), returnW: w(RETURN_L.x, RETURN_L.z), beamColor: '#' + sun.color.getHexString() }; },
     echo: () => ({ x: ECHO.x, z: ECHO.z, done: save.echo, active: echoT >= 0, charted: [...save.charted], marks: MARR_MARKS.map((m) => ({ name: m.name, x: m.x, z: m.z })) }),
     keeper: () => ({ stage: save.sea, inKeep, state: keep?.state ?? null, hp: keep?.hp ?? null, phase: keep?.phase ?? null, revealed: keep?.revealed ?? false, level: keep?.level ?? null, zone: keep?.zone ?? null, playerHp, atkCd, center: keep?.center, entry: keep?.entry, exit: keep?.exit, stones: keep?.stones, melee: keep?.melee, onStone: keep ? keep.onStone(state.px, state.pz) : null, bar: !bossEl.hidden }),
-    sea: () => ({ stage: save.sea, inSea, opened: sea?.opened ?? false, level: sea?.level ?? null, low: sea?.isLow() ?? null, phase: sea?.tidePhase ?? null, lit: sea?.lit ?? null, solved: sea?.solved ?? false, shells: sea?.shells, page: sea?.page, door: sea?.door, exit: sea?.exit }),
+    sea: () => ({ stage: save.sea, inSea, opened: sea?.opened ?? false, level: sea?.level ?? null, low: sea?.isLow() ?? null, phase: sea?.tidePhase ?? null, lit: sea?.lit ?? null, solved: sea?.solved ?? false, shells: sea?.shells, page: sea?.page, door: sea?.door, exit: sea?.exit, grottos: sea?.grottos, loot: sea?.loot, loreFinds: sea?.loreFinds, chamber: sea ? sea.chamber(state.px, state.pz) : null, tight: !!(sea && sea.inTight(state.px, state.pz)), y: +player.root.position.y.toFixed(2), near: nearestInteract()?.label ?? null, mobs: seaMobs.map((m) => ({ id: m.id, x: +m.x.toFixed(2), z: +m.z.toFixed(2), y: +m.y.toFixed(2), hp: m.hp, state: m.state, alive: m.alive })) }),
     coast: () => ({ stage: save.coast, inCoast, tide: coast?.tide() ?? null, phase: coast?.tidePhase ?? null, low: coast?.isLow() ?? null, revealed: !!coast?.revealed, rise: coast?.rise ?? 0, passage: cave?.passage, shrine: coast?.shrine, caveMouth: coast?.caveMouth, pathStart: coast?.pathStart, tunnel: coast?.tunnel, aq: aqLevel }),
     cave: () => ({ stage: save.cave, inCave, fading, mouth: stair.mouth, stair: STAIR, lit: [...litOrder], door: !!cave?.doorOpen, entry: cave?.entry, exit: cave?.exit, braziers: cave?.braziers, carving: cave?.carving, doorAt: cave?.door, order: RIVER_ORDER, names: BRAZIERS.map((b) => b.name) }),
     openSheet(w: 'journal' | 'map' | null) { if (w) openSheet(w); else closeSheets(); paused = false; },

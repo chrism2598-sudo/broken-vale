@@ -13,14 +13,20 @@ const POOLS = [{ x: -5.5, z: -4.2 }, { x: -13, z: 4.6 }, { x: -21, z: -3.4 }];
 const DOOR = { x: -32.6, z: 0 };
 const RXW = RX + 3.6; // the west half of the chamber is longer: the seal stands in a deep apse
 const rxOf = (c: number) => (c < 0 ? RXW : RX);
-/** M20b · two side grottoes off the Listening Pools, each down a short rock passage (dry floor above the tide). */
-export const GROTTOS = [
-  { id: 'north', x: -9.5, z: 21.5, rx: 7.2, rz: 6.2, ry: 5.4, side: 1, name: 'Wrack grotto' },
-  { id: 'south', x: -20, z: -21, rx: 6.6, rz: 5.8, ry: 5.0, side: -1, name: 'Bell grotto' },
+/** M20b · two side grottoes off the Listening Pools. M21b-2 · two more chambers: a flooded grotto (west-north) and a tide-crystal chamber (east-south). */
+export type GrottoKind = 'wrack' | 'bell' | 'flood' | 'crystal';
+export type GrottoDef = { id: string; x: number; z: number; rx: number; rz: number; ry: number; side: 1 | -1; name: string; kind: GrottoKind; fy?: number; mouth?: number };
+export const GROTTOS: GrottoDef[] = [
+  { id: 'north', x: -9.5, z: 21.5, rx: 7.2, rz: 6.2, ry: 5.4, side: 1, name: 'Wrack grotto', kind: 'wrack' },
+  { id: 'south', x: -20, z: -21, rx: 6.6, rz: 5.8, ry: 5.0, side: -1, name: 'Bell grotto', kind: 'bell' },
+  { id: 'flood', x: -26.4, z: 23.8, rx: 7.2, rz: 6.6, ry: 5.2, side: 1, name: 'Flooded grotto', kind: 'flood', fy: -0.52, mouth: 6.0 },
+  { id: 'crystal', x: -5.5, z: -23.6, rx: 6.8, rz: 6.5, ry: 5.8, side: -1, name: 'Tide-crystal chamber', kind: 'crystal' },
 ];
 const PASS_W = 1.45, GROT_Y = 0.18;
+const fyOf = (g: GrottoDef) => g.fy ?? GROT_Y;
+const mouthOf = (g: GrottoDef) => g.mouth ?? (RZ - 3.2);
 const inGrotto = (x: number, z: number, pad = 0) => GROTTOS.find((g) => ((x - g.x) / (g.rx - 1.4 - pad)) ** 2 + ((z - g.z) / (g.rz - 1.4 - pad)) ** 2 < 1);
-const inPassage = (x: number, z: number, pad = 0) => GROTTOS.find((g) => Math.abs(x - g.x) < PASS_W - pad && g.side * z > RZ - 3.2 && g.side * z < Math.abs(g.z) - 2);
+const inPassage = (x: number, z: number, pad = 0) => GROTTOS.find((g) => Math.abs(x - g.x) < PASS_W - pad && g.side * z > mouthOf(g) && g.side * z < Math.abs(g.z) - 2);
 
 export const SEA_LINES = {
   arrive: 'The Listening Pools · the sea breathes in and out of the dark',
@@ -68,6 +74,12 @@ export function rockBlob(r: number, rnd: () => number, sx = 1, sy = 1, sz = 1, d
   for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const k = 1 + 0.18 * Math.sin(x * 1.3 + o) * Math.sin(y * 1.7 - o) + 0.07 * Math.sin(z * 3.1 + y * 2.3); p.setXYZ(i, x * k * sx, y * k * sy, z * k * sz); }
   g.computeVertexNormals(); return g;
 }
+/** A short hexagonal prism with a pointed cap — reads as a crystal, not a party-hat cone. */
+function crystalGeo(h: number, r: number, lean = 0) {
+  const shaft = new THREE.CylinderGeometry(r * 0.55, r, h * 0.68, 6).toNonIndexed(); shaft.translate(0, h * 0.34, 0);
+  const cap = new THREE.ConeGeometry(r * 0.55, h * 0.36, 6).toNonIndexed(); cap.translate(0, h * 0.68 + h * 0.18, 0);
+  const g = mergeGeometries([shaft, cap])!; if (lean) g.rotateZ(lean); return g;
+}
 export const gradTex = (stops: [number, string][], w = 4, h = 128, radial = false) => { const c = document.createElement('canvas'); c.width = radial ? 128 : w; c.height = h; const x = c.getContext('2d')!;
   const gr = radial ? x.createRadialGradient(64, 64, 0, 64, 64, 64) : x.createLinearGradient(0, 0, 0, h); for (const [o, col] of stops) gr.addColorStop(o, col); x.fillStyle = gr; x.fillRect(0, 0, c.width, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
 
@@ -88,15 +100,16 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
   { const d = new THREE.SphereGeometry(1, high ? 80 : 56, high ? 32 : 22, 0, Math.PI * 2, 0, Math.PI / 2 + 0.16); const p = d.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = 0.6 * Math.sin(x * 5.1 + z * 2.3) * Math.cos(y * 4.7 - x * 1.9) + 0.3 * Math.sin(z * 11 + y * 9) + 0.15 * Math.sin(x * 23 + y * 17); p.setXYZ(i, CX + x * (rxOf(x) + n * 1.3), y * RY + n * 0.7 * y - 0.6, z * (RZ + n * 1.1)); }
     const ix = d.index!.array as Uint16Array | Uint32Array; for (let i = 0; i < ix.length; i += 3) { const t0 = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t0; }
-    cutHoles(d, (x, y, z) => GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 0.9 && gr.side * z > RZ * 0.7 && y < 3.9)); d.computeVertexNormals();
+    cutHoles(d, (x, y, z) => GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 0.9 && gr.side * z > mouthOf(gr) - 1.2 && y < 3.9)); d.computeVertexNormals();
     const m = new THREE.Mesh(d, rock); m.receiveShadow = true; g.add(m); }
   const lichenMats = [new THREE.MeshBasicMaterial({ color: '#2fe0c8', fog: true }), new THREE.MeshBasicMaterial({ color: '#4aa8ff', fog: true })];
   const vaultM = triplanar(t.rock, 2.2, '#5a5752', { rough: 0.6, sat: 0.45 }), bronzeM = new THREE.MeshStandardMaterial({ color: '#7a5a2e', metalness: 0.75, roughness: 0.45, emissive: '#0c2a26', emissiveIntensity: 0.4, side: THREE.DoubleSide }), kelpM = new THREE.MeshStandardMaterial({ color: '#2c3a22', roughness: 0.8 }), crateM = new THREE.MeshStandardMaterial({ color: '#5a4026', roughness: 0.85 });
   // M20b · the grottoes: a passage vault + floor, a domed side cave with its own lichen glow and a small cold light.
+  // M21b-2 · flood/crystal chambers share this shell and dress themselves below.
   for (const gr of GROTTOS) {
-    const z0 = gr.side * (RZ - 3.4), z1 = gr.z - gr.side * (gr.rz - 1.2), len = Math.abs(z1 - z0), zm = (z0 + z1) / 2;
+    const fy = fyOf(gr), z0 = gr.side * mouthOf(gr), z1 = gr.z - gr.side * (gr.rz - 1.2), len = Math.abs(z1 - z0), zm = (z0 + z1) / 2;
     const vault = new THREE.CylinderGeometry(PASS_W + 0.6, PASS_W + 0.6, len + 1.6, 14, 6, true, -Math.PI / 2, Math.PI); vault.rotateX(-Math.PI / 2);
-    { const p = vault.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = 0.25 * Math.sin(z * 2.1 + y * 3) + 0.15 * Math.sin(x * 4 + z); p.setXYZ(i, x * (1 + n * 0.3), Math.max(0, y) * 1.55 + n * 0.3 + GROT_Y - 0.2, z); } }
+    { const p = vault.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = 0.25 * Math.sin(z * 2.1 + y * 3) + 0.15 * Math.sin(x * 4 + z); const yy = y < 0 ? fy - 0.15 + (y + 0.01) * 0.2 : y * 1.55 + fy + Math.max(0, GROT_Y - fy) + n * 0.3 - 0.05; p.setXYZ(i, x * (1 + n * 0.3), yy, z); } }
     vault.translate(gr.x, 0, zm); const vix = vault.index!.array as Uint16Array | Uint32Array; for (let i = 0; i < vix.length; i += 3) { const t0 = vix[i + 1]; vix[i + 1] = vix[i + 2]; vix[i + 2] = t0; } vault.computeVertexNormals();
     const vm = new THREE.Mesh(vault, vaultM); vm.receiveShadow = true; g.add(vm);
     const d = new THREE.SphereGeometry(1, high ? 44 : 30, high ? 18 : 12, 0, Math.PI * 2, 0, Math.PI / 2 + 0.12); const p = d.attributes.position as THREE.BufferAttribute;
@@ -104,22 +117,64 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
     const gix = d.index!.array as Uint16Array | Uint32Array; for (let i = 0; i < gix.length; i += 3) { const t0 = gix[i + 1]; gix[i + 1] = gix[i + 2]; gix[i + 2] = t0; }
     cutHoles(d, (x, y, z) => Math.abs(x - gr.x) < PASS_W + 0.9 && gr.side * (z - gr.z) < -gr.rz * 0.55 && y < 3.6); d.computeVertexNormals();
     const dm = new THREE.Mesh(d, rock); dm.receiveShadow = true; g.add(dm);
-    const fl = new THREE.Mesh(new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2), floorM); fl.scale.set(gr.rx + 0.6, 1, gr.rz + 0.6); fl.position.set(gr.x, GROT_Y, gr.z); fl.receiveShadow = true; g.add(fl);
-    const pf = new THREE.Mesh(new THREE.PlaneGeometry(PASS_W * 2 + 0.8, len + 2.4).rotateX(-Math.PI / 2), floorM); pf.position.set(gr.x, GROT_Y - 0.01, zm); pf.receiveShadow = true; g.add(pf);
-    const parts: THREE.BufferGeometry[] = []; for (let i = 0; i < (high ? 14 : 9); i++) { const a = rnd() * Math.PI * 2; const r = 0.5 + rnd() * 1.1; const x = gr.x + Math.cos(a) * (gr.rx - 0.8), z = gr.z + Math.sin(a) * (gr.rz - 0.8); if (gr.side * (z - gr.z) < -gr.rz * 0.5 && Math.abs(x - gr.x) < 3) continue; parts.push(rockBlob(r, rnd, 1, 0.7, 1).translate(x, GROT_Y + r * 0.2, z)); }
-    for (const sx of [-1, 1]) parts.push(rockBlob(1.1, rnd, 0.8, 1.6, 1).translate(gr.x + sx * (PASS_W + 0.7), GROT_Y + 0.8, z0)); // jambs hide the seam
+    const fl = new THREE.Mesh(new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2), floorM); fl.scale.set(gr.rx + 0.6, 1, gr.rz + 0.6); fl.position.set(gr.x, fy, gr.z); fl.receiveShadow = true; g.add(fl);
+    { const pf = new THREE.Mesh(new THREE.PlaneGeometry(PASS_W * 2 + 0.8, len + 2.4, 1, 8).rotateX(-Math.PI / 2), floorM);
+      if (fy < GROT_Y - 0.05) { const p = pf.geometry.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const zw = p.getZ(i) + zm; const u = Math.max(0, Math.min(1, ((zw - z0) / (z1 - z0)) * gr.side)); p.setY(i, (GROT_Y - 0.01) + u * (fy - GROT_Y)); } pf.geometry.computeVertexNormals(); pf.position.set(gr.x, 0, zm); }
+      else pf.position.set(gr.x, fy - 0.01, zm);
+      pf.receiveShadow = true; g.add(pf); }
+    const parts: THREE.BufferGeometry[] = []; for (let i = 0; i < (high ? 14 : 9); i++) { const a = rnd() * Math.PI * 2; const r = 0.5 + rnd() * 1.1; const x = gr.x + Math.cos(a) * (gr.rx - 0.8), z = gr.z + Math.sin(a) * (gr.rz - 0.8); if (gr.side * (z - gr.z) < -gr.rz * 0.5 && Math.abs(x - gr.x) < 3) continue; parts.push(rockBlob(r, rnd, 1, 0.7, 1).translate(x, fy + r * 0.2, z)); }
+    for (const sx of [-1, 1]) parts.push(rockBlob(1.1, rnd, 0.8, 1.6, 1).translate(gr.x + sx * (PASS_W + 0.7), fy + 0.8 + Math.max(0, GROT_Y - fy), z0)); // jambs hide the seam
     const rb = new THREE.Mesh(mergeGeometries(parts.map((q) => { const k = q.index ? q.toNonIndexed() : q; for (const n of Object.keys(k.attributes)) if (n !== 'position' && n !== 'normal') k.deleteAttribute(n); return k; })), wetRock); rb.castShadow = rb.receiveShadow = true; g.add(rb);
-    const gl = new THREE.PointLight(gr.side > 0 ? '#3fe6c8' : '#6aa8ff', 7, 14, 1.4); gl.position.set(gr.x, 3.4, gr.z); g.add(gl);
+    const glCol = gr.kind === 'flood' ? '#2fe0c8' : gr.kind === 'crystal' ? '#f0b45a' : gr.side > 0 ? '#3fe6c8' : '#6aa8ff';
+    const gl = new THREE.PointLight(glCol, gr.kind === 'crystal' ? 9 : 7, gr.kind === 'crystal' ? 16 : 14, 1.4); gl.position.set(gr.x, fy + 3.2, gr.z); g.add(gl);
     const px = gr.x, pz = gr.z + gr.side * 0.4; // the prop sits just past the interact spot
-    if (gr.side > 0) { // a heap of storm-wrack with a split sea-chest in it
-      for (let i = 0; i < 7; i++) { const k = new THREE.Mesh(new THREE.SphereGeometry(0.5 + rnd() * 0.35, 8, 6), kelpM); k.scale.set(1.3, 0.35, 1); k.position.set(px + (rnd() - 0.5) * 2.2, GROT_Y + 0.12, pz + (rnd() - 0.5) * 1.6); k.rotation.y = rnd() * 3; g.add(k); }
-      const cr = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.55, 0.65), crateM); cr.position.set(px + 0.3, GROT_Y + 0.3, pz); cr.rotation.set(0.12, 0.5, -0.18); cr.castShadow = high; g.add(cr);
-    } else { // a drowned bronze bell, half sunk, chalk on its lip
+    if (gr.kind === 'wrack') { // a heap of storm-wrack with a split sea-chest in it
+      for (let i = 0; i < 7; i++) { const k = new THREE.Mesh(new THREE.SphereGeometry(0.5 + rnd() * 0.35, 8, 6), kelpM); k.scale.set(1.3, 0.35, 1); k.position.set(px + (rnd() - 0.5) * 2.2, fy + 0.12, pz + (rnd() - 0.5) * 1.6); k.rotation.y = rnd() * 3; g.add(k); }
+      const cr = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.55, 0.65), crateM); cr.position.set(px + 0.3, fy + 0.3, pz); cr.rotation.set(0.12, 0.5, -0.18); cr.castShadow = high; g.add(cr);
+    } else if (gr.kind === 'bell') { // a drowned bronze bell, half sunk, chalk on its lip
       const pts: THREE.Vector2[] = []; for (let i = 0; i <= 12; i++) { const u = i / 12; pts.push(new THREE.Vector2(0.35 + 0.75 * u * u + 0.12 * Math.sin(u * 3), 1.5 * (1 - u))); }
-      const bell = new THREE.Mesh(new THREE.LatheGeometry(pts, 20), bronzeM); bell.position.set(px, GROT_Y - 0.15, pz); bell.rotation.set(0.5, 0.4, 0.35); bell.castShadow = high; g.add(bell);
+      const bell = new THREE.Mesh(new THREE.LatheGeometry(pts, 20), bronzeM); bell.position.set(px, fy - 0.15, pz); bell.rotation.set(0.5, 0.4, 0.35); bell.castShadow = high; g.add(bell);
+    } else if (gr.kind === 'flood') {
+      // a dished basin that holds a pool even at mid-tide, ribbon kelp, and a banded chest on a dry ledge.
+      { const dish = fl.geometry.clone(); const p = dish.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < p.count; i++) { const x = p.getX(i) * (gr.rx + 0.6), z = p.getZ(i) * (gr.rz + 0.6); const u = Math.max(0, 1 - (x * x) / 18 - (z * z) / 14); p.setY(i, p.getY(i) - 0.48 * u * u); }
+        dish.computeVertexNormals(); fl.geometry.dispose(); fl.geometry = dish; }
+      const ledge = new THREE.Mesh(rockBlob(1.35, rnd, 1.4, 0.8, 1.2, 2), wetRock); ledge.position.set(gr.x + 0.4, -0.3, gr.z + gr.side * 3.4); ledge.receiveShadow = true; g.add(ledge);
+      const wood = new THREE.MeshStandardMaterial({ color: '#8a5a30', roughness: 0.84, metalness: 0.05 }), band = new THREE.MeshStandardMaterial({ color: '#c4a05a', roughness: 0.45, metalness: 0.35 });
+      const chest = new THREE.Group(); chest.position.set(gr.x + 0.4, 0.62, gr.z + gr.side * 3.4); chest.rotation.set(0.04, -0.35, 0.06); g.add(chest);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 0.72), wood); box.castShadow = high; chest.add(box);
+      const lid = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.1, 0.76), wood); lid.position.y = 0.32; chest.add(lid);
+      for (const ox of [-0.38, 0.38]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.62, 0.76), band); b.position.x = ox; chest.add(b); }
+      gl.intensity = 11; gl.distance = 16; gl.position.set(gr.x, fy + 2.6, gr.z);
+      const gl2 = new THREE.PointLight('#7ec8b8', 5.5, 11, 1.5); gl2.position.set(gr.x + 0.6, 1.6, gr.z + gr.side * 2.2); g.add(gl2);
+      const warm = new THREE.PointLight('#ffd7a0', 3.2, 6, 1.8); warm.position.set(gr.x + 0.4, 1.5, gr.z + gr.side * 3.4); g.add(warm);
+    } else if (gr.kind === 'crystal') {
+      // opaque amber / teal clusters (pointed hexagonal shafts, not cones) and a standing carved tablet.
+      const am = new THREE.MeshStandardMaterial({ color: '#e8a84a', roughness: 0.22, metalness: 0.15, emissive: '#a86410', emissiveIntensity: 0.7 }), tm = new THREE.MeshStandardMaterial({ color: '#5ad4cc', roughness: 0.18, metalness: 0.2, emissive: '#146a66', emissiveIntensity: 0.85 });
+      const amber: THREE.BufferGeometry[] = [], teal: THREE.BufferGeometry[] = [];
+      const tabX = gr.x + 0.15, tabZ = gr.z + gr.side * 0.6;
+      const plant = (list: THREE.BufferGeometry[], x: number, z: number, h: number, r: number) => { const c = crystalGeo(h, r, (rnd() - 0.5) * 0.22); c.rotateY(rnd() * 6); c.translate(x, fy, z); list.push(c); };
+      for (let i = 0; i < (high ? 16 : 11); i++) {
+        const a = rnd() * Math.PI * 2, rr = 2.0 + rnd() * (gr.rx - 2.8), h = 0.45 + rnd() * 0.7;
+        const x = gr.x + Math.cos(a) * rr, z = gr.z + Math.sin(a) * (gr.rz - 1.6) * (0.5 + rnd() * 0.5);
+        if (Math.hypot(x - tabX, z - tabZ) < 2.0) continue;
+        if (Math.abs(x - gr.x) < 1.8 && gr.side * (z - gr.z) < 0.6) continue; // keep the way in clear
+        plant(i % 3 === 0 ? teal : amber, x, z, h, 0.14 + rnd() * 0.1);
+        if (rnd() < 0.4) plant(i % 3 === 0 ? teal : amber, x + (rnd() - 0.5) * 0.3, z + (rnd() - 0.5) * 0.3, h * (0.45 + rnd() * 0.3), 0.09 + rnd() * 0.06);
+      }
+      // a dense cluster at the back wall, behind the tablet
+      for (let i = 0; i < 7; i++) { const h = 0.8 + rnd() * 1.15; plant(i < 3 ? teal : amber, gr.x + (rnd() - 0.5) * 1.6, gr.z + gr.side * 2.8 + (rnd() - 0.5) * 0.8, h, 0.15 + rnd() * 0.08); }
+      for (const [list, mat] of [[amber, am], [teal, tm]] as const) if (list.length) { const xm = new THREE.Mesh(mergeGeometries(list), mat); xm.castShadow = xm.receiveShadow = true; g.add(xm); }
+      const tab = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.25, 0.14), new THREE.MeshStandardMaterial({ color: '#e6dece', roughness: 0.5, emissive: '#4a6058', emissiveIntensity: 0.45 }));
+      tab.position.set(tabX, fy + 0.78, tabZ); tab.rotation.set(-0.06, gr.side * 0.2, 0.02); tab.castShadow = high; g.add(tab);
+      const cr = new THREE.Group(); cr.position.set(gr.x + 2.2, fy + 0.28, gr.z + gr.side * 0.4); cr.rotation.y = 0.55; g.add(cr);
+      cr.add(new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.38, 0.5), new THREE.MeshStandardMaterial({ color: '#6b4a28', roughness: 0.8 })));
+      const lid = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.08, 0.54), new THREE.MeshStandardMaterial({ color: '#7a5630', roughness: 0.75 })); lid.position.y = 0.23; cr.add(lid);
+      gl.intensity = 10; gl.distance = 16;
+      const gl2 = new THREE.PointLight('#3fe0d4', 7, 12, 1.4); gl2.position.set(gr.x - 1.6, fy + 2.0, gr.z - gr.side * 1.6); g.add(gl2);
     }
-    const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.07, 0), lichenMats[gr.side > 0 ? 0 : 1], high ? 160 : 90); const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
-    for (let i = 0; i < im.count; i++) { const a = rnd() * Math.PI * 2, y = GROT_Y + 0.2 + rnd() ** 1.5 * 3; const e = Math.sqrt(Math.max(0.05, 1 - ((y + 0.4) / gr.ry) ** 2)) * 0.97; q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, 0)); sc.setScalar(0.6 + rnd() * 1.6); mx.compose(v.set(gr.x + Math.cos(a) * gr.rx * e, y, gr.z + Math.sin(a) * gr.rz * e), q, sc); im.setMatrixAt(i, mx); }
+    const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.07, 0), lichenMats[gr.kind === 'crystal' ? 1 : 0], high ? 160 : 90); const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    for (let i = 0; i < im.count; i++) { const a = rnd() * Math.PI * 2, y = fy + 0.25 + rnd() ** 1.5 * 2.4; const e = Math.sqrt(Math.max(0.05, 1 - ((y + 0.4) / gr.ry) ** 2)) * 0.99; q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, 0)); sc.setScalar(0.28 + rnd() * 0.55); mx.compose(v.set(gr.x + Math.cos(a) * gr.rx * e, y, gr.z + Math.sin(a) * gr.rz * e), q, sc); im.setMatrixAt(i, mx); }
     im.frustumCulled = false; g.add(im);
   }
   // Floor with three pools and the seal pool.
@@ -132,7 +187,7 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
   // Boulders, pool rims, shell pedestals, stalactites.
   const solids: { x: number; z: number; r: number }[] = [];
   { const parts: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < (high ? 46 : 30); i++) { const a = rnd() * Math.PI * 2, e = 0.82 + rnd() * 0.15; const x = CX + Math.cos(a) * rxOf(Math.cos(a)) * e, z = Math.sin(a) * RZ * e; if (x > 2) continue; const r = 0.6 + rnd() * 1.6; parts.push(rockBlob(r, rnd, 1, 0.7, 1).translate(x, sh(x, z) + r * 0.2, z)); }
+    for (let i = 0; i < (high ? 46 : 30); i++) { const a = rnd() * Math.PI * 2, e = 0.82 + rnd() * 0.15; const x = CX + Math.cos(a) * rxOf(Math.cos(a)) * e, z = Math.sin(a) * RZ * e; if (x > 2) continue; if (GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 2.2 && gr.side * z > mouthOf(gr) - 3)) continue; const r = 0.6 + rnd() * 1.6; parts.push(rockBlob(r, rnd, 1, 0.7, 1).translate(x, sh(x, z) + r * 0.2, z)); }
     for (const pl of POOLS) for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2 + rnd(), x = pl.x + Math.cos(a) * 3.3, z = pl.z + Math.sin(a) * 3.3; parts.push(rockBlob(0.35 + rnd() * 0.35, rnd, 1, 0.55, 1, 1).translate(x, sh(x, z) + 0.05, z)); }
     for (const pl of POOLS) { parts.push(rockBlob(0.75, rnd, 1.1, 0.45, 1, 2).translate(pl.x, SHELL_Y - 0.25, pl.z)); }
     const m = new THREE.Mesh(mergeGeometries(parts), wetRock); m.castShadow = m.receiveShadow = true; g.add(m);
@@ -141,7 +196,7 @@ export function makeSeaCave(high: boolean, t: { rock: GroundTex; bed: GroundTex;
   // Glow-lichen: bioluminescent flecks on the lower walls, two pulsing sets.
   { const blob = new THREE.IcosahedronGeometry(0.06, 0); blob.scale(1, 0.5, 1); const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3();
     for (let set = 0; set < 2; set++) { const n = high ? 420 : 240; const im = new THREE.InstancedMesh(blob, lichenMats[set], n); let c = 0;
-      for (let i = 0; i < n * 3 && c < n; i++) { const a = rnd() * Math.PI * 2, y = 0.1 + rnd() ** 1.6 * 3.2; const e = Math.sqrt(Math.max(0.02, 1 - ((y + 0.6) / RY) ** 2)) * 0.985; const x = CX + Math.cos(a) * rxOf(Math.cos(a)) * e, z = Math.sin(a) * RZ * e; if (x > 1) continue; if (GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 1.8 && gr.side * z > RZ * 0.55)) continue; // no flecks floating in the passage mouths
+      for (let i = 0; i < n * 3 && c < n; i++) { const a = rnd() * Math.PI * 2, y = 0.1 + rnd() ** 1.6 * 3.2; const e = Math.sqrt(Math.max(0.02, 1 - ((y + 0.6) / RY) ** 2)) * 0.985; const x = CX + Math.cos(a) * rxOf(Math.cos(a)) * e, z = Math.sin(a) * RZ * e; if (x > 1) continue; if (GROTTOS.some((gr) => Math.abs(x - gr.x) < PASS_W + 1.8 && gr.side * z > mouthOf(gr) - 2.2)) continue; // no flecks floating in the passage mouths
         const near = POOLS.some((p) => Math.hypot(p.x - x, p.z - z) < 9) || x < -26; if (!near && rnd() < 0.6) continue;
         q.setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, rnd() * 3)); s.setScalar(0.5 + rnd() * 1.6); mtx.compose(v.set(x, y, z), q, s); im.setMatrixAt(c++, mtx); }
       im.count = c; im.frustumCulled = false; g.add(im); } }
@@ -220,6 +275,31 @@ void main(){ float depth=uLev-seaH(vL); if(depth<0.) discard;
   #include <colorspace_fragment>
 }` }));
   water.position.set(0, 0, 0); water.renderOrder = 2; water.userData.noAO = true; g.add(water);
+  // M21b-2 · a second tide surface in the flooded grotto (same level; the dry ledge stays above high water).
+  for (const gr of GROTTOS) if (gr.kind === 'flood') {
+    const fw = fyOf(gr) - 0.48; // dish center: mid-tide still leaves a readable pool
+    const floodMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, fog: false,
+      uniforms: { uLev, uTime, uPl, uLit, uNor: { value: waterNormals }, uFloor: { value: fw } },
+      vertexShader: 'uniform float uLev; varying vec3 vW; varying vec2 vL; void main(){ vec3 p=position; p.y=uLev; vec4 w=modelMatrix*vec4(p,1.); vW=w.xyz; vL=p.xz; gl_Position=projectionMatrix*viewMatrix*w; }',
+      fragmentShader: `uniform float uLev,uTime,uFloor; uniform vec3 uPl,uLit; uniform sampler2D uNor; varying vec3 vW; varying vec2 vL;
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+void main(){ float depth=uLev-uFloor; if(depth<0.) discard;
+  vec3 n1=texture2D(uNor,vL*.18+vec2(uTime*.02,uTime*.013)).xyz*2.-1., n2=texture2D(uNor,vL*.43-vec2(uTime*.017,-uTime*.01)).xyz*2.-1.; vec3 n=normalize(vec3(0,1,0)+vec3(n1.x+n2.x,0.,n1.y+n2.y)*.22);
+  vec3 v=normalize(cameraPosition-vW); float fres=.03+.97*pow(1.-max(dot(n,v),0.),5.);
+  vec3 body=mix(vec3(.03,.18,.16),vec3(.004,.04,.05),smoothstep(.05,1.1,depth));
+  vec3 refl=mix(vec3(.02,.06,.07),vec3(.2,.5,.48),smoothstep(.0,.6,reflect(-v,n).y))*.55;
+  vec3 col=mix(body,refl,fres);
+  vec2 cell=floor(vL*5.); float h=hash(cell); vec2 f=fract(vL*5.)-.5; float dot1=smoothstep(.14,.0,length(f-vec2(hash(cell+3.)-.5,hash(cell+7.)-.5)*.6));
+  float stir=1.-smoothstep(0.,2.6,length(vW.xz-uPl.xz)); float tw=.5+.5*sin(uTime*2.+h*30.);
+  col+=vec3(.15,1.,0.85)*dot1*step(.78,h)*(.2+stir*1.8)*tw;
+  float a=clamp(smoothstep(0.,.2,depth)*.88+fres*.3,0.,.96); float edge=1.-smoothstep(0.,.08,depth); col=mix(col,vec3(.4,.75,.7),edge*.45);
+  gl_FragColor=vec4(col,max(a,edge*.55));
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}` });
+    const flood = new THREE.Mesh(new THREE.CircleGeometry(gr.rx - 1.6, 40).rotateX(-Math.PI / 2), floodMat);
+    flood.position.set(gr.x, 0, gr.z); flood.renderOrder = 2; flood.userData.noAO = true; flood.scale.set(1, 1, (gr.rz - 1.8) / Math.max(0.4, gr.rx - 1.6)); g.add(flood);
+  }
   // ---------- state ----------
   let tideT = 5, lev = -0.5; const lit = [false, false, false]; let litK = [0, 0, 0], solvedK = 0, solved = false, opened = false, openK = 0;
   const level = (tt: number) => -0.55 + 0.55 * Math.cos((2 * Math.PI * tt) / SEA_PERIOD);
@@ -227,7 +307,19 @@ void main(){ float depth=uLev-seaH(vL); if(depth<0.) discard;
   const W = (x: number, z: number) => new THREE.Vector3(x + SEA_O.x, 0, z + SEA_O.z);
   const exV = new THREE.Vector3();
   return {
-    grottos: GROTTOS.map((gr) => ({ id: gr.id, name: gr.name, ...L(gr.x, gr.z - gr.side * 1.2) })),
+    grottos: GROTTOS.map((gr) => ({ id: gr.id, name: gr.name, kind: gr.kind, ...L(gr.x, gr.z - gr.side * 1.2) })),
+    loot: [
+      { id: 'sea-flood', name: 'drowned chest', ...L(-26.4 + 0.4, 23.8 + 3.4) },
+      { id: 'sea-crystal-chest', name: 'crystal-shelf chest', ...L(-5.5 + 2.1, -23.6 - 0.2) },
+    ],
+    loreFinds: [
+      { id: 'sea-crystal', name: 'tide-crystal tablet', ...L(-5.5 + 0.15, -23.6 - 0.6) },
+    ],
+    mobSpawns: [
+      { id: 'sea-flood-a', ...L(-26.4 - 2.4, 23.8 + 0.4), face: 0.9, y: -0.52 },
+      { id: 'sea-flood-b', ...L(-26.4 + 2.2, 23.8 - 1.6), face: -1.1, y: -0.52 },
+      { id: 'sea-crystal-a', ...L(-5.5 - 1.8, -23.6 + 2.2), face: Math.PI, y: 0.22 },
+    ],
     scene, entry: L(EXIT.x - 2.2, 0), exit: L(EXIT.x, EXIT.z), shells: POOLS.map((p) => L(p.x, p.z)), door: L(DOOR.x + 1.6, DOOR.z), page: L(PAGE.x, PAGE.z),
     get level() { return lev; }, get tidePhase() { const d = -Math.sin((2 * Math.PI * tideT) / SEA_PERIOD); return lev < SHELL_Y ? (d > 0 ? 'ebbing' : 'turning') : d > 0 ? 'falling' : 'rising'; },
     isLow() { return lev < SHELL_Y; }, get lit() { return lit.slice(); }, get solved() { return solved; },
@@ -238,13 +330,22 @@ void main(){ float depth=uLev-seaH(vL); if(depth<0.) discard;
     /** The second key: all seven rings wake and the seal rolls aside (into the south wall) to the drowned chamber. */
     setOpen(on: boolean, instant = false) { opened = on; if (instant) openK = on ? 1 : 0; }, get opened() { return opened; }, get openK() { return openK; },
     sealPos: L(DOOR.x - 0.2, DOOR.z),
-    groundY(wx: number, wz: number) { const x = wx - SEA_O.x, z = wz - SEA_O.z; if (inGrotto(x, z, -1.4) || inPassage(x, z, -0.6)) return Math.max(GROT_Y, sh(x, z)); return Math.max(sh(x, z), Math.hypot(x - (DOOR.x + 3), z - 1.4) < 3.05 ? 0.25 : -9); },
+    groundY(wx: number, wz: number) {
+      const x = wx - SEA_O.x, z = wz - SEA_O.z;
+      const pass = inPassage(x, z, -0.6);
+      if (pass) { const z0 = pass.side * mouthOf(pass), z1 = pass.z - pass.side * (pass.rz - 1.2); const u = Math.max(0, Math.min(1, ((z - z0) / (z1 - z0)) * pass.side)); const y0 = Math.max(GROT_Y, sh(x, z)); return y0 + u * (fyOf(pass) - y0); }
+      const gro = inGrotto(x, z, -1.4);
+      if (gro) { if (gro.kind === 'flood' && gro.side * (z - gro.z) > 2.4) return 0.18; if (gro.kind === 'flood') { const u = Math.max(0, 1 - ((x - gro.x) ** 2) / 18 - ((z - gro.z) ** 2) / 14); return fyOf(gro) - 0.48 * u * u; } return fyOf(gro); }
+      return Math.max(sh(x, z), Math.hypot(x - (DOOR.x + 3), z - 1.4) < 3.05 ? 0.25 : -9);
+    },
+    inTight(wx: number, wz: number) { const x = wx - SEA_O.x, z = wz - SEA_O.z; return !!(inPassage(x, z, -0.2) || inGrotto(x, z, -0.5)); },
+    chamber(wx: number, wz: number) { const x = wx - SEA_O.x, z = wz - SEA_O.z; return inGrotto(x, z, -1.4)?.id ?? inPassage(x, z, -0.6)?.id ?? 'pools'; },
     constrain(wx: number, wz: number): [number, number] {
       let x = wx - SEA_O.x, z = wz - SEA_O.z;
       if (inGrotto(x, z) || inPassage(x, z)) return [wx, wz];
       { const e = Math.sqrt(ellipse(x, z)); if (e > 1) { // outside the main chamber: snap to the nearest walkable region (chamber rim, a passage, or a grotto)
         const mx = CX + (x - CX) / e, mz = z / e; let bx = mx, bz = mz, bd = Math.hypot(x - mx, z - mz);
-        for (const gr of GROTTOS) { const zA = gr.side * (RZ - 3.2), zB = gr.side * (Math.abs(gr.z) - 2); const px = Math.max(gr.x - PASS_W + 0.01, Math.min(gr.x + PASS_W - 0.01, x)), pz = Math.max(Math.min(zA, zB), Math.min(Math.max(zA, zB), z)); const dp = Math.hypot(x - px, z - pz); if (dp < bd) { bd = dp; bx = px; bz = pz; }
+        for (const gr of GROTTOS) { const zA = gr.side * mouthOf(gr), zB = gr.side * (Math.abs(gr.z) - 2); const px = Math.max(gr.x - PASS_W + 0.01, Math.min(gr.x + PASS_W - 0.01, x)), pz = Math.max(Math.min(zA, zB), Math.min(Math.max(zA, zB), z)); const dp = Math.hypot(x - px, z - pz); if (dp < bd) { bd = dp; bx = px; bz = pz; }
           const ge = Math.sqrt(((x - gr.x) / (gr.rx - 1.4)) ** 2 + ((z - gr.z) / (gr.rz - 1.4)) ** 2); const gx = gr.x + (x - gr.x) / ge * 0.999, gz = gr.z + (z - gr.z) / ge * 0.999; const dg = Math.hypot(x - gx, z - gz); if (dg < bd) { bd = dg; bx = gx; bz = gz; } }
         x = bx; z = bz; if (inGrotto(x, z) || inPassage(x, z)) return [x + SEA_O.x, z + SEA_O.z]; } }
       x = Math.min(x, EXIT.x + 0.4); if (x < DOOR.x + 1.4) x = DOOR.x + 1.4;
@@ -253,7 +354,7 @@ void main(){ float depth=uLev-seaH(vL); if(depth<0.) discard;
       return [x + SEA_O.x, z + SEA_O.z];
     },
     clampCam(target: THREE.Vector3, cam: THREE.Vector3) {
-      const inside = (v: THREE.Vector3) => { const x = v.x - SEA_O.x, z = v.z - SEA_O.z; if (v.y < Math.max(sh(x, z), lev) + 0.4) return false; if (GROTTOS.some((gr) => (Math.abs(x - gr.x) < PASS_W + 0.2 && gr.side * z > RZ - 4 && gr.side * z < Math.abs(gr.z) && v.y < GROT_Y + 2.9) || ((x - gr.x) / (gr.rx - 0.9)) ** 2 + ((v.y + 0.4) / (gr.ry - 0.8)) ** 2 + ((z - gr.z) / (gr.rz - 0.9)) ** 2 < 1)) return true;
+      const inside = (v: THREE.Vector3) => { const x = v.x - SEA_O.x, z = v.z - SEA_O.z; if (v.y < Math.max(sh(x, z), lev) + 0.4) return false; if (GROTTOS.some((gr) => (Math.abs(x - gr.x) < PASS_W + 0.2 && gr.side * z > mouthOf(gr) - 1.4 && gr.side * z < Math.abs(gr.z) && v.y < fyOf(gr) + 3.05 + Math.max(0, GROT_Y - fyOf(gr))) || ((x - gr.x) / (gr.rx - 0.9)) ** 2 + ((v.y + 0.4) / (gr.ry - 0.8)) ** 2 + ((z - gr.z) / (gr.rz - 0.9)) ** 2 < 1)) return true;
       return ((x - CX) / (rxOf(x - CX) - 1.4)) ** 2 + ((v.y + 0.6) / (RY - 1.2)) ** 2 + (z / (RZ - 1.4)) ** 2 < 1 && x > DOOR.x + 0.8; };
       if (inside(cam)) return; let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; exV.lerpVectors(target, cam, m); if (inside(exV)) lo = m; else hi = m; } cam.lerpVectors(target, cam, Math.max(0.15, lo * 0.95));
     },

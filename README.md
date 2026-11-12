@@ -218,3 +218,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - **Autumn canopies:** leaf alpha uses mip-boosted, fwidth-softened coverage (and MSAA alpha-to-coverage on Lite, which already antialiases) instead of a hard 0.45 cut, so mid-distance gold leaves no longer sparkle or jag. Distant impostor cards use the same test. Autumn contrast is slightly softened.
 - **Grass:** blade colour is a bit more olive; roots blend toward the dry meadow ground, and tip glow is quieter.
 - **Lighting:** vale hemisphere fill 0.25 → 0.30, just enough to support the character fill.
+
+## M22c — High-quality black-screen fix
+- **Bug (since M22):** on **High** (the desktop default, or a phone switched to High in Menu → Quality) the 3D world was solid black while the HUD, menus and map still worked. The M22 vignette pass inlined `GRADE_GLSL`, but three also prepends `tonemapping_pars_fragment` (which M22 extended with the same grade) to every `ShaderMaterial`. The final pass then failed to compile (`'valeGrade' : function already has a body`) and drew nothing. Lite has no post chain, so it was unaffected.
+- **Fix:** `GRADE_GLSL` has an `#ifndef VALE_GRADE` include guard and starts on its own line in the vignette shader. The grade output is unchanged.
+- **QA:** `tools/qa-post.cjs` loads High and Lite, fails on any shader compile/validate error, and samples the canvas so a black frame fails. It fails on the M22b build and passes with the fix.

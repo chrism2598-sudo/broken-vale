@@ -231,7 +231,8 @@ async function main() {
   const vignette = new ShaderPass({
     uniforms: { tDiffuse: { value: null }, uAmt: { value: 0.32 }, uTime: { value: 0 } },
     vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `uniform sampler2D tDiffuse;uniform float uAmt;uniform float uTime;varying vec2 vUv;${GRADE_GLSL}
+    fragmentShader: `uniform sampler2D tDiffuse;uniform float uAmt;uniform float uTime;varying vec2 vUv;
+${GRADE_GLSL}
       float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
       void main(){vec4 c=texture2D(tDiffuse,vUv);vec2 d=vUv-.5;float v=1.-uAmt*smoothstep(.25,.85,dot(d,d)*2.2);
       c.rgb=pow(valeGrade(pow(c.rgb,vec3(2.2))),vec3(1./2.2)); c.rgb*=v; c.rgb+=(h(vUv*913.+uTime)-.5)*.012; gl_FragColor=c;}`,

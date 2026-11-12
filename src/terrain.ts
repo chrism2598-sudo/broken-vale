@@ -32,18 +32,18 @@ float pathX(float z){float t=max(0.,-z);return 1.2*sin(z/9.)*smoothstep(0.,10.,t
 float pathM(vec2 p){if(p.y>22.)return 0.;float d=abs(p.x-pathX(p.y));float w=1.25+.35*sin(p.y*.37)+(p.y< -40.?.4:0.);w*=.85+.3*vn(p*.6);
  w*=.85+.35*vn(p*.35); return (1.-smoothstep(w*.3,w*1.6,d))*smoothstep(26.,16.,p.y)*(p.y< -70.?smoothstep(-90.,-70.,p.y):1.);}
 float trailM(vec2 p){ float d=1e4; ${TRAIL.slice(1).map((b, i) => { const a = TRAIL[i]; return `{ vec2 a=vec2(${a.x.toFixed(1)},${a.z.toFixed(1)}), b=vec2(${b.x.toFixed(1)},${b.z.toFixed(1)}); vec2 ab=b-a; float u=clamp(dot(p-a,ab)/dot(ab,ab),0.,1.); d=min(d,length(p-a-ab*u)); }`; }).join(' ')}
-  return 1.-smoothstep(1.1+.5*vn(p*.4),2.6,d); }
+  return 1.-smoothstep(1.55+.2*vn(p*.5),2.55+.15*vn(p*.8),d); }
 vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
 `)
       .replace('#include <map_fragment>', `
 { vec2 p=vWP.xz; float slope=1.-clamp(vWN.y,0.,1.);
   float dc=abs(p.x-creekX(p.y)); float bed=1.-smoothstep(creekHalf(p.y)*.9,creekHalf(p.y)+1.6,dc);
-  float pm=max(pathM(p),trailM(p)*.92); // M22: the Greycrown trail reads as trodden earth
+  float tm=trailM(p); float pm=max(pathM(p),tm); // M22b: a hard packed cut, not a soft dirt tint
   float alt=vWP.y; float macro=vn(p*.011), macro2=vn(p*.043+3.1);
   float rock=smoothstep(.2,.42,slope+.14*(macro2-.5)+smoothstep(18.,45.,alt)*.22*(.6+.8*macro));
   float n=vn(p*.08);
   W4=vec4(1.,pm,rock,bed); W4.x=max(0.,1.-pm-rock-bed);
-  W4=pow(W4+vec4(.0001),vec4(2.)); W4/=dot(W4,vec4(1.));
+  W4=pow(W4+vec4(.0001),vec4(2.)); W4.y=max(W4.y,tm*tm); W4/=dot(W4,vec4(1.));
   UVg=p/3.2; UVp=p/2.6; UVr=p/4.; UVb=p/2.2;
   float dist=length(vWP-cameraPosition);
   // Grass: two-scale sampling + macro colour variation (lush / sun-dried / shaded), greener far out where blades fade.
@@ -66,6 +66,11 @@ vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
   // Snow caps: above ~44 m on gentler faces, ragged by noise.
   SNOW=smoothstep(44.,56.,alt+10.*(macro2-.5)+6.*(vn(p*.2)-.5))*smoothstep(.45,.75,vWN.y);
   diffuseColor.rgb*= cg*W4.x+cp*W4.y+cr*W4.z+cb*W4.w;
+  // M22b · packed, slightly rutted earth on the Greycrown trail so the switchback reads from the cairn.
+  { vec3 packed=mix(cp,vec3(.30,.20,.12),.42)*mix(vec3(1.),vec3(.82,.7,.52),vn(p*1.15));
+    packed=mix(packed,packed*vec3(.62,.55,.42),1.-smoothstep(.35,1.15,1.-tm)); // darker rut down the centre
+    packed=mix(packed,mix(cp,cr,.4)*vec3(.9,.84,.72),smoothstep(.55,.95,vn(p*2.1))*.35); // worn stone flecks
+    diffuseColor.rgb=mix(diffuseColor.rgb,packed,smoothstep(.12,.75,tm)); }
   diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.9,.93,.97),SNOW);
 }`)
       .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness;

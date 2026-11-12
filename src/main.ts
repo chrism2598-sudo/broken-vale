@@ -37,7 +37,7 @@ import { DAY_LEN, MORNING, skyAt, clockText, makeNightSky } from './daynight';
 import { makeRoam, FIRES } from './roam';
 import { GameAudio, type Region, type Surface } from './audio';
 import { ENNA_LINES, ENNA_NAME, LAMP_XP, LAMP_TOAST, FINAL_TITLE, FINAL_KICKER, FINAL_LINES, FINAL_REWARD, finalStats, CREDITS, sefaLines, dovLines, ressLines, nextUncharted } from './finale';
-import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep, OUTPOSTS, outpostPad, onTrail, trailAt } from './world';
+import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, trailMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep, OUTPOSTS, outpostPad, onTrail, trailAt } from './world';
 import { makeOutposts, STANDS, standY, standPush, inStand, O as OP, type Loc } from './outposts';
 import { makeBarrow, BAR_O, type Barrow } from './barrow';
 import { SQ_XP, sq, stage, sketched, sketchesLeft, sefaTale, dovTale, ressTale, makeLocs, sideJournal } from './sidequests';
@@ -522,10 +522,12 @@ async function main() {
   }
   let discT = 0;
   function tickDiscover(dt: number) {
-    discT -= dt; if (discT > 0 || !save.started || !vale()) return; discT = 0.4;
+    discT -= dt; if (discT > 0 || !save.started || !vale()) return;
     const f = save.found ??= [];
+    // Cool down only after a real find. Resetting on an empty scan could miss
+    // the next viewpoint (North Cairn after Sunfall Bluff) within 12 frames.
     for (const l of LOCS) { if (f.includes(l.id) || Math.hypot(state.px - l.x, state.pz - l.z) > l.r) continue;
-      f.push(l.id); revealFog(fogNow(), l.x, l.z, l.reveal); fogDirty = true; audio.chime(); gainXp(l.xp, `Discovered: ${l.name}${l.view ? ' · a viewpoint' : ''} · added to your map`); break; }
+      f.push(l.id); revealFog(fogNow(), l.x, l.z, l.reveal); fogDirty = true; audio.chime(); gainXp(l.xp, `Discovered: ${l.name}${l.view ? ' · a viewpoint' : ''} · added to your map`); discT = 0.4; break; }
   }
   async function climbLamp(up: boolean) {
     if (!coast || fading) return; const c = coast; fading = true; state.speed = 0; setFade(true); await sleepMs(520);
@@ -1658,7 +1660,7 @@ async function main() {
     if (inKeep) return 'water'; if (inCave || inSea || inCastle || perch) return 'stone';
     if (inCoast && coast) return coast.onTop || coast.groundY(state.px, state.pz) > coast.landY(state.px, state.pz) + 0.1 ? 'stone' : 'sand';
     if (onIsland) return 'grass'; if (Math.abs(state.px - creekX(state.pz)) < creekHalf(state.pz)) return 'water';
-    return pathMask(state.px, state.pz) > 0.5 ? 'gravel' : 'grass';
+    return pathMask(state.px, state.pz) > 0.5 || trailMask(state.px, state.pz) > 0.45 ? 'gravel' : 'grass';
   }
   function regionNow(): Region {
     if (lampCine || dawnCine || !endEl.hidden) return 'ending';

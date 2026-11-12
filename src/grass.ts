@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, normalAt, pathMask, creekX, creekHalf, rng, SHRINE, fbm } from './world';
+import { heightAt, normalAt, pathMask, trailMask, creekX, creekHalf, rng, SHRINE, fbm } from './world';
 
 /** Instanced grass clumps (tapered curved blades) with GPU wind sway and distance fade. */
 export function makeGrass(count: number, radius: number, bladesPerClump: number, seg = 4, inner = 0): { mesh: THREE.InstancedMesh; uniforms: { uTime: THREE.IUniform; uPlayer: THREE.IUniform }; center: THREE.Vector2; recenter: (x: number, z: number) => void; recenterSoon: (x: number, z: number) => void; pump: (ms: number) => void; busy: () => boolean } {
@@ -70,6 +70,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
           const x = (gx + rr()) * cell, z = (gz + rr()) * cell;
           const rot = rr() * Math.PI * 2, sc0 = rr(), sc1 = rr(), t0 = rr(), t1 = rr(), t2 = rr();
           const pm = pathMask(x, z); if (pm > 0.42) continue;
+          const tm = trailMask(x, z); if (tm > 0.55) continue; // M22b: clear the Greycrown trail and outlook pad
           const dcr = Math.abs(x - creekX(z)); if (dcr < creekHalf(z) + 0.6) continue;
           if (Math.hypot(x - SHRINE.x, z - SHRINE.z) < 7) continue;
           const nrm = normalAt(x, z); if (nrm[1] < 0.86) continue;
@@ -79,6 +80,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
           const patch = fbm(x * 0.07 + 11, z * 0.07);
           let hy = patch < -0.12 ? 0.32 + 0.18 * sc1 : patch > 0.22 ? 1.05 + 0.35 * sc1 : 0.6 + 0.45 * sc1;
           hy *= 1 - 0.75 * Math.min(1, pm / 0.42);
+          hy *= 1 - 0.85 * tm; // short fringe along the Greycrown cut
           const sc = 0.8 + sc0 * 0.45; s.set(sc, sc * hy, sc);
           m.compose(p, q, s); const o = tmpA.length; m.toArray(tmpA, o);
           tmpA.push(0.85 + t0 * 0.3, 0.9 + t1 * 0.2, 0.7 + t2 * 0.35, x, z);

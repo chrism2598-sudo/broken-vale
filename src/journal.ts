@@ -1,5 +1,5 @@
 import { CHESTS, LORE, KEEP_NAME } from './castle';
-import { LANDMARKS, SEALS, WAYFINDER, SHRINE, heightAt, creekX, creekHalf, pathMask } from './world';
+import { LANDMARKS, SEALS, WAYFINDER, SHRINE, heightAt, creekX, creekHalf, pathMask, trailMask } from './world';
 import { WARDEN } from './warden';
 import { UPDRAFT, MIRRORS } from './beacon';
 import { ISLAND_POS } from './island';
@@ -107,7 +107,7 @@ function parchment(w: number, h: number): HTMLCanvasElement {
     let r = 236, g = 222, b = 184;
     const e = Math.min(1, Math.max(0, (hh - 6) / 34)); r -= 40 * e; g -= 52 * e; b -= 64 * e;
     const shade = Math.max(-0.35, Math.min(0.3, (-hx * 0.6 - hz * 0.8) * 0.09)); r *= 1 + shade; g *= 1 + shade; b *= 1 + shade;
-    const pm = pathMask(X, Z); if (pm > 0.3) { const t = Math.min(1, (pm - 0.3) * 2.5) * 0.6; r += (176 - r) * t; g += (138 - g) * t; b += (92 - b) * t; }
+    const pm = Math.max(pathMask(X, Z), trailMask(X, Z)); if (pm > 0.3) { const t = Math.min(1, (pm - 0.3) * 2.5) * 0.6; r += (176 - r) * t; g += (138 - g) * t; b += (92 - b) * t; }
     const cw = Math.abs(X - creekX(Z)) - creekHalf(Z); if (cw < 1.2) { const t = cw < 0 ? 0.85 : 0.5; r += (92 - r) * t; g += (138 - g) * t; b += (150 - b) * t; }
     // Contour every 5 m.
     const lvl = Math.floor(hh / 5); if (Math.floor(hs[j * sw + Math.min(sw - 1, i + 1)] / 5) !== lvl || Math.floor(hs[Math.min(sh - 1, j + 1) * sw + i] / 5) !== lvl) { r -= 34; g -= 40; b -= 44; }

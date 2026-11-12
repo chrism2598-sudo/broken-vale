@@ -88,7 +88,7 @@ export function heightAt(x: number, z: number): number {
   return h;
 }
 /** M22 · the Greycrown trail: a graded switchback from the North Cairn up the north ridge to the outlook. */
-export const TRAIL: { x: number; z: number }[] = [{ x: 6, z: -201 }, { x: -12, z: -226 }, { x: 12, z: -244 }, { x: 2, z: -254 }];
+export const TRAIL: { x: number; z: number }[] = [{ x: 8, z: -196 }, { x: 6, z: -201 }, { x: -12, z: -226 }, { x: 12, z: -244 }, { x: 2, z: -254 }, { x: 0, z: -258 }];
 const TRAIL_LEN: number[] = []; { let a = 0; TRAIL_LEN.push(0); for (let i = 1; i < TRAIL.length; i++) { a += Math.hypot(TRAIL[i].x - TRAIL[i - 1].x, TRAIL[i].z - TRAIL[i - 1].z); TRAIL_LEN.push(a); } }
 /** Distance to the trail centreline and the 0..1 position along it. */
 export function trailAt(x: number, z: number): { d: number; t: number } {
@@ -99,13 +99,19 @@ export function trailAt(x: number, z: number): { d: number; t: number } {
 let trailH: [number, number] | null = null;
 /** True where the walk boundary opens up for the trail and the outlook (beyond the vale's 235 m ring). */
 export function onTrail(x: number, z: number): boolean { return trailAt(x, z).d < 4.2 || Math.hypot(x - 0, z + 263) < 7.5; }
+/** 0..1 packed earth on the Greycrown trail or the outlook standing-pad (used to clear and shorten grass). */
+export function trailMask(x: number, z: number): number {
+  return Math.max(1 - smoothstep(1.45, 2.7, trailAt(x, z).d), 1 - smoothstep(5.15, 6.8, Math.hypot(x, z + 263)));
+}
 function baseHeight(x: number, z: number): number {
   const h0 = baseHeight0(x, z);
   if (z > -190 || z < -275 || Math.abs(x) > 40) return h0;
   const tr = trailAt(x, z); if (tr.d > 10) return h0;
   trailH ??= [baseHeight0(TRAIL[0].x, TRAIL[0].z), baseHeight0(0, -263) + 0.6];
   const ty = trailH[0] + (trailH[1] - trailH[0]) * tr.t; // an even ~37% grade
-  return h0 + (ty - h0) * (1 - smoothstep(3.2, 10, tr.d));
+  let h = h0 + (ty - h0) * (1 - smoothstep(3.2, 10, tr.d));
+  h -= 0.08 * (1 - smoothstep(1.4, 2.6, tr.d)); // M22b: a shallow worn trough so the cut reads from the cairn
+  return h;
 }
 function baseHeight0(x: number, z: number): number {
   const r = Math.hypot(x - SPAWN.x, z - SPAWN.z);

@@ -87,8 +87,14 @@ const cone = (r: number, h: number, seg = 20) => new THREE.ConeGeometry(r, h, se
 const lathe = (pts: [number, number][], seg = 28) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(Math.max(0.01, r), y)), seg);
 
 /** Crenellated round tower with a conical slate roof. */
+const SLIT = new THREE.MeshBasicMaterial({ color: '#0e0b09' }), KEEP_IRON = new THREE.MeshStandardMaterial({ color: '#2b2622', roughness: 0.5, metalness: 0.65 });
 function tower(b: Builder, st: THREE.Material, roof: THREE.Material, x: number, y: number, z: number, r: number, h: number, roofH: number) {
   b.add(st, cyl(r * 1.08, r, h), x, y, z);
+  // M23 · a battered plinth, arrow slits staggered up the drum, corbelled machicolations under the parapet, an iron finial
+  b.add(st, cyl(r * 1.22, r * 1.1, Math.min(2.2, h * 0.2)), x, y, z);
+  for (let lv = 0; lv < 3; lv++) { const yy = y + h * (0.25 + lv * 0.24); if (yy > y + h - 1.6) break; for (let i = 0; i < 4; i++) { const a = (i + lv * 0.5) / 4 * Math.PI * 2 + 0.4; b.add(SLIT, box(0.14, 1.1, 0.12), x + Math.cos(a) * r * 1.035, yy, z + Math.sin(a) * r * 1.035, -a); b.add(st, box(0.42, 0.14, 0.2), x + Math.cos(a) * r * 1.05, yy - 0.12, z + Math.sin(a) * r * 1.05, -a); } }
+  { const n = Math.round(r * 5); for (let i = 0; i < n; i++) { const a = (i + 0.5) / n * Math.PI * 2; const c = new THREE.BoxGeometry(0.34, 0.75, 0.4); c.translate(0, -0.37, 0); b.add(st, c, x + Math.cos(a) * r * 1.12, y + h, z + Math.sin(a) * r * 1.12, -a + Math.PI / 2); } }
+  b.add(KEEP_IRON, cyl(0.05, 0.05, 1.3, 6), x, y + h + 1.2 + roofH - 0.2, z); b.add(KEEP_IRON, new THREE.SphereGeometry(0.17, 8, 6), x, y + h + 1.2 + roofH + 0.55, z);
   b.add(st, cyl(r * 1.18, r * 1.18, 1.2), x, y + h, z);
   for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; b.add(st, box(0.9, 1.1, 0.7), x + Math.cos(a) * r * 1.1, y + h + 1.2, z + Math.sin(a) * r * 1.1, -a); }
   b.add(roof, cone(r * 1.25, roofH, 24), x, y + h + 1.2, z);
@@ -98,10 +104,11 @@ function tower(b: Builder, st: THREE.Material, roof: THREE.Material, x: number, 
 export const KEEP_LOOK_PILLAR = 3.8, KEEP_W = 15, KEEP_D = 14;
 /** M20a · shared keep frame for main.ts: gate direction, central keep centre (world), base height. */
 export function keepFrame(l: Landmark) { const face = Math.atan2(SPAWN.x - l.x, SPAWN.z - l.z); return { face, kx: l.x - Math.sin(face) * 3, kz: l.z - Math.cos(face) * 3, y0: l.pad - 0.3, roofY: l.pad - 0.3 + 18, lookY: l.pad - 0.3 + 31.2 }; }
+const KEEP_DOOR = new THREE.MeshStandardMaterial({ color: '#6e4c2e', roughness: 0.82, emissive: '#2a1a0c', emissiveIntensity: 0.4 }), KEEP_LAMP = new THREE.MeshBasicMaterial({ color: '#ffc27a' });
 const WIN_GLASS = new THREE.MeshStandardMaterial({ color: '#1c2430', roughness: 0.25, metalness: 0.4, emissive: '#3a2a12', emissiveIntensity: 0.35 });
 function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, pennant: string, solids: Solid[]): THREE.Group {
   const b = new Builder(); const roofDoors: THREE.Mesh[] = [];
-  const st = triplanar(t.brick, 3.2, wallTint, { sat: 0.35, gain: 1.5 }); const roof = triplanar(t.roof, 2.2, roofTint, { rough: 0.85 });
+  const st = triplanar(t.brick, 3.2, wallTint, { sat: 0.35, gain: 1.5 }); const trim = triplanar(t.sand, 1.6, '#cfc5b2', { sat: 0.3, gain: 1.3 }); /* M23: dressed ashlar for quoins, portal and mullions */ const roof = triplanar(t.roof, 2.2, roofTint, { rough: 0.85 });
   const y0 = l.pad - 0.3; const R = 19, W = 8.5;
   const face = Math.atan2(SPAWN.x - l.x, SPAWN.z - l.z); // gate looks toward the meadow
   const corners = 6;
@@ -137,7 +144,12 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
       const hood = new THREE.ExtrudeGeometry((() => { const h = new THREE.Shape(); h.absarc(0, 1.9, 0.78, 0, Math.PI, false); h.lineTo(-0.58, 1.9); h.absarc(0, 1.9, 0.58, Math.PI, 0, true); h.lineTo(0.78, 1.9); return h; })(), { depth: 0.28, bevelEnabled: false, curveSegments: 8 }).translate(0, 0, -0.14);
       for (const sgn of [-1, 1]) for (const lvl of [8.4, 14.2]) for (let k = 0; k < 5; k++) { const u = ((k + 0.5) / 5 - 0.5) * (KEEP_W - 3); if (lvl < 9 && Math.abs(u) < 2) continue;
         const [x, z] = P(u, sgn * (KEEP_D / 2 + 0.02)); const ry = face + (sgn < 0 ? Math.PI : 0);
-        b.add(WIN_GLASS, glass, x, y0 + lvl, z, ry); b.add(st, hood, x, y0 + lvl, z, ry); b.add(st, box(1.4, 0.18, 0.4), x, y0 + lvl - 0.18, z, ry); } }
+        b.add(WIN_GLASS, glass, x, y0 + lvl, z, ry); b.add(st, hood, x, y0 + lvl, z, ry); b.add(st, box(1.4, 0.18, 0.4), x, y0 + lvl - 0.18, z, ry);
+        b.add(trim, box(0.1, 2.35, 0.16), x, y0 + lvl, z, ry); b.add(trim, box(1.1, 0.09, 0.16), x, y0 + lvl + 1.35, z, ry); } } // M23: stone mullion + transom
+    // M23 · quoins at every corner (alternating long/short dressed blocks) and a battered plinth broken for the door
+    for (const [su, sv] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) for (let k = 0; k < 20; k++) { const lng = k % 2 === 0, a = lng ? 1.1 : 0.6, c = lng ? 0.6 : 1.1; const [x, z] = P(su * (KEEP_W / 2 - a / 2 + 0.07), sv * (KEEP_D / 2 - c / 2 + 0.07)); b.add(trim, box(a, 0.4, c), x, y0 + 1.3 + k * 0.84, z, face); }
+    { const T = 0.55; for (const [u, v, w, d] of [[0, -(KEEP_D / 2 + T / 2), KEEP_W + 2 * T, T], [KEEP_W / 2 + T / 2, 0, T, KEEP_D], [-(KEEP_W / 2 + T / 2), 0, T, KEEP_D], [-(KEEP_W / 4 + 1.25), KEEP_D / 2 + T / 2, KEEP_W / 2 - 2.5 + 2 * T, T], [KEEP_W / 4 + 1.25, KEEP_D / 2 + T / 2, KEEP_W / 2 - 2.5 + 2 * T, T]]) {
+      const [x, z] = P(u, v); b.add(st, box(w, 1.1, d), x, y0, z, face); const [x2, z2] = P(u * 0.985, v * 0.985); b.add(st, box(Math.max(0.2, w - 0.3), 0.22, Math.max(0.2, d - 0.3)), x2, y0 + 1.1, z2, face); } }
     // the tower door out onto the roof
     const [tx, tz] = P(0, 4.66); const td = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.4), new THREE.MeshStandardMaterial({ color: '#6a4a2e', roughness: 0.8, emissive: '#2a1a0c', emissiveIntensity: 0.6 })); td.position.set(l.x + tx, y0 + 18 + 1.2, l.z + tz); td.rotation.y = face; roofDoors.push(td); }
   // M20a · the crown tower is an open lookout: parapet floor at y0+31.2, six pillars, the cone raised on top.
@@ -150,7 +162,18 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
     b.add(st, new THREE.LatheGeometry([new THREE.Vector2(r * 1.06, 0), new THREE.Vector2(r * 1.2, 0), new THREE.Vector2(r * 1.2, 0.8), new THREE.Vector2(r * 1.06, 0.8), new THREE.Vector2(r * 1.06, 0)], 28), kx, top, kz); }
   // M20a · the keep's front door (enterable): stone arch surround, dark wood leaves, two wall lanterns.
   { const dx = kx + Math.sin(face) * (KEEP_D / 2 + 0.0), dz = kz + Math.cos(face) * (KEEP_D / 2 + 0.0), cs = Math.cos(face), sn = Math.sin(face);
-    b.add(st, box(4.0, 4.6, 0.6), dx, y0, dz, face); void cs; void sn; }
+    b.add(st, box(4.0, 4.6, 0.6), dx, y0, dz, face); void cs; void sn;
+    // M23 · a real portal: projecting jamb piers, a ring of dressed voussoirs with a keystone, a recessed plank door with
+    //       iron straps and a ring, two worn steps, and caged iron lanterns on brackets (was a flat plane + half disc + two cubes).
+    const F = (m: THREE.Material, gq: THREE.BufferGeometry, u: number, y: number, v: number) => { gq.translate(u, y, v); b.add(m, gq, kx, y0, kz, face); };
+    const FV = KEEP_D / 2, doorM = KEEP_DOOR;
+    for (const s2 of [-1, 1]) { F(trim, new THREE.BoxGeometry(0.8, 3.6, 0.8), s2 * 1.6, 1.8, FV + 0.45); F(trim, new THREE.BoxGeometry(0.95, 0.22, 0.9), s2 * 1.6, 3.55, FV + 0.45); }
+    for (let i = 0; i <= 12; i++) { const a = i / 12 * Math.PI, key = i === 6; const vg = new THREE.BoxGeometry(key ? 0.62 : 0.52, key ? 1.0 : 0.8, key ? 0.95 : 0.85); vg.rotateZ(a - Math.PI / 2); F(trim, vg, Math.cos(a) * 1.6, 3.6 + Math.sin(a) * 1.6, FV + 0.45); }
+    for (let i = 0; i < 7; i++) { const u = -1.2 + (i + 0.5) * (2.4 / 7), top = 3.6 + Math.sqrt(Math.max(0, 1.44 - u * u)) - 0.05; F(doorM, new THREE.BoxGeometry(2.4 / 7 - 0.025, top, 0.12 + (i % 3) * 0.02), u, top / 2, FV + 0.38); }
+    for (const yy of [0.7, 1.9, 3.1]) F(KEEP_IRON, new THREE.BoxGeometry(2.3, 0.1, 0.05), 0, yy, FV + 0.47); F(KEEP_IRON, new THREE.TorusGeometry(0.16, 0.03, 6, 14), 0.55, 1.5, FV + 0.5);
+    for (let k = 0; k < 2; k++) F(st, new THREE.BoxGeometry(4.6 - k * 0.6, 0.2, 0.8), 0, 0.2 + k * 0.2, FV + 1.4 - k * 0.5);
+    for (const s2 of [-1, 1]) { const u = s2 * 2.45; F(KEEP_IRON, new THREE.BoxGeometry(0.06, 0.06, 0.5), u, 3.35, FV + 0.5); F(KEEP_IRON, new THREE.ConeGeometry(0.24, 0.26, 4), u, 3.35, FV + 0.75); F(KEEP_LAMP, new THREE.BoxGeometry(0.24, 0.34, 0.24), u, 3.05, FV + 0.75);
+      for (const [cu, cv] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) F(KEEP_IRON, new THREE.BoxGeometry(0.035, 0.4, 0.035), u + cu * 0.13, 3.05, FV + 0.75 + cv * 0.13); F(KEEP_IRON, new THREE.BoxGeometry(0.3, 0.05, 0.3), u, 2.86, FV + 0.75); } }
   tower(b, st, roof, kx + Math.cos(face) * KEEP_W / 2, y0 + 18, kz - Math.sin(face) * KEEP_W / 2, 1.6, 7, 4.5);
   tower(b, st, roof, kx - Math.cos(face) * KEEP_W / 2, y0 + 18, kz + Math.sin(face) * KEEP_W / 2, 1.6, 6, 4);
   solids.push({ x: l.x + kx, z: l.z + kz, r: 8.5 });
@@ -161,9 +184,6 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 1.6, 8, 1), new THREE.MeshStandardMaterial({ color: pennant, side: THREE.DoubleSide, roughness: 0.8, emissive: pennant, emissiveIntensity: 0.15 }));
   flag.position.set(kx + 2.3, y0 + 30 + 1.2 + KEEP_LOOK_PILLAR + 0.5 + 13 - 1.2, kz); flag.userData.flag = true; g.add(flag);
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4), new THREE.MeshStandardMaterial({ color: '#4a3b2a' })); pole.position.set(kx, y0 + 30 + 1.2 + KEEP_LOOK_PILLAR + 0.5 + 13 + 0.5, kz); g.add(pole);
-  { const door = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 3.4), new THREE.MeshStandardMaterial({ color: '#7a5634', roughness: 0.75, emissive: '#3a2410', emissiveIntensity: 0.55 })); door.position.set(kx + Math.sin(face) * (KEEP_D / 2 + 0.32), y0 + 1.7, kz + Math.cos(face) * (KEEP_D / 2 + 0.32)); door.rotation.y = face; g.add(door);
-    const arch = new THREE.Mesh(new THREE.CircleGeometry(1.2, 16, 0, Math.PI), door.material); arch.position.set(door.position.x, y0 + 3.4, door.position.z); arch.rotation.y = face; g.add(arch);
-    const lampM = new THREE.MeshBasicMaterial({ color: '#ffc27a' }); for (const s of [-1, 1]) { const lp = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.42, 0.28), lampM); lp.position.set(kx + Math.sin(face) * (KEEP_D / 2 + 0.5) + Math.cos(face) * s * 1.9, y0 + 3.0, kz + Math.cos(face) * (KEEP_D / 2 + 0.5) - Math.sin(face) * s * 1.9); g.add(lp); } }
   for (const d of roofDoors) { d.position.x -= l.x; d.position.z -= l.z; g.add(d); }
   g.position.set(l.x, 0, l.z); g.name = l.id;
   return g;

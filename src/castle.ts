@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { triplanar } from './landmarks';
 import { flameTex, makeFlame } from './cave';
+import { makeFire } from './stonework';
 import type { GroundTex } from './terrain';
 
 /** M20a · Explorable keep interiors. One generic layout (entry → great hall → side rooms, a ramp up to the gallery,
@@ -121,6 +122,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   const regions: Region[] = []; const blockers: (Rect & { y: number })[] = [];
   const block = (x0: number, x1: number, z0: number, z1: number, y: number) => blockers.push({ x0, x1, z0, z1, y });
   const inter: CInteract[] = []; const mobs: MobSpawn[] = [];
+  const fires: ReturnType<typeof makeFire>[] = []; const candles: { f: THREE.Sprite; ph: number }[] = [];
 
   // ---- rooms: floor, ceiling, walls with door gaps + lintels ----
   const doorsOn = (r: Room, ax: 'x' | 'z', c: number) => doors.filter((d) => d.ax === ax && Math.abs((ax === 'x' ? d.z : d.x) - c) < 0.01 && d.y >= r.y0 - 0.01 && d.y < r.y0 + r.h && (ax === 'x' ? d.x > r.x0 && d.x < r.x1 : d.z > r.z0 && d.z < r.z1));
@@ -186,15 +188,57 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   { const z0 = 1.2, z1 = -6.5, n = 15; for (let i = 0; i < n; i++) { const za = z0 + (z1 - z0) * (i / n), zb = z0 + (z1 - z0) * ((i + 1) / n), y = UP * (i + 1) / n; box(stoneM, 2.2, y, Math.abs(zb - za), 7.7, 0, (za + zb) / 2); }
     box(darkWoodM, 0.1, 0.9, 7.8, 6.55, UP / 2 + 0.6, -2.6); regions.push({ x0: 6.75, x1: 8.6, z0: z1, z1: z0, y: 0, ramp: { ax: 'z', a0: z0, a1: z1, y0: 0, y1: UP } }); block(6.5, 9, z1, z0 - 0.35, 0); }
   // Windows high on the east/west walls with light shafts.
-  const winM = new THREE.MeshBasicMaterial({ color: az ? '#cfe2ff' : '#ffe9c4' });
+  // M23 · traceried lancets: leaded panes, a pointed head and a small rose, instead of a flat glowing rectangle.
+  const winM = new THREE.MeshBasicMaterial({ color: '#ffffff', map: canvasTex(128, 256, (x) => { const pal = az ? ['#3f7ad8', '#8fc0ff', '#d9c46a', '#2a4e9a', '#e8f2ff'] : ['#c8442e', '#f0b050', '#4a74d0', '#7a2a2a', '#fff0d0'];
+    x.fillStyle = '#1a1410'; x.fillRect(0, 0, 128, 256); let seed = 3; const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let py = 0; py < 256; py += 18) for (let px = 0; px < 128; px += 16) { x.fillStyle = pal[Math.floor(r() * 4)]; x.globalAlpha = 0.75 + r() * 0.25; x.fillRect(px + 1, py + 1, 14, 16); } x.globalAlpha = 1;
+    const gr = x.createRadialGradient(64, 150, 10, 64, 150, 120); gr.addColorStop(0, 'rgba(255,255,240,0.55)'); gr.addColorStop(1, 'rgba(255,255,240,0)'); x.fillStyle = gr; x.fillRect(0, 0, 128, 256);
+    x.strokeStyle = '#1a1410'; x.lineWidth = 7; x.beginPath(); x.moveTo(64, 70); x.lineTo(64, 256); x.stroke(); x.beginPath(); x.arc(64, 48, 22, 0, Math.PI * 2); x.stroke();
+    for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; x.beginPath(); x.moveTo(64, 48); x.lineTo(64 + Math.cos(a) * 22, 48 + Math.sin(a) * 22); x.stroke(); }
+    x.lineWidth = 4; for (const yy of [110, 170, 220]) { x.beginPath(); x.moveTo(0, yy); x.lineTo(128, yy); x.stroke(); } }) });
+  const lancet = (() => { const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(1, 0); sh.lineTo(1, 0.7); sh.quadraticCurveTo(1, 0.9, 0.5, 1); sh.quadraticCurveTo(0, 0.9, 0, 0.7); sh.lineTo(0, 0); const gq = new THREE.ShapeGeometry(sh, 8); gq.scale(1.0, 2.2, 1); gq.translate(-0.5, -1.1, 0); return gq; })();
   const shaftTex = canvasTex(64, 256, (x) => { const gr = x.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.6, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 256); const h = x.createLinearGradient(0, 0, 64, 0); h.addColorStop(0, 'rgba(0,0,0,1)'); h.addColorStop(0.25, 'rgba(0,0,0,0)'); h.addColorStop(0.75, 'rgba(0,0,0,0)'); h.addColorStop(1, 'rgba(0,0,0,1)'); x.globalCompositeOperation = 'destination-out'; x.fillStyle = h; x.fillRect(0, 0, 64, 256); });
   const shaftM = new THREE.MeshBasicMaterial({ map: shaftTex, color: az ? '#9fc4ff' : '#ffd9a0', transparent: true, opacity: high ? 0.32 : 0.26, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
   shaftM.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vSD;').replace('#include <project_vertex>', '#include <project_vertex>\nvSD = -mvPosition.z;'); sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vSD;').replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.rgb *= smoothstep(1.2, 4.5, vSD);'); }; shaftM.customProgramCacheKey = () => 'shaft22'; // M22: a god-ray seen from inside it was a white smear; fade it near the eye
   const shafts = new THREE.Group(); g.add(shafts);
   for (const [wx, wz, dir] of [[8.98, -4, -1], [8.98, 0.5, -1], [-8.98, -7.5, 1]] as const) {
-    const wn = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 2.2), winM); wn.position.set(wx, 6.6, wz); wn.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2; g.add(wn);
-    box(stoneM, 0.3, 0.2, 1.4, wx, 5.4, wz); 
+    const wn = new THREE.Mesh(lancet, winM); wn.position.set(wx + dir * 0.005, 6.6, wz); wn.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2; g.add(wn);
+    box(stoneM, 0.3, 0.2, 1.4, wx, 5.4, wz); for (const s of [-1, 1]) box(stoneM, 0.3, 1.6, 0.16, wx + dir * 0.06, 5.5, wz + s * 0.58); // M23: deep stone reveal + voussoirs round the pointed head
+    for (let i = 0; i <= 6; i++) { const a = i / 6, px = (a < 0.5 ? -0.58 + a * 2 * 0.58 : (a - 0.5) * 2 * 0.58), py = 7.1 + Math.sin(a * Math.PI) * 0.62; const vg = new THREE.BoxGeometry(0.3, 0.26, 0.22); vg.rotateX(-(a - 0.5) * 2.2); put(stoneM, vg, wx + dir * 0.06, py, wz + px); } 
     for (const k of [0, 1]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 9), shaftM); p.position.set(wx + dir * 3.3, 3.6, wz); p.rotation.set(0, k ? 0 : Math.PI / 2, 0); p.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), dir * -0.62); shafts.add(p); }
+  }
+
+  // ---- M23 · great-hall craft: moulded pillar bases and capitals, an oak wainscot, braced roof trusses, a carved cold hearth,
+  //      two iron candle-crowns over the table, and traceried stained glass in the high windows ----
+  { const L = (pts: number[][]) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 16);
+    for (const px of [-5.6, 5.6]) for (const pz of [-8, -4, 0]) { if (px > 0 && pz > -7) continue;
+      put(stoneM, L([[0.6, 0], [0.6, 0.1], [0.53, 0.16], [0.56, 0.22], [0.47, 0.34], [0.42, 0.42]]), px, 0.3, pz);
+      put(stoneM, L([[0.42, 0], [0.47, 0.08], [0.6, 0.26], [0.68, 0.32], [0.68, 0.44], [0.4, 0.44]]), px, UP - 0.44, pz); }
+    // wainscot: plank field, a moulded top rail and stiles, broken around doors, hearth, ramp and the entry
+    const wains = (ax: 'x' | 'z', c: number, inward: number, a0: number, a1: number) => { if (a1 - a0 < 0.3) return; const len = a1 - a0, m = (a0 + a1) / 2, H = 1.25;
+      if (ax === 'z') { box(darkWoodM, 0.05, H, len, c + inward * 0.03, 0.2, m); box(woodM, 0.1, 0.09, len, c + inward * 0.06, 0.2 + H, m); for (let u = a0 + 0.1; u < a1; u += 0.92) box(darkWoodM, 0.08, H, 0.08, c + inward * 0.07, 0.2, u); }
+      else { box(darkWoodM, len, H, 0.05, m, 0.2, c + inward * 0.03); box(woodM, len, 0.09, 0.1, m, 0.2 + H, c + inward * 0.06); for (let u = a0 + 0.1; u < a1; u += 0.92) box(darkWoodM, 0.08, H, 0.08, u, 0.2, c + inward * 0.07); } };
+    wains('z', -9, 1, -9.8, -9.9); wains('z', -9, 1, -7.3, -4.7); wains('z', -9, 1, -1.3, -0.3); wains('z', -9, 1, 2.3, 3.8);
+    wains('z', 9, -1, -7.3, -6.7); wains('z', 9, -1, 1.5, 3.8); wains('x', -10, 1, -8.8, 8.8); wains('x', 4, -1, -8.8, -2.1); wains('x', 4, -1, 2.1, 8.8);
+    // roof trusses: a wall post on a stone corbel and a diagonal brace under every beam end
+    for (let k = 1; k * 2.4 < 14; k++) { const z = -10 + k * 2.4; for (const s of [-1, 1]) { if (s < 0 && (z < -7 || z > 1.5)) continue; const wx = s * 8.86; // (skip the west lancet and banner)
+      box(stoneM, 0.34, 0.42, 0.5, wx, 6.9, z); box(darkWoodM, 0.22, 2.0, 0.24, s * 8.82, 7.3, z);
+      const br = new THREE.BoxGeometry(0.16, 2.1, 0.2); br.rotateZ(s * 0.85); put(darkWoodM, br, s * 8.1, 8.45, z); } }
+    // cold hearth: jambs, a timber mantel on corbels, a carved roundel, firedogs and old logs (the lord never let it burn)
+    for (const z of [-4.45, -1.55]) { box(stoneM, 0.5, 1.75, 0.42, -7.95, 0, z); box(stoneM, 0.6, 0.2, 0.5, -7.9, 1.75, z); }
+    box(darkWoodM, 0.62, 0.16, 3.7, -7.86, 1.95, -3); // mantel sits under the soot-black stone (the secret's clue stays in view)
+    { const rd = new THREE.CylinderGeometry(0.55, 0.55, 0.12, 20); rd.rotateZ(Math.PI / 2); put(stoneM, rd, -8.36, 3.55, -3); const rd2 = new THREE.TorusGeometry(0.42, 0.05, 6, 20); rd2.rotateY(Math.PI / 2); put(ironM, rd2, -8.29, 3.55, -3); }
+    for (const z of [-3.55, -2.45]) { box(ironM, 0.5, 0.06, 0.06, -7.95, 0.08, z); box(ironM, 0.06, 0.42, 0.06, -7.72, 0, z); }
+    for (const [z, ry] of [[-3, 0.05], [-3.1, -0.08]] as const) { const lg = new THREE.CylinderGeometry(0.09, 0.1, 1.4, 8); lg.rotateX(Math.PI / 2); lg.rotateY(ry); put(beamM, lg, -8.0, 0.24 + (z < -3.05 ? 0.16 : 0), z); }
+    { const ash = new THREE.PlaneGeometry(0.6, 1.6); ash.rotateX(-Math.PI / 2); put(mat('#3a3632', 1), ash, -8.0, 0.025, -3); }
+    // candle-crowns: an iron hoop on three chains with eight candles each (High adds one warm light per crown)
+    const waxM = mat('#efe4c8', 0.6, 0, { emissive: '#ffcc88', emissiveIntensity: 0.25 });
+    for (const cz of [-4.9, -0.6]) { const Y = 4.6; const hoop = new THREE.TorusGeometry(0.85, 0.045, 6, 28); hoop.rotateX(Math.PI / 2); put(ironM, hoop, 0, Y, cz);
+      const in2 = new THREE.TorusGeometry(0.4, 0.03, 6, 18); in2.rotateX(Math.PI / 2); put(ironM, in2, 0, Y - 0.12, cz);
+      for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2, ch = new THREE.BoxGeometry(0.025, 9.2 - Y, 0.025); ch.rotateZ(Math.cos(a) * 0.09); ch.rotateX(-Math.sin(a) * 0.09); put(ironM, ch, Math.cos(a) * 0.4, Y + (9.2 - Y) / 2, cz + Math.sin(a) * 0.4); }
+      for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, x = Math.cos(a) * 0.85, z = cz + Math.sin(a) * 0.85; cyl(ironM, 0.06, 0.03, x, Y + 0.03, z, 8); cyl(waxM, 0.032, 0.2 + (i % 3) * 0.04, x, Y + 0.06, z, 6);
+        const f = makeFlame(flameTex(), 0.28); f.position.set(x, Y + 0.28 + (i % 3) * 0.04, z); g.add(f); candles.push({ f, ph: i * 2.3 + cz }); }
+      if (high) { const cl = new THREE.PointLight('#ffc27a', 7, 11, 1.4); cl.position.set(0, Y - 0.3, cz); g.add(cl); } }
   }
 
   // ---- entry hall ----
@@ -259,12 +303,14 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     box(stoneM, 0.72, 0.55, 2.3, -14.48, 2.05, -7); box(stoneM, 1.1, 0.4, 3.6, -14.4, 2.6, -7);
     box(stoneM, 0.5, 0.14, 2.4, -14.05, 0, -7); block(-15, -13.6, -8.8, -5.2, 0);
     // M22: the firebox was a black hole — its soot-black back and cheeks now glow with the fire from below.
-    const fireBackM = mat('#16100c', 0.95, 0, { emissive: '#ff6a22', emissiveIntensity: 0.42, emissiveMap: canvasTex(4, 128, (x) => { const gr = x.createLinearGradient(0, 128, 0, 0); gr.addColorStop(0, '#ff9a48'); gr.addColorStop(0.12, '#a83c10'); gr.addColorStop(0.4, '#2a0e04'); gr.addColorStop(0.75, '#000000'); x.fillStyle = gr; x.fillRect(0, 0, 4, 128); }) });
+    const fireBackM = mat('#16100c', 0.95, 0, { emissive: '#ff6a22', emissiveIntensity: 0.3, emissiveMap: canvasTex(4, 128, (x) => { const gr = x.createLinearGradient(0, 128, 0, 0); gr.addColorStop(0, '#ff9a48'); gr.addColorStop(0.12, '#a83c10'); gr.addColorStop(0.4, '#2a0e04'); gr.addColorStop(0.75, '#000000'); x.fillStyle = gr; x.fillRect(0, 0, 4, 128); }) });
     box(fireBackM, 0.06, 1.85, 2.15, -14.66, 0.14, -7); box(fireBackM, 0.55, 1.85, 0.06, -14.4, 0.14, -8.08); box(fireBackM, 0.55, 1.85, 0.06, -14.4, 0.14, -5.92); void sootM;
     const coal = mat('#c45a12', 0.7, 0, { emissive: '#c24a10', emissiveIntensity: 1.15 });
     const bed = new THREE.PlaneGeometry(0.55, 1.5); bed.rotateX(-Math.PI / 2); put(coal, bed, -14.35, 0.16, -7);
     for (const [z, ry] of [[-7.3, 0.28], [-6.8, -0.4], [-7.05, 0.08]] as const) { const log = new THREE.CylinderGeometry(0.07, 0.08, 0.62, 8); log.rotateZ(Math.PI / 2); log.rotateY(ry); put(woodM, log, -14.28, 0.24, z); }
-    const emb = makeFlame(flameTex(), 1.6); emb.position.set(-14.15, 0.3, -7); g.add(emb);
+    // M23: a living fire (licking tongues, ember glow, sparks) replaces the single flame blob, and a cauldron hangs over it.
+    const fire = makeFire(1.15, 1.05); fire.group.position.set(-14.3, 0.2, -7); g.add(fire.group); fires.push(fire);
+    box(ironM, 0.03, 0.95, 0.03, -14.3, 1.25, -7); { const pot = new THREE.LatheGeometry([[0.02, 0], [0.18, 0.02], [0.27, 0.12], [0.29, 0.26], [0.25, 0.38], [0.27, 0.42], [0.25, 0.43]].map(([r, y]) => new THREE.Vector2(r, y)), 14); put(C, pot, -14.3, 0.86, -7); }
     box(woodM, 2.6, 0.12, 1.1, -11.6, 0.82, -6.4); for (const [dx, dz] of [[-1.1, -0.4], [1.1, -0.4], [-1.1, 0.4], [1.1, 0.4]]) box(darkWoodM, 0.1, 0.82, 0.1, -11.6 + dx, 0, -6.4 + dz); block(-13.1, -10.1, -7.1, -5.7, 0);
     for (const [x, z] of [[-11.9, -6.3], [-11.2, -6.6]]) cyl(C, 0.22, 0.28, x, 0.94, z, 10);
     for (const [x, z] of [[-9.8, -4.8], [-10.6, -4.7]]) { cyl(woodM, 0.4, 0.95, x, 0, z, 12); for (const y of [0.15, 0.75]) cyl(ironM, 0.41, 0.05, x, y, z, 12); } block(-11.1, -9.3, -5.3, -4.3, 0);
@@ -414,6 +460,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     openSecret(instant = false) { secretOpen = true; secretSlab.want = 1; if (instant) secretSlab.open = 1; },
     openChest(cid: string, instant = false) { const c = chests.find((k) => k.def.id === cid); if (c) { c.want = 1; if (instant) c.open = 1; } },
     update(dt: number, time: number) {
+      for (const fr of fires) fr.update(time); for (const c of candles) { const f = 0.85 + 0.15 * Math.sin(time * 17 + c.ph) * Math.sin(time * 7.3 + c.ph); c.f.scale.set(0.11 * f, 0.22 * (0.9 + 0.2 * f), 1); }
       for (const k of flames) { const f = 0.82 + 0.18 * Math.sin(time * 15 + k.ph) * Math.sin(time * 6.1 + k.ph * 2); k.f.scale.set(0.36 * f, 0.68 * (0.92 + 0.16 * f), 1); if (k.l) k.l.intensity = 11 * f; }
       if (secretSlab.mesh) { secretSlab.open += (secretSlab.want - secretSlab.open) * Math.min(1, dt * 1.6); const m = secretSlab.mesh; m.visible = secretSlab.open < 0.98; if (id === 'pale') { m.visible = true; m.position.z = doors.find((d) => d.secret)!.z + secretSlab.open * 1.75; if (plate) plate.position.y = 0.035 - secretSlab.open * 0.03; } else m.scale.y = 1 - secretSlab.open * 0.92, m.position.y = UP + 2.4 * (1 - (1 - secretSlab.open * 0.92) / 2); }
       for (const c of chests) { c.open += (c.want - c.open) * Math.min(1, dt * 4); c.hinge.rotation.x = -c.open * 1.9; c.glow.visible = c.open > 0.05 && c.open < 0.97; c.glow.material.opacity = 1 - c.open; }

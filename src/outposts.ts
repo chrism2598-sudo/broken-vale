@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { standingStone } from './stonework';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { OUTPOSTS, outpostPad, heightAt, TRAIL, type Outpost } from './world';
 import { triplanar, type BuildTex } from './landmarks';
@@ -39,11 +40,8 @@ export function makeOutposts(t: BuildTex, high: boolean) {
   const stone = triplanar(t.brick, 2.4, '#a49a8a', { sat: 0.35, gain: 1.05 }), rough = triplanar(t.rock, 2.0, '#8c8478');
   const wood = new THREE.MeshStandardMaterial({ color: '#4a3424', roughness: 0.85 }), dark = new THREE.MeshBasicMaterial({ color: '#050403' });
   /** M22 · a weathered standing stone: tapered, rounded crown, lumpy faces (was a sharp-edged box). Base at y=0. */
-  const menhir = (w: number, h: number, d: number, seed: number, crown = true) => { const gq = mergeVertices(new THREE.BoxGeometry(w, h, d, 3, 7, 2).deleteAttribute('normal').deleteAttribute('uv')); const p = gq.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) { let x = p.getX(i), y = p.getY(i) + h / 2, z = p.getZ(i); const u = y / h; const tp = 1 - 0.28 * u * u; x *= tp; z *= tp;
-      const ex = Math.abs(x) / (w / 2) , ez = Math.abs(z) / (d / 2); if (crown && u > 0.8) y -= (ex * ex + ez * ez * 0.5) * h * 0.08 * (u - 0.8) / 0.2;
-      const n = 0.06 * Math.sin(x * 7 + y * 3.1 + seed) * Math.cos(z * 6 - y * 2.3) + 0.03 * Math.sin(y * 11 + seed * 2); x += Math.sign(x) * n * w; z += Math.sign(z) * n * d; p.setXYZ(i, x, y, z); }
-    gq.computeVertexNormals(); return gq; };
+  // M23 · the shared dressed standing stone (rounded section, lean, chipped crown, cleavage facets) — the M22 lumpy box still read as a slab.
+  const menhir = (w: number, h: number, d: number, seed: number, crown = true) => standingStone(w, h, d, seed, { lean: crown ? 0.05 : 0.02 });
   const mesh = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, ry = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.y = ry; o.castShadow = high; o.receiveShadow = true; g.add(o); return o; };
   let seed = 77; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const spots: Spot[] = []; const flames: THREE.Object3D[] = []; const ft = flameTex();
@@ -88,7 +86,7 @@ export function makeOutposts(t: BuildTex, high: boolean) {
     const mound = mesh(new THREE.SphereGeometry(7, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), triplanar(t.rock, 3, '#6f7a5a', { sat: 0.5 }), o.x - Math.sin(face) * 4, y0 - 0.4, o.z - Math.cos(face) * 4); mound.scale.set(1, 0.55, 1);
     STANDS.push({ x: o.x - Math.sin(face) * 4, z: o.z - Math.cos(face) * 4, r: 6.2, top: y0 + 9, tag: 'mound' });
     const dx = o.x + Math.sin(face) * 1.8, dz = o.z + Math.cos(face) * 1.8;
-    for (const s of [-1, 1]) mesh(menhir(0.7, 2.62, 0.8, s * 5.1, false), stone, dx + Math.cos(face) * s * 1.25, y0, dz - Math.sin(face) * s * 1.25, face);
+    for (const s of [-1, 1]) mesh(menhir(0.7, 2.62, 0.8, s * 5.1, false), rough, dx + Math.cos(face) * s * 1.25, y0, dz - Math.sin(face) * s * 1.25, face);
     mesh(new THREE.BoxGeometry(3.3, 0.6, 0.9).translate(0, 0.3, 0), stone, dx, y0 + 2.6, dz, face);
     mesh(new THREE.PlaneGeometry(1.8, 2.6), dark, dx + Math.sin(face) * 0.05, y0 + 1.3, dz + Math.cos(face) * 0.05, face);
     for (let i = 0; i < 3; i++) { const a = face + (i - 1) * 0.9, r = 6.5, h = 1.8 + rnd() * 1.2; const sx = o.x + Math.sin(a) * r, sz = o.z + Math.cos(a) * r; mesh(menhir(0.6, h, 0.35, i * 3.7), rough, sx, y0, sz, a); STANDS.push({ x: sx, z: sz, r: 0.45, top: y0 + h, tag: 'stone' }); }
@@ -108,10 +106,12 @@ export function makeOutposts(t: BuildTex, high: boolean) {
     // paved floor: a shallow bed + irregular flagstones, flush enough that feet stay on the pad (qa: |foot-ground|<0.6)
     F(new THREE.CylinderGeometry(5.15, 5.55, 0.22, 20), o.x, y0 - 0.05, o.z);
     const gap = Math.atan2(2 - o.x, -254 - o.z);
-    F(new THREE.BoxGeometry(2.3, 0.1, 2.1), o.x, y0 + 0.04, o.z, 0.18);
-    for (let i = 0; i < 16; i++) { const ring = i < 5 ? 1.7 : 3.4, a = i * 1.31 + 0.2; const ux = o.x + Math.sin(a) * ring, uz = o.z + Math.cos(a) * ring;
-      if (Math.hypot(ux - (o.x + Math.sin(gap) * 5), uz - (o.z + Math.cos(gap) * 5)) < 1.6) continue; // leave the trail mouth clear
-      F(new THREE.BoxGeometry(1.65 + (i % 3) * 0.2, 0.1, 1.15 + (i % 2) * 0.18), ux, y0 + 0.04, uz, a + 0.15 * ((i % 3) - 1)); }
+    // M23: flags are laid in staggered courses (not two rings), so no circular joint runs round the floor; thin grout gaps, tiny
+    //      height and twist variation, and the courses run across the trail axis like a real paved floor.
+    { let sd = 11; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647); const ca = Math.cos(gap), sa = Math.sin(gap);
+      for (let row = -6; row <= 6; row++) { const v = row * 0.82, off = (row & 1) * 0.5; for (let col = -7; col <= 7; col++) { const len = 1.0 + rr() * 0.26, u = (col + off) * 1.32 + (rr() - 0.5) * 0.05;
+        if (Math.hypot(u, v) > 4.75) continue; const ux = o.x + u * ca + v * sa, uz = o.z - u * sa + v * ca;
+        F(new THREE.BoxGeometry(len, 0.1 + rr() * 0.025, 0.76), ux, y0 + 0.035 + rr() * 0.012, uz, gap + (rr() - 0.5) * 0.03); } } }
     // outer kerb, with a gap where the trail arrives
     for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; if (Math.abs(Math.atan2(Math.sin(a - gap), Math.cos(a - gap))) < 0.34) continue;
       F(new THREE.BoxGeometry(2.15, 0.28, 0.42).translate(0, 0.08, 0), o.x + Math.sin(a) * 5.4, y0, o.z + Math.cos(a) * 5.4, a); }

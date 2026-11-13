@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SHRINE, heightAt } from './world';
 import { addRimFill } from './shading';
 import { triplanar } from './landmarks';
+import { standingStone } from './stonework';
 import type { GroundTex } from './terrain';
 
 /** Wind Shrine puzzle (ported from the Page): 0 Still ○ · 1 Rise ▲ · 2 Gale ✕ — West Rise, North Still, East Gale. */
@@ -84,9 +85,17 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
   // Clue tablet: a tilted carved slab on a plinth.
   const tablet = new THREE.Group();
   const tb = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.2), stone); tb.position.y = 0.3;
-  const slab = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.3, 0.22), new THREE.MeshStandardMaterial({ color: '#cfc4a8', roughness: 0.9 })); slab.position.set(0, 1.15, 0); slab.rotation.x = -0.35;
-  const carve = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.5), new THREE.MeshBasicMaterial({ map: (() => { const c = document.createElement('canvas'); c.width = 256; c.height = 86; const x = c.getContext('2d')!; x.fillStyle = '#cfc4a8'; x.fillRect(0, 0, 256, 86); x.fillStyle = '#5a4a36'; x.font = 'bold 44px serif'; x.textAlign = 'center'; x.fillText('▲  ○  ✕', 128, 60); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })() }));
-  carve.position.set(0, 1.2, 0.12); carve.rotation.x = -0.35; slab.castShadow = tb.castShadow = true;
+  // M23 · the slab is cut stone (rough-hewn edges, the same rock as the shrine) and the runes are incised into it: the groove
+  //       is dark, its lower lip catches light and a bump map gives it depth (was an unlit beige label on a plain box).
+  const slabGeo = (() => { const gq = new THREE.BoxGeometry(1.9, 1.3, 0.22, 10, 7, 1); const pp = gq.attributes.position as THREE.BufferAttribute; for (let k = 0; k < pp.count; k++) { const x = pp.getX(k), y = pp.getY(k); const e = Math.max(Math.abs(x) / 0.95, Math.abs(y) / 0.65); if (e > 0.98) { pp.setX(k, x * (1 - 0.025 * (1 + Math.sin(k * 3.7)))); pp.setY(k, y * (1 - 0.03 * (1 + Math.cos(k * 2.9)))); } } gq.computeVertexNormals(); return gq; })();
+  const slab = new THREE.Mesh(slabGeo, stone); slab.position.set(0, 1.15, 0); slab.rotation.x = -0.35;
+  const runeTex = (() => { const c = document.createElement('canvas'); c.width = 512; c.height = 172; const x = c.getContext('2d')!; x.textAlign = 'center'; x.font = 'bold 92px serif'; x.lineJoin = 'round';
+    const txt = '▲  ○  ✕'; x.clearRect(0, 0, 512, 172);
+    x.fillStyle = 'rgba(255,244,220,0.55)'; x.fillText(txt, 258, 124); x.fillStyle = 'rgba(20,14,8,0.95)'; x.fillText(txt, 256, 120); x.fillStyle = 'rgba(70,56,40,0.9)'; x.fillText(txt, 254, 117);
+    x.strokeStyle = 'rgba(30,22,14,0.5)'; x.lineWidth = 3; x.beginPath(); x.moveTo(40, 22); x.lineTo(472, 22); x.moveTo(40, 150); x.lineTo(472, 150); x.stroke();
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const carve = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.5), new THREE.MeshStandardMaterial({ map: runeTex, bumpMap: runeTex, bumpScale: -2.5, transparent: true, depthWrite: false, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2 }));
+  carve.position.set(0, 1.2, 0.113); carve.rotation.x = -0.35; slab.castShadow = tb.castShadow = true;
   tablet.add(tb, slab, carve); tablet.position.set(TABLET.x, heightAt(TABLET.x, TABLET.z) - 0.05, TABLET.z);
 
   // Runes: mossy standing stones with a glowing glyph plate that cycles ○ ▲ ✕.
@@ -94,12 +103,13 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
   const moss = triplanar(rock, 1.4, '#aab48e', { sat: 0.55, gain: 1.35 }); // M22: world-space rock (was one stretched UV wrap = flat olive boxes)
   const runeObjs = RUNES.map((r, i) => {
     const o = new THREE.Group();
-    const geo = new THREE.CylinderGeometry(0.55, 0.85, 2.6, 9, 6); const p = geo.attributes.position;
-    for (let k = 0; k < p.count; k++) { const y = p.getY(k); p.setX(k, p.getX(k) * (1 + 0.08 * Math.sin(k * 1.7))); p.setZ(k, p.getZ(k) * (0.75 + 0.06 * Math.cos(k * 2.3))); if (y > 1.2) p.setY(k, y + 0.15 * Math.sin(k)); }
-    geo.computeVertexNormals();
-    const st = new THREE.Mesh(geo, moss); st.position.y = 1.2; st.castShadow = true;
-    const plateMat = new THREE.MeshStandardMaterial({ color: '#4a4236', emissive: '#ffe082', emissiveMap: texes[state.runes[i] | 0], emissiveIntensity: 0.8, roughness: 0.8 });
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.85), plateMat); plate.position.set(0, 1.55, 0.66);
+    // M23 · a dressed, leaning standing stone (rounded section, chipped crown, cleavage facets) instead of a squashed 9-sided can;
+    //       the glyph is cut into a smoothed panel on its face rather than stuck on as a dark square plaque.
+    const geo = standingStone(1.25, 2.75, 0.95, 3.1 + i * 2.7, { lean: 0.05 * (i - 1), flatY: 1.65, flatR: 0.6 });
+    const st = new THREE.Mesh(geo, moss); st.position.y = -0.1; st.castShadow = true;
+    const plateMat = new THREE.MeshStandardMaterial({ color: '#1c1812', emissive: '#ffe082', emissiveMap: texes[state.runes[i] | 0], alphaMap: texes[state.runes[i] | 0], transparent: true, depthWrite: false, emissiveIntensity: 0.9, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 });
+    let front = 0; { const pp = geo.attributes.position as THREE.BufferAttribute; for (let k = 0; k < pp.count; k++) if (Math.abs(pp.getY(k) - 1.65) < 0.25 && Math.abs(pp.getX(k)) < 0.25) front = Math.max(front, pp.getZ(k)); }
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), plateMat); plate.position.set(0, 1.55, front + 0.012);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.06, 6, 32).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffe082', transparent: true, opacity: 0.0, toneMapped: false })); ring.position.y = 0.08;
     o.add(st, plate, ring);
     o.position.set(r.x, heightAt(r.x, r.z) - 0.1, r.z);
@@ -109,7 +119,7 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
 
   let fade = state.solved ? 1 : 0, solved = state.solved, wrong = 0;
   function setRune(i: number, v: number, isWrong: boolean) {
-    const r = runeObjs[i]; r.plateMat.emissiveMap = texes[v]; r.plateMat.needsUpdate = true; r.pulse = 1; if (isWrong) { r.shake = 0.5; wrong = 0.6; }
+    const r = runeObjs[i]; r.plateMat.emissiveMap = texes[v]; r.plateMat.alphaMap = texes[v]; r.plateMat.needsUpdate = true; r.pulse = 1; if (isWrong) { r.shake = 0.5; wrong = 0.6; }
   }
   function awaken(instant = false) { solved = true; if (instant) fade = 1; }
   function update(t: number, dt: number) {

@@ -88,7 +88,7 @@ const lathe = (pts: [number, number][], seg = 28) => new THREE.LatheGeometry(pts
 
 /** Crenellated round tower with a conical slate roof. */
 const SLIT = new THREE.MeshBasicMaterial({ color: '#0e0b09' }), KEEP_IRON = new THREE.MeshStandardMaterial({ color: '#2b2622', roughness: 0.5, metalness: 0.65 });
-function tower(b: Builder, st: THREE.Material, roof: THREE.Material, x: number, y: number, z: number, r: number, h: number, roofH: number) {
+function tower(b: Builder, st: THREE.Material, roof: THREE.Material, x: number, y: number, z: number, r: number, h: number, roofH: number, slim = false) {
   b.add(st, cyl(r * 1.08, r, h), x, y, z);
   // M23 · a battered plinth, arrow slits staggered up the drum, corbelled machicolations under the parapet, an iron finial
   b.add(st, cyl(r * 1.22, r * 1.1, Math.min(2.2, h * 0.2)), x, y, z);
@@ -97,7 +97,7 @@ function tower(b: Builder, st: THREE.Material, roof: THREE.Material, x: number, 
   b.add(KEEP_IRON, cyl(0.05, 0.05, 1.3, 6), x, y + h + 1.2 + roofH - 0.2, z); b.add(KEEP_IRON, new THREE.SphereGeometry(0.17, 8, 6), x, y + h + 1.2 + roofH + 0.55, z);
   b.add(st, cyl(r * 1.18, r * 1.18, 1.2), x, y + h, z);
   for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; b.add(st, box(0.9, 1.1, 0.7), x + Math.cos(a) * r * 1.1, y + h + 1.2, z + Math.sin(a) * r * 1.1, -a); }
-  b.add(roof, cone(r * 1.25, roofH, 24), x, y + h + 1.2, z);
+  b.add(roof, cone(r * (slim ? 1.16 : 1.25), roofH, 24), x, y + h + 1.2, z); // M24: Pale Keep's cones are slimmer and taller
 }
 
 /** A keep after the Page's Pale/Azure Keep: curtain wall with corner towers, a gatehouse facing spawn, a tall crown keep. */
@@ -108,7 +108,10 @@ const KEEP_DOOR = new THREE.MeshStandardMaterial({ color: '#6e4c2e', roughness: 
 const WIN_GLASS = new THREE.MeshStandardMaterial({ color: '#1c2430', roughness: 0.25, metalness: 0.4, emissive: '#3a2a12', emissiveIntensity: 0.35 });
 function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, pennant: string, solids: Solid[]): THREE.Group {
   const b = new Builder(); const roofDoors: THREE.Mesh[] = [];
-  const st = triplanar(t.brick, 3.2, wallTint, { sat: 0.35, gain: 1.5 }); const trim = triplanar(t.sand, 1.6, '#cfc5b2', { sat: 0.3, gain: 1.3 }); /* M23: dressed ashlar for quoins, portal and mullions */ const roof = triplanar(t.roof, 2.2, roofTint, { rough: 0.85 });
+  const pale = l.id === 'pale'; // M24 · Pale Keep follows the book: tall, narrow, cream-to-pale stone, dark-green scale cones, a crown of stone points
+  const st = pale ? triplanar(t.sand, 2.8, wallTint, { sat: 0.45, gain: 2.25, emissive: '#2a2216' }) : triplanar(t.brick, 3.2, wallTint, { sat: 0.35, gain: 1.5 });
+  const trim = triplanar(t.sand, 1.6, pale ? '#f2e4c6' : '#cfc5b2', { sat: 0.3, gain: pale ? 2.0 : 1.3, emissive: pale ? '#2a2318' : '#000000' }); /* M23: dressed ashlar for quoins, portal and mullions */
+  const roof = pale ? triplanar(t.roof, 1.1, roofTint, { rough: 0.5, sat: 0, gain: 2.3, emissive: '#06140a' }) : triplanar(t.roof, 2.2, roofTint, { rough: 0.85 });
   const y0 = l.pad - 0.3; const R = 19, W = 8.5;
   const face = Math.atan2(SPAWN.x - l.x, SPAWN.z - l.z); // gate looks toward the meadow
   const corners = 6;
@@ -126,7 +129,7 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
       for (let k = 0; k < 9; k++) { const u = (k + 0.5) / 9 - 0.5; b.add(st, box(len / 9 * 0.55, 1.2, 2.4), mid.x + ux * u * len, y0 + W, mid.y + uz * u * len, ang); }
       for (let k = 0; k <= 6; k++) { const u = k / 6; solids.push({ x: l.x + p0.x + (p1.x - p0.x) * u, z: l.z + p0.y + (p1.y - p0.y) * u, r: 1.9 }); }
     }
-    tower(b, st, roof, p0.x, y0, p0.y, 3.1, W + 5, 6.5);
+    tower(b, st, roof, p0.x, y0, p0.y, 3.1, W + (pale ? 7 : 5), pale ? 9.5 : 6.5, pale);
     solids.push({ x: l.x + p0.x, z: l.z + p0.y, r: 3.6 });
   }
   // Central keep: square hall, a taller crown tower with a slim spire, and two slender turrets.
@@ -153,11 +156,16 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
     // the tower door out onto the roof
     const [tx, tz] = P(0, 4.66); const td = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.4), new THREE.MeshStandardMaterial({ color: '#6a4a2e', roughness: 0.8, emissive: '#2a1a0c', emissiveIntensity: 0.6 })); td.position.set(l.x + tx, y0 + 18 + 1.2, l.z + tz); td.rotation.y = face; roofDoors.push(td); }
   // M20a · the crown tower is an open lookout: parapet floor at y0+31.2, six pillars, the cone raised on top.
+  const spireH = pale ? 18 : 13;
   { const r = 4.4, h = 30, top = y0 + h + 1.2, ph = KEEP_LOOK_PILLAR;
     b.add(st, cyl(r * 1.08, r, h), kx, y0, kz); b.add(st, cyl(r * 1.18, r * 1.18, 1.2), kx, y0 + h, kz);
     for (let i = 0; i < 14; i++) { if (i % 7 === 0) continue; const a = face + Math.PI / 2 + i / 14 * Math.PI * 2; b.add(st, box(0.9, 0.7, 0.5), kx + Math.cos(a) * r * 1.13, top + 0.8, kz + Math.sin(a) * r * 1.13, -a + Math.PI / 2); }
     for (let i = 0; i < 6; i++) { const a = face + (i + 0.5) / 6 * Math.PI * 2; b.add(st, cyl(0.32, 0.32, ph), kx + Math.sin(a) * r * 1.1, top, kz + Math.cos(a) * r * 1.1); }
-    b.add(st, cyl(r * 1.3, r * 1.3, 0.5), kx, top + ph, kz); b.add(roof, cone(r * 1.25, 13, 24), kx, top + ph + 0.5, kz);
+    b.add(st, cyl(r * 1.3, r * 1.3, 0.5), kx, top + ph, kz); b.add(roof, cone(r * (pale ? 1.18 : 1.25), spireH, 24), kx, top + ph + 0.5, kz);
+    // M24 · the crown: a ring of thin stone points round the spire's foot and a smaller ring a third of the way up
+    if (pale) { for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; b.add(trim, cyl(0.2, 0.16, 0.5, 6), kx + Math.sin(a) * r * 1.24, top + ph + 0.5, kz + Math.cos(a) * r * 1.24); b.add(trim, cone(0.16, 2.4, 6), kx + Math.sin(a) * r * 1.24, top + ph + 1.0, kz + Math.cos(a) * r * 1.24); }
+      const yr = top + ph + 0.5 + spireH * 0.34, rr = r * 1.18 * 0.66 + 0.12; b.add(trim, cyl(rr + 0.12, rr + 0.12, 0.3, 24), kx, yr - 0.3, kz);
+      for (let i = 0; i < 10; i++) { const a = (i + 0.5) / 10 * Math.PI * 2; b.add(trim, cone(0.12, 1.5, 6), kx + Math.sin(a) * (rr + 0.05), yr, kz + Math.cos(a) * (rr + 0.05)); } }
     b.add(st, box(1.3, 0.12, 1.3), kx, top - 0.05, kz, face);
     b.add(st, new THREE.LatheGeometry([new THREE.Vector2(r * 1.06, 0), new THREE.Vector2(r * 1.2, 0), new THREE.Vector2(r * 1.2, 0.8), new THREE.Vector2(r * 1.06, 0.8), new THREE.Vector2(r * 1.06, 0)], 28), kx, top, kz); }
   // M20a · the keep's front door (enterable): stone arch surround, dark wood leaves, two wall lanterns.
@@ -174,19 +182,180 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
     for (let k = 0; k < 2; k++) F(st, new THREE.BoxGeometry(4.6 - k * 0.6, 0.2, 0.8), 0, 0.2 + k * 0.2, FV + 1.4 - k * 0.5);
     for (const s2 of [-1, 1]) { const u = s2 * 2.45; F(KEEP_IRON, new THREE.BoxGeometry(0.06, 0.06, 0.5), u, 3.35, FV + 0.5); F(KEEP_IRON, new THREE.ConeGeometry(0.24, 0.26, 4), u, 3.35, FV + 0.75); F(KEEP_LAMP, new THREE.BoxGeometry(0.24, 0.34, 0.24), u, 3.05, FV + 0.75);
       for (const [cu, cv] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) F(KEEP_IRON, new THREE.BoxGeometry(0.035, 0.4, 0.035), u + cu * 0.13, 3.05, FV + 0.75 + cv * 0.13); F(KEEP_IRON, new THREE.BoxGeometry(0.3, 0.05, 0.3), u, 2.86, FV + 0.75); } }
-  tower(b, st, roof, kx + Math.cos(face) * KEEP_W / 2, y0 + 18, kz - Math.sin(face) * KEEP_W / 2, 1.6, 7, 4.5);
-  tower(b, st, roof, kx - Math.cos(face) * KEEP_W / 2, y0 + 18, kz + Math.sin(face) * KEEP_W / 2, 1.6, 6, 4);
+  tower(b, st, roof, kx + Math.cos(face) * KEEP_W / 2, y0 + 18, kz - Math.sin(face) * KEEP_W / 2, 1.6, 7, pale ? 6.5 : 4.5, pale);
+  tower(b, st, roof, kx - Math.cos(face) * KEEP_W / 2, y0 + 18, kz + Math.sin(face) * KEEP_W / 2, 1.6, 6, pale ? 6 : 4, pale);
+  const extra = pale ? paleKeepYard(b, l, t, st, trim, roof, face, kx, kz, y0, R, solids) : [];
   solids.push({ x: l.x + kx, z: l.z + kz, r: 8.5 });
   const g = b.build();
   // Portal darkness + pennant on the crown spire.
   const portal = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 5.4), new THREE.MeshBasicMaterial({ color: '#120e0c' }));
   portal.position.set(Math.sin(face) * (R * 0.866 + 1.45), y0 + 2.7, Math.cos(face) * (R * 0.866 + 1.45)); portal.rotation.y = face; g.add(portal);
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 1.6, 8, 1), new THREE.MeshStandardMaterial({ color: pennant, side: THREE.DoubleSide, roughness: 0.8, emissive: pennant, emissiveIntensity: 0.15 }));
-  flag.position.set(kx + 2.3, y0 + 30 + 1.2 + KEEP_LOOK_PILLAR + 0.5 + 13 - 1.2, kz); flag.userData.flag = true; g.add(flag);
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4), new THREE.MeshStandardMaterial({ color: '#4a3b2a' })); pole.position.set(kx, y0 + 30 + 1.2 + KEEP_LOOK_PILLAR + 0.5 + 13 + 0.5, kz); g.add(pole);
+  flag.position.set(kx + 2.3, y0 + 30 + 1.2 + KEEP_LOOK_PILLAR + 0.5 + spireH - 1.2, kz); flag.userData.flag = true; g.add(flag);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4), new THREE.MeshStandardMaterial({ color: '#4a3b2a' })); pole.position.set(kx, y0 + 30 + 1.2 + KEEP_LOOK_PILLAR + 0.5 + spireH + 0.5, kz); g.add(pole);
   for (const d of roofDoors) { d.position.x -= l.x; d.position.z -= l.z; g.add(d); }
+  for (const m of extra) g.add(m);
   g.position.set(l.x, 0, l.z); g.name = l.id;
   return g;
+}
+
+
+/** M24 · Pale Keep's yard (Pale only): a cluster of taller round towers under green cones, frost on the courtyard flags, a low fan
+ *  stair at the door (raised WALK discs), planted terraces in the east yard, a frozen stable trough in the west yard, a battered
+ *  glacis round the curtain wall, and ivy climbing the stone. Placements stay clear of the walkable roof, the door and the gate. */
+const ICE = new THREE.MeshStandardMaterial({ color: '#d4e6ef', roughness: 0.12, metalness: 0.05, emissive: '#1a2a33', emissiveIntensity: 0.25 });
+const YARD_WOOD = new THREE.MeshStandardMaterial({ color: '#5e4430', roughness: 0.85 });
+const GOLD = new THREE.MeshStandardMaterial({ color: '#c9a043', roughness: 0.34, metalness: 0.9 }), BRONZE = new THREE.MeshStandardMaterial({ color: '#8f5f30', roughness: 0.4, metalness: 0.85 });
+const WHITE_STONE = new THREE.MeshStandardMaterial({ color: '#f8f5ef', roughness: 0.34, emissive: '#57524a', emissiveIntensity: 1 }); // pale marble: lifted so it stays white in shade
+const FROST_CAP = new THREE.MeshStandardMaterial({ color: '#eef4f7', roughness: 0.55 }), HEART = new THREE.MeshStandardMaterial({ color: '#b3122a', roughness: 0.12, metalness: 0.1, emissive: '#7a0614', emissiveIntensity: 0.55 });
+function paleKeepYard(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim: THREE.Material, roof: THREE.Material, face: number, kx: number, kz: number, y0: number, R: number, solids: Solid[]): THREE.Object3D[] {
+  const cs = Math.cos(face), sn = Math.sin(face), K = (u: number, v: number) => [kx + cs * u + sn * v, kz - sn * u + cs * v] as const;
+  const pad = y0 + 0.3; let sd = 24; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const leaf = triplanar(t.rock, 0.9, '#62873e', { sat: 0.3, gain: 1.4, rough: 0.95 }), ivy = triplanar(t.rock, 0.7, '#5a8a3a', { sat: 0.25, gain: 1.35, rough: 0.95 });
+  const frost = triplanar(t.brick, 2.2, '#e6edf2', { sat: 0.12, gain: 2.1, rough: 0.5 });
+  const clump = (m: THREE.Material, s: number, sx: number, sy: number, sz: number, x: number, y: number, z: number, ry = 0) => b.add(m, new THREE.IcosahedronGeometry(s, m === ivy ? 0 : 1).scale(sx, sy, sz), x, y, z, ry);
+  // taller clustered towers: two at the back corners, two lower at the front corners (clear of the roof walk and the door)
+  for (const [u, v, r, h, rh] of [[8.6, -8.6, 2.1, 27, 9.5], [-8.6, -8.6, 2.3, 24, 9], [9.3, 5.4, 1.7, 20, 7.5], [-9.3, 5.4, 1.9, 17, 7.5]]) {
+    const [x, z] = K(u, v); tower(b, st, roof, x, y0, z, r, h, rh, true); solids.push({ x: l.x + x, z: l.z + z, r: r * 1.22 + 0.2 }); }
+  // frost on the courtyard flags (a hex floor under the curtain wall)
+  b.add(frost, new THREE.CylinderGeometry(18.6, 18.6, 0.08, 6, 1, false, face + Math.PI / 6), 0, pad - 0.01, 0);
+  // fan stair at the door: three low half-round steps (the back halves sit inside the keep); feet stand on them
+  { const [x, z] = K(0, KEEP_D / 2 + 0.4); for (const [r, h] of [[4.0, 0.16], [3.2, 0.32], [2.4, 0.48]]) { b.add(trim, cyl(r, r, h + 0.3, 40), x, y0, z); b.add(frost, cyl(r - 0.12, r - 0.12, 0.012, 40), x, pad + h, z); WALK.push({ x: l.x + x, z: l.z + z, r: r - 0.05, y: pad + h }); } }
+  // planted terraces in the east yard: two stepped beds with dressed coping, low hedge and rounded shrubs, a clipped cone at each end
+  for (const [u0, u1, v0, v1, h] of [[9.0, 12.0, -3.5, 3.0, 0.6], [12.0, 14.4, -3.0, 1.2, 1.2]]) {
+    const [x, z] = K((u0 + u1) / 2, (v0 + v1) / 2), w = u1 - u0, d = v1 - v0;
+    b.add(trim, box(w, h + 0.3, d), x, y0, z, face); b.add(trim, box(w + 0.2, 0.14, d + 0.2), x, pad + h, z, face);
+    b.add(leaf, box(w - 0.6, 0.3, d - 0.6), x, pad + h + 0.1, z, face);
+    for (let vv = v0 + 0.8; vv < v1 - 0.5; vv += 1.05) for (let uu = u0 + 0.75; uu < u1 - 0.4; uu += 1.0) { const [cx, cz] = K(uu + (rnd() - 0.5) * 0.2, vv + (rnd() - 0.5) * 0.2); clump(leaf, 0.5 + rnd() * 0.12, 1, 0.75 + rnd() * 0.3, 1, cx, pad + h + 0.42, cz, rnd() * 6); }
+    for (const vv of [v0 + 0.5, v1 - 0.5]) { const [cx, cz] = K(u1 - 0.5, vv); b.add(leaf, cone(0.42, 1.8, 10), cx, pad + h + 0.15, cz); }
+    for (let vv = v0 + 1.4; vv <= v1 - 1.4 + 1e-3; vv += Math.max(0.6, (d - 2.8) / 2)) { const [cx, cz] = K((u0 + u1) / 2, vv); solids.push({ x: l.x + cx, z: l.z + cz, r: w / 2 + 0.15 }); }
+  }
+  // frozen stable trough in the west yard: a stone trough skinned with ice, a hitching rail and a bucket
+  { const u = -10.6, v = -0.5, [x, z] = K(u, v);
+    b.add(trim, box(1.1, 0.75, 2.8), x, pad - 0.05, z, face); b.add(ICE, box(0.84, 0.05, 2.54), x, pad + 0.62, z, face); b.add(frost, box(1.16, 0.03, 2.86), x, pad + 0.7, z, face);
+    for (const vv of [-1.4, 1.4]) { const [px, pz] = K(u - 1.2, v + vv); b.add(YARD_WOOD, box(0.18, 1.15, 0.18), px, pad - 0.05, pz, face); }
+    { const [rx, rz] = K(u - 1.2, v); b.add(YARD_WOOD, box(0.12, 0.12, 3.0), rx, pad + 0.95, rz, face); }
+    { const [bx, bz] = K(u + 0.2, v + 1.9); b.add(YARD_WOOD, cyl(0.24, 0.3, 0.42, 10), bx, pad, bz); b.add(ICE, cyl(0.22, 0.22, 0.02, 10), bx, pad + 0.38, bz); }
+    solids.push({ x: l.x + x, z: l.z + z, r: 1.7 }); }
+  // a climbing plant on the keep's front wall (two vines either side of the door) and ivy up its west face
+  for (const [u0, top, ph] of [[-6.2, 14.5, 0.3], [6.1, 9.5, 2.0]]) for (let y = 0.3; y < top; y += 0.3) {
+    const u = u0 + Math.sin(y * 0.45 + ph) * 0.55, spread = 0.6 + 0.5 * Math.sin(y * 0.8 + ph) ** 2, [x, z] = K(u + (rnd() - 0.5) * spread, KEEP_D / 2 + 0.18);
+    clump(ivy, 0.3 + rnd() * 0.2, 1.3, 0.9, 0.42, x, y0 + y, z, face); }
+  for (let k = 0; k < 26; k++) { const vv = -6 + rnd() * 11, yy = 0.4 + rnd() * rnd() * 9, [x, z] = K(-(KEEP_W / 2 + 0.2), vv); clump(ivy, 0.45 + rnd() * 0.3, 0.42, 0.9, 1.3, x, y0 + yy, z, face); }
+  // battered glacis round the curtain wall (not the gate segment), with ivy spilling down it and up three towers
+  const shp = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(1.3, 0), new THREE.Vector2(0.06, 3.4), new THREE.Vector2(0, 3.4)]);
+  for (let i = 0; i < 5; i++) {
+    const a0 = face + Math.PI / 6 + i * Math.PI / 3, a1 = a0 + Math.PI / 3, p0x = Math.sin(a0) * R, p0z = Math.cos(a0) * R, p1x = Math.sin(a1) * R, p1z = Math.cos(a1) * R;
+    const len = Math.hypot(p1x - p0x, p1z - p0z), ux = (p1x - p0x) / len, uz = (p1z - p0z) / len, nx = -uz, nz = ux, ang = Math.atan2(-uz, ux), mx = (p0x + p1x) / 2, mz = (p0z + p1z) / 2;
+    b.add(st, new THREE.ExtrudeGeometry(shp, { depth: len, bevelEnabled: false }).rotateY(-Math.PI / 2).translate(len / 2, -0.3, 0), mx + nx * 1.1, y0, mz + nz * 1.1, ang);
+    for (let k = 0; k <= 6; k++) { const f = k / 6; solids.push({ x: l.x + p0x + (p1x - p0x) * f + nx * 1.6, z: l.z + p0z + (p1z - p0z) * f + nz * 1.6, r: 1.2 }); }
+    for (let c = 0; c < 5; c++) { const f = 0.12 + rnd() * 0.76, hTop = 2 + rnd() * 6.5;
+      for (let y = 0.2; y < hTop; y += 0.55) for (let q = 0; q < 2; q++) { const off = y < 3.1 ? 1.15 + 1.3 * (1 - y / 3.4) : 1.16, jit = (rnd() - 0.5) * (1.6 + y * 0.25) * (1.1 - y / (hTop + 2));
+        clump(ivy, 0.3 + rnd() * 0.35, 1.5, 0.7 + rnd() * 0.5, 0.35, mx + ux * ((f - 0.5) * len + jit) + nx * off, y0 + y + rnd() * 0.3, mz + uz * ((f - 0.5) * len + jit) + nz * off, ang); } }
+    if (i % 2 === 0) { const tx = p0x / R, tz = p0z / R, hT = 5 + rnd() * 5; for (let y = 0.3; y < hT; y += 0.5) for (let q = 0; q < 2; q++) { const a = Math.atan2(tx, tz) + Math.sin(y * 0.6) * 0.2 + (rnd() - 0.5) * 0.7 * (1.1 - y / (hT + 1)), rr = 3.1 * 1.12;
+      clump(ivy, 0.3 + rnd() * 0.3, 1.4, 0.7 + rnd() * 0.5, 0.35, p0x + Math.sin(a) * rr, y0 + y + rnd() * 0.3, p0z + Math.cos(a) * rr, a); } }
+  }
+  const gold = GOLD, frostCap = FROST_CAP;
+  // the heart-crystal under a crown on the keep wall above the door (scenery only, not interactive)
+  { const [x, z] = K(0, KEEP_D / 2 + 0.5), Y = y0 + 10.6;
+    b.add(trim, box(1.5, 0.35, 1.0), x, Y - 1.45, z, face); b.add(trim, cone(0.55, 0.7, 4).rotateX(Math.PI), x, Y - 1.1, z, face);
+    b.add(HEART, new THREE.OctahedronGeometry(0.62, 0).scale(0.8, 1.25, 0.55), x, Y, z, face);
+    b.add(gold, cyl(0.5, 0.56, 0.32, 16), x, Y + 0.9, z); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; b.add(gold, cone(0.09, 0.42, 5), x + Math.sin(a) * 0.5, Y + 1.22, z + Math.cos(a) * 0.5); b.add(gold, new THREE.SphereGeometry(0.06, 6, 4), x + Math.sin(a) * 0.5, Y + 1.66, z + Math.cos(a) * 0.5); }
+    b.add(frostCap, cyl(0.5, 0.5, 0.03, 16), x, Y + 1.22, z); }
+  // the gold crown fountain in the upper courtyard, frozen solid: stone basin, ice, a crown iced over with icicles
+  { const [x, z] = K(-6.6, 10.2);
+    b.add(trim, lathe([[0, 0], [1.45, 0], [1.5, 0.2], [1.4, 0.75], [1.55, 0.82], [1.55, 0.9], [1.25, 0.9], [1.2, 0.3], [0, 0.3]], 32), x, pad - 0.05, z);
+    b.add(ICE, cyl(1.24, 1.24, 0.06, 32), x, pad + 0.66, z); b.add(trim, cyl(0.32, 0.42, 1.1, 14), x, pad + 0.3, z);
+    const Y = pad + 1.4; b.add(gold, cyl(0.55, 0.62, 0.42, 20), x, Y, z); b.add(ICE, cyl(0.5, 0.5, 0.36, 20), x, Y + 0.03, z);
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; b.add(gold, cone(0.11, 0.55, 5), x + Math.sin(a) * 0.58, Y + 0.42, z + Math.cos(a) * 0.58); b.add(frostCap, new THREE.SphereGeometry(0.07, 6, 4), x + Math.sin(a) * 0.58, Y + 0.98, z + Math.cos(a) * 0.58);
+      b.add(ICE, cone(0.05 + (i % 3) * 0.02, 0.35 + (i % 3) * 0.2, 5).rotateX(Math.PI), x + Math.sin(a + 0.4) * 0.6, Y + 0.02, z + Math.cos(a + 0.4) * 0.6); }
+    b.add(ICE, lathe([[0, 0], [0.45, 0], [0.3, 0.5], [0.12, 0.8], [0, 0.85]], 10), x, pad + 0.7, z); // the frozen spill down the pedestal
+    solids.push({ x: l.x + x, z: l.z + z, r: 1.7 }); }
+  // ---- the Wing Gate: the outer gate at the foot of the rock, on the road from the meadow, facing it ----
+  const D = 25, G = (u: number, v: number) => [Math.sin(face) * D + cs * u + sn * v, Math.cos(face) * D - sn * u + cs * v] as const;
+  const hy = (u: number, v: number) => { const [x, z] = G(u, v); return heightAt(l.x + x, l.z + z); };
+  const gy = Math.min(hy(0, 0), hy(-4.4, 0), hy(4.4, 0)) - 0.05;
+  const red = triplanar(t.sand, 2.0, '#b8402f', { sat: 0.6, gain: 1.75, rough: 0.75, emissive: '#2a0a06' }), white = WHITE_STONE;
+  // the drum towers: white plinth, red drum, gold band and gold crenellated top, frost on the merlons
+  for (const s of [-1, 1]) { const [x, z] = G(s * 4.4, 0), r = 2.1, H = 11;
+    b.add(white, cyl(r * 1.16, r * 1.1, 1.3, 24), x, gy - 0.6, z); b.add(red, cyl(r * 1.02, r, H, 24), x, gy, z);
+    for (const yy of [3.6, 7.2]) for (let i = 0; i < 3; i++) { const a = face + (i - 1) * 0.7 + (s > 0 ? 0.3 : -0.3); b.add(SLIT, box(0.16, 1.1, 0.12), x + Math.sin(a) * r * 1.02, gy + yy, z + Math.cos(a) * r * 1.02, a + Math.PI / 2 - Math.PI / 2); }
+    b.add(gold, cyl(r * 1.06, r * 1.06, 0.36, 24), x, gy + H - 1.2, z); b.add(gold, cyl(r * 1.14, r * 1.1, 0.7, 24), x, gy + H, z);
+    for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; b.add(gold, box(0.72, 0.75, 0.42), x + Math.sin(a) * r * 1.1, gy + H + 0.7, z + Math.cos(a) * r * 1.1, a); b.add(frostCap, box(0.74, 0.07, 0.44), x + Math.sin(a) * r * 1.1, gy + H + 1.45, z + Math.cos(a) * r * 1.1, a); }
+    b.add(frostCap, cyl(r * 1.0, r * 1.0, 0.05, 24), x, gy + H + 0.7, z);
+    solids.push({ x: l.x + x, z: l.z + z, r: r * 1.12 + 0.15 }); }
+  // the pale stone arch between them (a pierced wall), voussoirs, a parapet with frosted merlons
+  { const sh = new THREE.Shape(); sh.moveTo(-2.7, 0); sh.lineTo(-2.1, 0); sh.lineTo(-2.1, 4.9); sh.absarc(0, 4.9, 2.1, Math.PI, 0, true); sh.lineTo(2.1, 0); sh.lineTo(2.7, 0); sh.lineTo(2.7, 10); sh.lineTo(-2.7, 10); sh.lineTo(-2.7, 0); // a U contour (a hole touching the edge triangulated badly)
+
+    const [x, z] = G(0, 0); b.add(trim, new THREE.ExtrudeGeometry(sh, { depth: 2.6, bevelEnabled: false, curveSegments: 14 }).translate(0, -0.6, -1.3), x, gy, z, face);
+    for (let i = 0; i <= 10; i++) { const a = i / 10 * Math.PI, vg = new THREE.BoxGeometry(i === 5 ? 0.62 : 0.5, i === 5 ? 0.95 : 0.75, 0.3); vg.rotateZ(a - Math.PI / 2); vg.translate(Math.cos(a) * 2.4, 4.3 + Math.sin(a) * 2.4, 1.38); b.add(white, vg, x, gy, z, face); }
+    for (let i = 0; i < 5; i++) { const u = -2.2 + i * 1.1, [mx, mz] = G(u, 0); b.add(trim, box(0.6, 0.8, 2.6), mx, gy + 9.4, mz, face); b.add(frostCap, box(0.62, 0.07, 2.62), mx, gy + 10.2, mz, face); }
+    // the bronze compass rose on the arch's road face (eight points, ring and boss) — the gate's story hook
+    const star = new THREE.Shape(); for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2, rr = i % 4 === 0 ? 1.15 : i % 2 === 0 ? 0.72 : 0.26; const px = Math.sin(a) * rr, py = Math.cos(a) * rr; if (i) star.lineTo(px, py); else star.moveTo(px, py); }
+    const C = (gq: THREE.BufferGeometry, m: THREE.Material) => { gq.scale(1.13, 1.13, 1); gq.translate(0, 8.45, 1.32); b.add(m, gq, x, gy, z, face); };
+    C(new THREE.CylinderGeometry(1.0, 1.0, 0.08, 32).rotateX(Math.PI / 2), white); C(new THREE.TorusGeometry(0.92, 0.07, 6, 32), BRONZE); C(new THREE.TorusGeometry(0.62, 0.035, 6, 28), BRONZE);
+    C(new THREE.ExtrudeGeometry(star, { depth: 0.1, bevelEnabled: false }), BRONZE); C(new THREE.SphereGeometry(0.13, 10, 6), BRONZE);
+    // two small gold lanterns on posts either side of the arch
+    for (const s of [-1, 1]) { const [px, pz] = G(s * 2.95, 2.3); b.add(gold, cyl(0.07, 0.06, 2.4, 8), px, gy, pz); b.add(gold, box(0.42, 0.06, 0.42), px, gy + 2.4, pz, face); b.add(KEEP_LAMP, box(0.3, 0.42, 0.3), px, gy + 2.46, pz, face); b.add(gold, cone(0.3, 0.32, 4), px, gy + 2.88, pz, face + Math.PI / 4); b.add(frostCap, cone(0.16, 0.12, 4), px, gy + 3.1, pz, face + Math.PI / 4); solids.push({ x: l.x + px, z: l.z + pz, r: 0.35 }); } }
+  // dark side arches: a short wing wall beyond each tower with a blind dark arch on the road face
+  for (const s of [-1, 1]) { const [x, z] = G(s * 7.9, -0.2); b.add(trim, box(3.4, 5.4, 1.6), x, gy - 0.6, z, face); b.add(frostCap, box(3.42, 0.06, 1.62), x, gy + 4.8, z, face);
+    const ar = new THREE.Shape(); ar.moveTo(-0.85, 0); ar.lineTo(0.85, 0); ar.lineTo(0.85, 2.3); ar.absarc(0, 2.3, 0.85, 0, Math.PI, false); ar.lineTo(-0.85, 0);
+    const [ax, az] = G(s * 7.9, 0.62); b.add(SLIT, new THREE.ShapeGeometry(ar, 10), ax, gy, az, face);
+    for (let k = 0; k < 4; k++) { const [cx, cz] = G(s * 7.9, -0.2 + 0); solids.push({ x: l.x + cx + cs * s * (k - 1.5) * 0.9, z: l.z + cz - sn * s * (k - 1.5) * 0.9, r: 0.95 }); } }
+  // the forecourt: the gilded winged figure on a white plinth facing the road, two gold obelisks on white bases
+  { const [x, z] = G(0, 6.2), py = hy(0, 6.2);
+    b.add(white, box(1.7, 1.5, 1.7), x, py - 0.3, z, face); b.add(white, box(2.0, 0.22, 2.0), x, py - 0.3, z, face); b.add(white, box(1.9, 0.2, 1.9), x, py + 1.2, z, face);
+    const Y = py + 1.4; figure(b, gold, FROST_CAP, x, Y, z, face);
+    solids.push({ x: l.x + x, z: l.z + z, r: 1.4 });
+    for (const s of [-1, 1]) { const [ox, oz] = G(s * 5.6, 4.6), oy = hy(s * 5.6, 4.6);
+      b.add(white, box(1.4, 1.1, 1.4), ox, oy - 0.3, oz, face); b.add(white, box(1.6, 0.2, 1.6), ox, oy - 0.3, oz, face);
+      b.add(gold, cyl(0.46, 0.3, 5.0, 4), ox, oy + 0.8, oz, face + Math.PI / 4); b.add(gold, cone(0.32, 0.6, 4), ox, oy + 5.8, oz, face + Math.PI / 4); b.add(frostCap, cone(0.15, 0.28, 4), ox, oy + 6.12, oz, face + Math.PI / 4);
+      solids.push({ x: l.x + ox, z: l.z + oz, r: 1.05 }); } }
+  // gold-painted plaza with swirl and wing inlays (one decal mesh laid on the ground)
+  const [px, pz] = G(0, 5.2); const plaza = new THREE.RingGeometry(0.05, 7.2, 64, 10); plaza.rotateX(-Math.PI / 2); plaza.rotateY(face);
+  { const pp = plaza.attributes.position; for (let i = 0; i < pp.count; i++) pp.setY(i, heightAt(l.x + px + pp.getX(i), l.z + pz + pp.getZ(i)) + 0.035); plaza.computeVertexNormals(); }
+  const pm = new THREE.Mesh(plaza, new THREE.MeshStandardMaterial({ map: plazaTex(), color: '#ffffff', metalness: 0.45, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -2 }));
+  pm.position.set(px, 0, pz); pm.receiveShadow = true;
+  return [pm];
+}
+
+/** M24 · the Wing Gate's gilded figure: a robed body with folds, shoulders, head, raised arms and feathered wings
+ *  (three overlapping layers of tapered feathers along a curved span), frost along each wing's leading edge. */
+function figure(b: Builder, gold: THREE.Material, frost: THREE.Material, x: number, Y: number, z: number, face: number) {
+  const P = (g: THREE.BufferGeometry) => b.add(gold, g, x, Y, z, face), Fz = (g: THREE.BufferGeometry) => b.add(frost, g, x, Y, z, face);
+  const robe = new THREE.LatheGeometry([[0.5, 0], [0.47, 0.25], [0.41, 0.7], [0.34, 1.15], [0.27, 1.45], [0.24, 1.6], [0.0, 1.62]].map(([r, y]) => new THREE.Vector2(r, y)), 28);
+  { const p = robe.attributes.position; for (let i = 0; i < p.count; i++) { const px = p.getX(i), py = p.getY(i), pz = p.getZ(i), a = Math.atan2(pz, px), k = 1 + 0.075 * Math.sin(a * 7 + py * 1.3) * (1 - py / 1.7); p.setX(i, px * k); p.setZ(i, pz * k); } robe.computeVertexNormals(); }
+  P(robe); P(new THREE.CylinderGeometry(0.2, 0.5, 0.12, 20).translate(0, 0.06, 0)); // hem
+  P(new THREE.SphereGeometry(0.3, 14, 8).scale(1.25, 0.5, 0.75).translate(0, 1.66, 0)); P(new THREE.CylinderGeometry(0.07, 0.09, 0.16, 8).translate(0, 1.86, 0));
+  P(new THREE.SphereGeometry(0.15, 14, 10).scale(0.9, 1.1, 0.95).translate(0, 2.05, 0.01));
+  const limb = (a: THREE.Vector3, c: THREE.Vector3, r0: number, r1: number) => { const d = c.clone().sub(a), g = new THREE.CylinderGeometry(r1, r0, d.length(), 7); g.translate(0, d.length() / 2, 0); g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize())); g.translate(a.x, a.y, a.z); P(g); };
+  for (const s of [-1, 1]) { const sh = new THREE.Vector3(s * 0.33, 1.68, 0.02), el = new THREE.Vector3(s * 0.52, 2.08, 0.12), ha = new THREE.Vector3(s * 0.46, 2.52, 0.16);
+    limb(sh, el, 0.075, 0.06); limb(el, ha, 0.06, 0.045); P(new THREE.SphereGeometry(0.06, 8, 6).translate(ha.x, ha.y + 0.03, ha.z));
+    // wing: feathers hang from a curved arm, fanning outward toward the tip; three layers, longest at the back
+    const arm = (t: number) => new THREE.Vector3(s * (0.18 + 1.55 * t), 1.72 + 0.95 * t - 0.3 * t * t, -0.18 - 0.38 * t);
+    const feather = (L: number, W: number) => { const f = new THREE.Shape(); f.moveTo(-W * 0.5, 0); f.quadraticCurveTo(-W * 0.62, -L * 0.55, 0, -L); f.quadraticCurveTo(W * 0.62, -L * 0.55, W * 0.5, 0); f.lineTo(-W * 0.5, 0); return new THREE.ExtrudeGeometry(f, { depth: 0.025, bevelEnabled: false, curveSegments: 3 }); };
+    for (const [n, t0, t1, l0, l1, w, dz] of [[9, 0.0, 1.0, 0.65, 1.45, 0.2, 0], [8, 0.0, 0.95, 0.42, 0.75, 0.2, 0.03], [7, 0.0, 0.9, 0.22, 0.36, 0.17, 0.06]] as const) for (let i = 0; i < n; i++) {
+      const t = t0 + (t1 - t0) * i / (n - 1), L = l0 + (l1 - l0) * Math.pow(t, 1.3), q = arm(t), g = feather(L, w);
+      g.rotateZ(s * (0.08 + 1.05 * t * t)); g.rotateY(s * 0.42); g.translate(q.x, q.y + 0.02, q.z + dz); P(g); }
+    for (let i = 0; i < 10; i++) { const t = i / 9, q = arm(t); Fz(new THREE.SphereGeometry(0.045, 6, 4).scale(2.2, 0.7, 1.2).translate(q.x, q.y + 0.05, q.z + 0.04)); } // frost on the leading edge
+    for (let i = 5; i < 9; i++) { const t = i / 8, q = arm(t), L = 0.65 + 0.8 * Math.pow(t, 1.3), a = s * (0.08 + 1.05 * t * t); Fz(new THREE.SphereGeometry(0.04, 5, 4).translate(q.x + Math.sin(a) * L * 0.92, q.y - Math.cos(a) * L * 0.92, q.z + 0.03)); } // and on the long tips
+  }
+}
+let _plaza: THREE.Texture | null = null;
+/** M24 · the Wing Gate forecourt: gold paint over pale flags, swirl inlays, a pair of wings and rings, a little frost. */
+function plazaTex(): THREE.Texture {
+  if (_plaza) return _plaza; const N = 1024, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d')!;
+  let sd = 9; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  x.fillStyle = '#cdbf9c'; x.fillRect(0, 0, N, N);
+  for (let gy = 0; gy < N; gy += 64) for (let gx = 0; gx < N; gx += 64) { const o = (gy / 64) % 2 ? 32 : 0; x.fillStyle = `hsl(42, ${30 + r() * 15}%, ${62 + r() * 10}%)`; x.fillRect(gx + o + 2, gy + 2, 60, 60); }
+  const C = N / 2; x.lineCap = 'round';
+  const gold = (w: number, a = 1) => { x.strokeStyle = `rgba(196,150,58,${a})`; x.lineWidth = w; };
+  gold(26); x.beginPath(); x.arc(C, C, N * 0.47, 0, Math.PI * 2); x.stroke(); gold(10); x.beginPath(); x.arc(C, C, N * 0.42, 0, Math.PI * 2); x.stroke();
+  for (let k = 0; k < 8; k++) { const a0 = k / 8 * Math.PI * 2; gold(14); x.beginPath(); for (let i = 0; i <= 40; i++) { const t = i / 40, a = a0 + t * 1.6, rr = N * (0.12 + t * 0.28); const px = C + Math.cos(a) * rr, py = C + Math.sin(a) * rr; if (i) x.lineTo(px, py); else x.moveTo(px, py); } x.stroke(); }
+  for (const s of [-1, 1]) for (let f = 0; f < 6; f++) { gold(18 - f * 2); x.beginPath(); x.moveTo(C, C + 30); x.quadraticCurveTo(C + s * (90 + f * 30), C - 40 - f * 18, C + s * (150 + f * 34), C - 120 - f * 22 + f * f * 6); x.stroke(); }
+  x.fillStyle = 'rgba(196,150,58,1)'; x.beginPath(); x.arc(C, C, 70, 0, Math.PI * 2); x.fill(); x.fillStyle = '#cdbf9c'; x.beginPath(); x.arc(C, C, 40, 0, Math.PI * 2); x.fill();
+  for (let i = 0; i < 1400; i++) { x.fillStyle = `rgba(240,246,250,${0.05 + r() * 0.18})`; const s = 2 + r() * 9; x.fillRect(r() * N, r() * N, s, s * (0.4 + r())); }
+  const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 4; _plaza = tx; return tx;
 }
 
 /** Sunspire: sandstone causeway ring, slender lathe tower (Page profile), gilded crown + needle, amber crystal ring. */
@@ -379,7 +548,7 @@ function smokeTex(): THREE.Texture {
 export function makeLandmarks(t: BuildTex, solids: Solid[], opts: LOpts = { lights: true }): { group: THREE.Group; update: (time: number) => void } {
   const grp = new THREE.Group(); const updates: ((time: number) => void)[] = [];
   const by = (id: string) => LANDMARKS.find((l) => l.id === id)!;
-  grp.add(makeKeep(by('pale'), t, '#7b93a8', '#efe6d6', '#e9e4d4', solids));
+  grp.add(makeKeep(by('pale'), t, '#3a8f48', '#f6e2b4', '#e9e4d4', solids)); // M24: dark-green scale roofs, cream-to-pale stone
   grp.add(makeKeep(by('azure'), t, '#3f78b5', '#d9dde0', '#4fa3e0', solids));
   const sun = makeSunspire(by('sunspire'), t, solids, opts); grp.add(sun);
   const dome = makeIronDome(by('dome'), t, solids, opts); grp.add(dome); updates.push(dome.userData.tick);
@@ -391,7 +560,6 @@ export function makeLandmarks(t: BuildTex, solids: Solid[], opts: LOpts = { ligh
   updates.push((time) => {
     for (const f of flags) { const p = f.geometry.attributes.position, base = f.userData.base as Float32Array; for (let i = 0; i < p.count; i++) { const x = base[i * 3]; p.setZ(i, Math.sin(x * 1.4 - time * 4) * 0.25 * (x + 2.25) / 4.5); } p.needsUpdate = true; }
   });
-  void heightAt;
   return { group: grp, update: (time) => { for (const u of updates) u(time); } };
 }
 

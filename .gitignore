@@ -6,3 +6,4 @@ shots/
 *.log
 
 tools/__pycache__/
+refs/

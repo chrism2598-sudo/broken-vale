@@ -37,6 +37,15 @@ function shardGeo(r: number, h: number, rnd: () => number) {
   for (let i = 0; i < n; i++) { const k = (i + 1) % n; push(b[i], m[i], m[k], b[i], m[k], b[k], m[i], tip, m[k]); }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals(); return g;
 }
+/** M29 · a faceted crystal limb (6-sided, slightly irregular) from p0 to p1, radius r0 → r1; non-indexed so it shades in facets. */
+function limbGeo(p0: THREE.Vector3, p1: THREE.Vector3, r0: number, r1: number, rnd: () => number) {
+  const n = 6, d = p1.clone().sub(p0), L = d.length(), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()), j = Array.from({ length: n }, () => 0.8 + rnd() * 0.4);
+  const ring = (y: number, r: number) => j.map((f, i) => { const a = (i / n) * Math.PI * 2; return new THREE.Vector3(Math.cos(a) * r * f, y, Math.sin(a) * r * f).applyQuaternion(q).add(p0); });
+  const b = ring(0, r0), m = ring(L * 0.55, (r0 + r1) / 2 * (0.95 + rnd() * 0.15)), tp = ring(L, r1), v: number[] = [], push = (...ps: THREE.Vector3[]) => ps.forEach((p) => v.push(p.x, p.y, p.z));
+  for (let i = 0; i < n; i++) { const k = (i + 1) % n; push(b[i], m[i], m[k], b[i], m[k], b[k], m[i], tp[i], tp[k], m[i], tp[k], m[k]); }
+  const tip = p1.clone().addScaledVector(d, r1 * 1.4); for (let i = 0; i < n; i++) push(tp[i], tip, tp[(i + 1) % n]);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals(); return g;
+}
 /** Fresnel edge glow: emissive rises at grazing angles (cheap "light caught in the facets"). */
 function edgeGlow(mat: THREE.MeshStandardMaterial, k: { value: number }) {
   mat.onBeforeCompile = (sh) => {
@@ -53,42 +62,41 @@ export function makeEchoGrove(high: boolean, rock?: { diff: THREE.Texture; nor: 
   const g = new THREE.Group(); g.position.set(ECHO.x, heightAt(ECHO.x, ECHO.z), ECHO.z);
   let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const stone: THREE.MeshStandardMaterial = rock ? triplanar(rock, 1.3, '#e2dcc6', { sat: 1.0, gain: 1.45 }) : new THREE.MeshStandardMaterial({ color: '#8a8478', roughness: 0.95, flatShading: true });
-  const root = new THREE.MeshStandardMaterial({ color: '#7a624a', roughness: 0.85 });
+  const moss = new THREE.MeshStandardMaterial({ color: '#b7c3a4', roughness: 1, polygonOffset: true, polygonOffsetFactor: -2 }); // pale moss
   const trees: { mat: THREE.MeshStandardMaterial; edge: { value: number }; core: THREE.MeshBasicMaterial; k: number; want: number }[] = [];
   const up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 5; i++) {
     const a = i * Math.PI * 2 / 5 + 0.3, x = Math.cos(a) * 10, z = Math.sin(a) * 10, y = heightAt(ECHO.x + x, ECHO.z + z) - g.position.y;
     const edge = { value: 0.25 };
     const mat: THREE.MeshStandardMaterial = high
-      ? new THREE.MeshPhysicalMaterial({ color: '#b9efe6', emissive: '#5fe8d0', emissiveIntensity: 0.03, roughness: 0.06, metalness: 0, transmission: 0.72, thickness: 1.4, ior: 1.55, attenuationColor: new THREE.Color('#4fbfae'), attenuationDistance: 2.2, iridescence: 0.55, iridescenceIOR: 1.35, iridescenceThicknessRange: [180, 520], specularIntensity: 0.9, clearcoat: 0.4, clearcoatRoughness: 0.05, flatShading: true, envMapIntensity: 1.1 })
-      : new THREE.MeshStandardMaterial({ color: '#8fd3c8', emissive: '#5fe8d0', emissiveIntensity: 0.03, roughness: 0.14, metalness: 0.08, flatShading: true, envMapIntensity: 1.3 });
+      ? new THREE.MeshPhysicalMaterial({ color: '#eef8f6', emissive: '#a6efe2', emissiveIntensity: 0.03, roughness: 0.06, metalness: 0, transmission: 0.72, thickness: 1.4, ior: 1.55, attenuationColor: new THREE.Color('#b8e6df'), attenuationDistance: 3.2, iridescence: 0.55, iridescenceIOR: 1.35, iridescenceThicknessRange: [180, 520], specularIntensity: 0.9, clearcoat: 0.4, clearcoatRoughness: 0.05, flatShading: true, envMapIntensity: 1.1 })
+      : new THREE.MeshStandardMaterial({ color: '#d6efeb', emissive: '#a6efe2', emissiveIntensity: 0.05, roughness: 0.16, metalness: 0.04, flatShading: true, envMapIntensity: 1.4 });
     edgeGlow(mat, edge);
-    const core = new THREE.MeshBasicMaterial({ color: '#7ff5de', transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    const core = new THREE.MeshBasicMaterial({ color: '#c8fff3', transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
     const t = new THREE.Group(); t.position.set(x, y, z); t.rotation.y = rnd() * 6.28; const sc = 0.78 + rnd() * 0.5; t.scale.setScalar(sc); g.add(t);
-    // dark stone base: 3-4 jittered rocks + roots gripping the ground
-    for (let k = 0; k < 4; k++) {
-      const rg = mergeVertices(new THREE.IcosahedronGeometry(k ? 0.45 + rnd() * 0.4 : 0.9 + rnd() * 0.3, 2).deleteAttribute('normal').deleteAttribute('uv')); const pa = rg.attributes.position as THREE.BufferAttribute; const ph = rnd() * 9;
-      for (let v = 0; v < pa.count; v++) { const x = pa.getX(v), y = pa.getY(v), z = pa.getZ(v), r = Math.hypot(x, y, z) || 1; const f = 0.86 + 0.12 * Math.sin(x / r * 3.1 + ph) * Math.cos(z / r * 2.7 - ph) + 0.06 * Math.sin(y / r * 5.3 + ph * 2); pa.setXYZ(v, x * f, Math.max(y * f * 0.72, -0.25), z * f); } rg.computeVertexNormals();
-      const m = new THREE.Mesh(rg, stone); const ra = k * 1.7 + rnd(); m.position.set(Math.cos(ra) * (k ? 1.0 : 0), k ? 0.05 : 0.25, Math.sin(ra) * (k ? 1.0 : 0)); m.rotation.y = rnd() * 6; m.castShadow = m.receiveShadow = true; t.add(m);
+    // M29 · a crystal TREE: faceted trunk rising from crystal roots driven into the ground, forking into boughs and twigs that
+    // end in tufts of small shards; a pale inner core runs up the trunk and boughs; a couple of half-buried stones, pale moss, fallen shards.
+    for (let k = 0; k < 2; k++) {
+      const rg = mergeVertices(new THREE.IcosahedronGeometry(0.4 + rnd() * 0.3, 1).deleteAttribute('normal').deleteAttribute('uv')); rg.scale(1.3, 0.55, 1); rg.computeVertexNormals();
+      const m = new THREE.Mesh(rg, stone); const ra = k * 2.6 + rnd(); m.position.set(Math.cos(ra) * 1.1, 0.02, Math.sin(ra) * 1.1); m.rotation.y = rnd() * 6; m.castShadow = m.receiveShadow = true; t.add(m);
     }
-    for (let k = 0; k < 4; k++) {
-      const ra = k * 1.57 + rnd() * 0.5, L = 1.2 + rnd() * 0.8;
-      const c = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.6, 0), new THREE.Vector3(Math.cos(ra) * L * 0.45, 0.45 + rnd() * 0.2, Math.sin(ra) * L * 0.45), new THREE.Vector3(Math.cos(ra + 0.2) * L, -0.25, Math.sin(ra + 0.2) * L)]);
-      const m = new THREE.Mesh(new THREE.TubeGeometry(c, 8, 0.07 + rnd() * 0.05, 5), root); m.castShadow = true; t.add(m);
-    }
-    // crystal cluster: tall leaning spire + shards fanning outward and upward
     const parts: THREE.BufferGeometry[] = [], cores: THREE.BufferGeometry[] = [];
-    const nS = 9 + Math.floor(rnd() * 5);
-    for (let k = 0; k < nS; k++) {
-      const main = k === 0, hgt = main ? 5.2 + rnd() * 1.8 : 1.2 + rnd() * (k < 4 ? 3.4 : 2.0), r = main ? 0.55 : 0.18 + rnd() * 0.3;
-      const geo = shardGeo(r, hgt, rnd);
-      const tilt = main ? 0.06 + rnd() * 0.1 : 0.25 + rnd() * 0.65, az = rnd() * 6.28, axis = new THREE.Vector3(Math.cos(az), 0, Math.sin(az)).cross(up).normalize();
-      const q = new THREE.Quaternion().setFromAxisAngle(axis, tilt).multiply(new THREE.Quaternion().setFromAxisAngle(up, rnd() * 6));
-      const off = main ? 0 : 0.2 + rnd() * 0.6, h0 = main ? 0.35 : 0.3 + rnd() * (k < 5 ? 1.6 : 0.4);
-      const mtx = new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(az) * off, h0, Math.sin(az) * off), q, new THREE.Vector3(1, 1, 1));
-      geo.applyMatrix4(mtx); parts.push(geo);
-      if (k < 4) { const cg = shardGeo(r * 0.45, hgt * 0.8, rnd); cg.applyMatrix4(mtx); cores.push(cg); }
-    }
+    const lean = new THREE.Vector3((rnd() - 0.5) * 0.5, 1, (rnd() - 0.5) * 0.5).normalize(), H = 3.0 + rnd() * 0.8;
+    const top = lean.clone().multiplyScalar(H);
+    parts.push(limbGeo(new THREE.Vector3(0, -0.3, 0), top, 0.55, 0.3, rnd)); cores.push(limbGeo(new THREE.Vector3(0, 0, 0), top, 0.16, 0.09, rnd));
+    for (let k = 0; k < 6; k++) { const ra = k * 1.05 + rnd() * 0.4, L = 1.1 + rnd() * 0.9; // roots: flare out and dive into the ground
+      parts.push(limbGeo(new THREE.Vector3(Math.cos(ra) * 0.15, 0.5, Math.sin(ra) * 0.15), new THREE.Vector3(Math.cos(ra) * L, -0.45, Math.sin(ra) * L), 0.2, 0.05, rnd)); }
+    const grow = (p0: THREE.Vector3, dir: THREE.Vector3, len: number, r: number, depth: number) => {
+      const p1 = p0.clone().addScaledVector(dir, len); parts.push(limbGeo(p0, p1, r, r * 0.62, rnd)); if (depth < 2) cores.push(limbGeo(p0, p1, r * 0.35, r * 0.22, rnd));
+      if (depth >= 3) { for (let q = 0; q < 3; q++) { const sh = shardGeo(0.07 + rnd() * 0.06, 0.45 + rnd() * 0.5, rnd), d2 = dir.clone().add(new THREE.Vector3((rnd() - 0.5) * 1.4, rnd() * 0.6, (rnd() - 0.5) * 1.4)).normalize(); sh.applyMatrix4(new THREE.Matrix4().compose(p1, new THREE.Quaternion().setFromUnitVectors(up, d2), new THREE.Vector3(1, 1, 1))); parts.push(sh); } return; }
+      const n = depth === 0 ? 3 : 2 + (rnd() < 0.5 ? 1 : 0); const az0 = rnd() * 6.28;
+      for (let q = 0; q < n; q++) { const az = az0 + q * 6.28 / n + (rnd() - 0.5) * 0.6, spread = 0.45 + rnd() * 0.35 + depth * 0.1;
+        const d2 = dir.clone().multiplyScalar(1 - spread).add(new THREE.Vector3(Math.cos(az) * spread, 0.25, Math.sin(az) * spread)).normalize(); grow(p1, d2, len * (0.68 + rnd() * 0.15), r * 0.62, depth + 1); } };
+    grow(top, lean, 1.5 + rnd() * 0.4, 0.3, 0);
+    for (let k = 0; k < 7; k++) { const ra = rnd() * 6.28, rr = 1.2 + rnd() * 2.2, sh = shardGeo(0.06 + rnd() * 0.08, 0.25 + rnd() * 0.45, rnd); // fallen and seeded shards
+      sh.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(ra) * rr, -0.05, Math.sin(ra) * rr), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(Math.sin(ra), 0, -Math.cos(ra)), (rnd() - 0.5) * 1.4), new THREE.Vector3(1, 1, 1))); parts.push(sh); }
+    for (let k = 0; k < 5; k++) { const ra = rnd() * 6.28, rr = 0.6 + rnd() * 1.6, mg = new THREE.CircleGeometry(0.35 + rnd() * 0.4, 9); const pa = mg.attributes.position; for (let v = 1; v < pa.count; v++) { const f = 0.7 + rnd() * 0.5; pa.setXY(v, pa.getX(v) * f, pa.getY(v) * f); }
+      const m = new THREE.Mesh(mg.rotateX(-Math.PI / 2), moss); m.position.set(Math.cos(ra) * rr, 0.04, Math.sin(ra) * rr); m.receiveShadow = true; t.add(m); }
     const cm = new THREE.Mesh(mergeGeometries(parts), mat); cm.castShadow = false; t.add(cm); // light passes through: no hard shadow on the base
     const cc = new THREE.Mesh(mergeGeometries(cores), core); cc.renderOrder = 2; t.add(cc);
     trees.push({ mat, edge, core, k: 0, want: 0 });

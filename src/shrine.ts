@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SHRINE, heightAt } from './world';
 import { addRimFill } from './shading';
 import { triplanar } from './landmarks';
@@ -41,8 +42,16 @@ function glyphTex(glyph: string): THREE.CanvasTexture {
 
 /** Orrery-style Wind Shrine: warm-stone drum on flared pillars, gilded dome, three armillary rings that wake and spin. */
 export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved: boolean }) {
-  const stone = new THREE.MeshStandardMaterial({ map: rock.diff, normalMap: rock.nor, roughnessMap: rock.arm, color: '#e8d6b2', roughness: 1 });
-  addRimFill(stone, { fill: 0.25, rim: 0.2 });
+  // M29 · weathered world-space stone: lichen blots, moss in the up-facing joints, rain streaks running down (was one UV-wrapped tint)
+  const stone = triplanar(rock, 1.5, '#e4d4b4', { sat: 0.55, gain: 1.55, rough: 0.95, emissive: '#15120d' });
+  { const prev = stone.onBeforeCompile; stone.onBeforeCompile = (sh, r) => { prev.call(stone, sh, r); sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  { vec3 n = normalize(vTN); float up = smoothstep(.55, .9, n.y), side = 1. - up;
+    float lich = smoothstep(.72, .8, tVn(vTW.xy * 3.1 + vTW.zy * 2.7 + vTW.xz * 1.3)) * (.6 + .4 * tVn(vTW.xz * 9.));
+    float moss = up * smoothstep(.5, .72, tVn(vTW.xz * 2.2)) + side * smoothstep(.0, -.9, vTW.y - ${(heightAt(SHRINE.x, SHRINE.z) + 0.6).toFixed(2)}) * .5;
+    float streak = side * smoothstep(.5, .85, tVn(vec2((vTW.x + vTW.z) * 4.5, vTW.y * .3)));
+    diffuseColor.rgb *= 1. - .22 * streak;
+    diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(.72, .74, .58), vec3(.86, .82, .62), tVn(vTW.xy * 5.)), lich * .6);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.33, .4, .2), clamp(moss, 0., .8)); }`); }; }
   const gold = new THREE.MeshStandardMaterial({ color: '#c99a45', metalness: 0.85, roughness: 0.32 }); addRimFill(gold, { fill: 0.15, rim: 0.35, rimColor: '#ffe3a0' });
   const g = new THREE.Group(); const y0 = heightAt(SHRINE.x, SHRINE.z) - 0.2;
   const base = new THREE.Mesh(new THREE.CylinderGeometry(6, 6.6, 0.8, 40), stone); base.position.y = 0.4; g.add(base);
@@ -78,6 +87,33 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx);
     const m = new THREE.Mesh(geo, windMat); m.visible = false; m.renderOrder = 2; m.layers.set(1); /* layer 1: kept out of the AO normal pass (else it darkens) */ g.add(m); ribbons.push(m);
   }
+  // M29 · carved wind motifs: a shallow spiral groove winding up each pillar, and wind-scrolls cut round the drum
+  const groove = new THREE.MeshStandardMaterial({ color: '#5b5142', roughness: 1 }); const G: THREE.BufferGeometry[] = [], S: THREE.BufferGeometry[] = []; // merged below: flat draw calls
+  const pillars = g.children.filter((o) => (o as THREE.Mesh).geometry instanceof THREE.CylinderGeometry && Math.abs(o.position.y - 3.8) < 0.01) as THREE.Mesh[];
+  for (const p of pillars) { const pts: THREE.Vector3[] = []; for (let i = 0; i <= 60; i++) { const u = i / 60, a = u * Math.PI * 6, y = -2.4 + u * 4.8, r = 0.5 + (0.75 - 0.5) * (1 - (y + 3.1) / 6.2) - 0.015; pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r)); }
+    p.updateMatrix(); G.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, 0.035, 4).applyMatrix4(p.matrix)); }
+  for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2, sc = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 4, 14, Math.PI * 1.5), groove); sc.position.set(Math.cos(a) * 2.37, 6.6 + 2.0, Math.sin(a) * 2.37); sc.rotation.y = -a + Math.PI / 2; sc.rotation.z = k % 2 ? 0.6 : -0.6; sc.updateMatrix(); G.push(sc.geometry.applyMatrix4(sc.matrix)); }
+  // worn steps: a few cracked, sunk slabs leading in from the hub side, chipped blocks at the step ring
+  { let sd = 31; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647); const toHub = Math.atan2(-SHRINE.z, -SHRINE.x);
+    for (let k = 0; k < 4; k++) { const r = 8.1 + k * 1.05, a = toHub + (rnd() - 0.5) * 0.05, wx = SHRINE.x + Math.cos(a) * r, wz = SHRINE.z + Math.sin(a) * r;
+      const sl = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.14, 1.9 - k * 0.1), stone); sl.position.set(Math.cos(a) * r, heightAt(wx, wz) - y0 - 0.03, Math.sin(a) * r); sl.rotation.y = -a + (rnd() - 0.5) * 0.12; sl.rotation.z = (rnd() - 0.5) * 0.05; sl.updateMatrix(); S.push(sl.geometry.applyMatrix4(sl.matrix)); }
+    for (let k = 0; k < 9; k++) { const a = rnd() * 6.28, r = 7.35 + rnd() * 0.4, ch = new THREE.Mesh(new THREE.DodecahedronGeometry(0.22 + rnd() * 0.18, 0).scale(1.3, 0.55, 1), stone); ch.position.set(Math.cos(a) * r, 0.05, Math.sin(a) * r); ch.rotation.y = rnd() * 6; ch.updateMatrix(); S.push(ch.geometry.applyMatrix4(ch.matrix)); } }
+  // prayer strips: faded cloth on cords between the pillars, swaying in the wind (vertex sway, timed by update)
+  const stripT = { value: 0 };
+  { const pos: number[] = [], col: number[] = [], uv: number[] = [], ph: number[] = [], idx: number[] = []; const C = ['#d8cfb8', '#b89a5c', '#5f6f86', '#8a9a74', '#cbbf9a'].map((c) => new THREE.Color(c)); let sd = 5, n = 0; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    const tops = pillars.map((p) => { p.updateMatrix(); return new THREE.Vector3(0, 1.55, 0).applyMatrix4(p.matrix); });
+    for (let k = 0; k < tops.length; k++) { const A = tops[k], B = tops[(k + 1) % tops.length];
+      const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, A.distanceTo(B), 4), groove); cord.position.copy(A).lerp(B, 0.5).y -= 0.25; cord.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()); cord.updateMatrix(); G.push(cord.geometry.applyMatrix4(cord.matrix));
+      for (let i = 1; i <= 7; i++) { const u = i / 8, P = A.clone().lerp(B, u); P.y -= 0.25 + Math.sin(u * Math.PI) * 0.35; const len = 0.6 + rnd() * 0.45, w = 0.14 + rnd() * 0.05, c = C[Math.floor(rnd() * C.length)], f = rnd() * 6.28, d = B.clone().sub(A).normalize();
+        for (let j = 0; j <= 4; j++) { const v = j / 4; for (const sx of [-1, 1]) { pos.push(P.x + d.x * sx * w / 2, P.y - v * len, P.z + d.z * sx * w / 2); col.push(c.r * (0.85 + 0.15 * (1 - v)), c.g * (0.85 + 0.15 * (1 - v)), c.b * (0.85 + 0.15 * (1 - v))); uv.push(v); ph.push(f); } if (j) { const o = n + (j - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); } }
+        n += 10; } }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); sg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); sg.setAttribute('aV', new THREE.Float32BufferAttribute(uv, 1)); sg.setAttribute('aPh', new THREE.Float32BufferAttribute(ph, 1)); sg.setIndex(idx); sg.computeVertexNormals();
+    const sm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
+    sm.onBeforeCompile = (sh) => { sh.uniforms.uT = stripT; sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uT; attribute float aPh; attribute float aV;').replace('#include <begin_vertex>', `#include <begin_vertex>
+      { float v = aV; float sw = v * v * (.22 * sin(uT * 2.3 + aPh) + .1 * sin(uT * 5.1 + aPh * 2.)); transformed.x += sw * .8; transformed.z += sw * .55; transformed.y += v * v * .04 * sin(uT * 3. + aPh); }`); };
+    const strips = new THREE.Mesh(sg, sm); strips.castShadow = true; g.add(strips); }
+  { const ni = (a: THREE.BufferGeometry[]) => a.map((q) => { const n = q.index ? q.toNonIndexed() : q; for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal') n.deleteAttribute(k); return n; });
+    g.add(new THREE.Mesh(mergeGeometries(ni(G))!, groove), new THREE.Mesh(mergeGeometries(ni(S))!, stone)); }
   const light = new THREE.PointLight('#ffd27a', 0, 26, 2); light.position.y = 4; g.add(light);
   g.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !(m.material instanceof THREE.ShaderMaterial) && !(m.material instanceof THREE.MeshBasicMaterial)) { m.castShadow = m.receiveShadow = true; } });
   g.position.set(SHRINE.x, y0, SHRINE.z);
@@ -130,7 +166,7 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
     core.position.y = 3.6 + Math.sin(t * 1.3) * 0.12 * (0.3 + fade); core.rotation.y += dt * (0.2 + fade);
     wrong = Math.max(0, wrong - dt);
     coreMat.emissive.set(wrong > 0 ? '#ff7a5a' : '#ffd27a'); coreMat.emissiveIntensity = 0.05 + fade * 2.2 + wrong * 1.5;
-    windMat.uniforms.uTime.value = t; windMat.uniforms.uFade.value = fade; for (const m of ribbons) { m.visible = fade > 0.01; m.rotation.y = -t * 0.6; }
+    stripT.value = t; windMat.uniforms.uTime.value = t; windMat.uniforms.uFade.value = fade; for (const m of ribbons) { m.visible = fade > 0.01; m.rotation.y = -t * 0.6; }
     light.intensity = fade * 40;
     for (const r of runeObjs) {
       r.shake = Math.max(0, r.shake - dt); r.pulse = Math.max(0, r.pulse - dt * 1.5);

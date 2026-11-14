@@ -70,7 +70,12 @@ vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
   vec2 rp=mat2(.8,-.6,.6,.8)*p/11.+.5;
   vec3 cr=mix(texture2D(tRd,UVr).rgb,texture2D(tRd,rp).rgb,smoothstep(.3,.7,vn(p*.07)))*mix(.75,1.15,macro2);
   cr=mix(cr,vec3(dot(cr,vec3(.33)))*vec3(.95,.97,1.02),.35);
-  vec3 cp=texture2D(tPd,UVp).rgb, cb=texture2D(tBd,UVb).rgb*mix(1.,.55,smoothstep(1.,0.,dc-creekHalf(p.y)*.4));
+  vec3 cp=texture2D(tPd,UVp).rgb;
+  { // M30 · the Pale road (bridge → Wing Gate): two worn cart ruts, darker and damp, with a paler crown between
+    float zr=smoothstep(-48.,-56.,p.y)*(1.-smoothstep(-96.,-100.,p.y)); float sl=pathX(p.y+.5)-pathX(p.y-.5); float dx=(p.x-pathX(p.y))/sqrt(1.+sl*sl); float wob=.08*sin(p.y*.9)+.05*vn(p*1.7);
+    float rut=(1.-smoothstep(.1,.26,abs(abs(dx+wob)-.62)))*zr; float crown=(1.-smoothstep(.0,.3,abs(dx+wob)))*zr;
+    cp*=1.-.32*rut; cp=mix(cp,cp*vec3(1.08,1.1,1.02)+.02,crown*.5); }
+  vec3 cb=texture2D(tBd,UVb).rgb*mix(1.,.55,smoothstep(1.,0.,dc-creekHalf(p.y)*.4));
   // Snow caps: above ~44 m on gentler faces, ragged by noise.
   SNOW=smoothstep(44.,56.,alt+10.*(macro2-.5)+6.*(vn(p*.2)-.5))*smoothstep(.45,.75,vWN.y);
   diffuseColor.rgb*= cg*W4.x+cp*W4.y+cr*W4.z+cb*W4.w;

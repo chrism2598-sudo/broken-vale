@@ -791,13 +791,18 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
   ORCHARD.forEach((o, i) => { const y = heightAt(o.x, o.z); for (let k = 0; k < 4; k++) { const a = rnd() * 6.28, r = 0.6 + rnd() * 1.6, fx = o.x + Math.sin(a) * r, fz = o.z + Math.cos(a) * r; b.add(rnd() < 0.75 ? fruitR : fruitY, new THREE.SphereGeometry(0.075, 6, 4), fx, heightAt(fx, fz) + 0.05, fz); }
     if (i % 5 === 1) { const bx = o.x + 1.3, bz = o.z - 0.6, by = heightAt(bx, bz); b.add(wood, cyl(0.26, 0.3, 0.36, 10), bx, by - 0.02, bz); for (let k = 0; k < 5; k++) b.add(rnd() < 0.6 ? fruitR : fruitY, new THREE.SphereGeometry(0.08, 6, 4), bx + (rnd() - 0.5) * 0.3, by + 0.36, bz + (rnd() - 0.5) * 0.3); }
     if (i === 4) { for (const dx of [-0.25, 0.25]) b.add(wood, new THREE.BoxGeometry(0.06, 3.0, 0.06).translate(0, 1.5, 0).rotateX(-0.32), o.x + dx, y - 0.05, o.z + 1.1); for (let k = 0; k < 7; k++) b.add(wood, box(0.5, 0.04, 0.04), o.x, y + 0.3 + k * 0.4, o.z + 1.1 - (0.3 + k * 0.4) * Math.tan(0.32)); } });
+  // ---- M30 · edge stones along the Pale road from the bridge to the Wing Gate (some sunk, some missing), merged with the quarry stone ----
+  for (let z = -63.5; z > -98; z -= 1.25) { const sl = pathX(z + 0.5) - pathX(z - 0.5), L = Math.hypot(sl, 1), nx = 1 / L, nz = -sl / L;
+    for (const sd2 of [-1, 1]) { if (rnd() < 0.3) continue; const off = 1.75 + rnd() * 0.35, x = pathX(z) + nx * off * sd2, zz = z + nz * off * sd2, sz = 0.22 + rnd() * 0.16;
+      b.add(qstone, new THREE.DodecahedronGeometry(sz, 0).scale(1.5, 0.5, 1.1), x, heightAt(x, zz) - sz * 0.15, zz, Math.atan2(sl, 1) + (rnd() - 0.5) * 0.4); } }
   // ---- the bridge: narrow, three piers in the creek, four segmental arches, low parapets, on the road north-west ----
   { let zc = -59.6; for (let i = 0; i < 40; i++) { const f = pathX(zc) - creekX(zc), df = (pathX(zc + 0.01) - creekX(zc + 0.01) - f) / 0.01; zc -= f / df; }
     const xc = pathX(zc), dx = pathX(zc - 0.5) - pathX(zc + 0.5), dz = -1, L0 = Math.hypot(dx, dz), ax = dx / L0, az = dz / L0, th = Math.atan2(-az, ax);
     const span = 3.9, HL = span * 2 + 0.9, W = 2.3, P = (s: number, c: number) => [xc + ax * s - az * c, zc + az * s + ax * c] as const; // c across (left of travel)
     const yA = heightAt(...P(-HL, 0)) + 0.05, yB = heightAt(...P(HL, 0)) + 0.05, crown = Math.max(yA, yB) + 1.15;
     const deckY = (s: number) => { const u = Math.max(-1, Math.min(1, s / HL)); const base = yA + (yB - yA) * (u + 1) / 2; return base + (crown - Math.max(yA, yB)) * (1 - u * u) + (Math.max(yA, yB) - base) * (1 - u * u); };
-    const bed = WATER_Y - 1.1, stone = triplanar(t.sand, 2.2, '#b9b09e', { sat: 0.35, gain: 1.5, rough: 0.9 }), arch = triplanar(t.brick, 1.6, '#c8bfae', { sat: 0.3, gain: 1.5 });
+    const bed = WATER_Y - 1.1, stone = weather(triplanar(t.rock, 2.0, '#bdb3a0', { sat: 0.4, gain: 1.6, rough: 0.92, emissive: '#100e0a' }), 1e4), arch = weather(triplanar(t.brick, 1.6, '#c8bfae', { sat: 0.3, gain: 1.5 }), 1e4); // M30: weathered (moss, lichen, streaks, damp at the waterline)
+    const deck = [triplanar(t.rock, 1.3, '#a99f8b', { sat: 0.35, gain: 1.55, rough: 0.97 }), triplanar(t.rock, 1.3, '#9a917f', { sat: 0.3, gain: 1.5, rough: 0.9 })]; // M30: worn flags, two tones
     const g = new THREE.Group(); g.position.set(xc, 0, zc); g.rotation.y = th; const lb = new Builder();
     // spandrels per span: shape from pier to pier under the deck line, intrados a segmental arch; extruded across the deck
     for (let k = 0; k < 4; k++) { const s0 = -2 * span + k * span, s1 = s0 + span, spring = Math.min(deckY(s0), deckY(s1)) - 1.15, rise = 0.95, sh = new THREE.Shape();
@@ -812,7 +817,7 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
     for (const s of [-2 * span - 0.45, 2 * span + 0.45]) lb.add(stone, box(1.2, deckY(s) - bed, W + 0.6).translate(s, bed, 0) as THREE.BufferGeometry);
     // deck: flags following the hump; low parapets with a coping; walk boxes and side solids
     const n = 34; for (let i = 0; i < n; i++) { const sa = -HL + i * 2 * HL / n, sb = sa + 2 * HL / n, sm = (sa + sb) / 2, y = deckY(sm), a = Math.atan2(deckY(sb) - deckY(sa), sb - sa);
-      const dg = new THREE.BoxGeometry(sb - sa + 0.03, 0.14, W); dg.rotateZ(a); dg.translate(sm, y - 0.07, 0); lb.add(arch, dg);
+      const dg = new THREE.BoxGeometry(sb - sa + 0.03, 0.14, W); dg.rotateZ(a + (i % 3 - 1) * 0.006); dg.translate(sm, y - 0.07 - (i % 4 === 1 ? 0.012 : 0), 0); lb.add(deck[(i * 7) % 3 === 0 ? 1 : 0], dg);
       for (const c of [-1, 1]) { const pg = new THREE.BoxGeometry(sb - sa + 0.03, 0.62, 0.32); pg.rotateZ(a); pg.translate(sm, y + 0.31, c * (W / 2 - 0.16)); lb.add(stone, pg); const cg = new THREE.BoxGeometry(sb - sa + 0.04, 0.1, 0.42); cg.rotateZ(a); cg.translate(sm, y + 0.67, c * (W / 2 - 0.16)); lb.add(arch, cg);
         if (i % 2 === 0) { const [wx, wz] = P(sm, c * (W / 2 + 0.25)); solids.push({ x: wx, z: wz, r: 0.55 }); } }
       const [wx, wz] = P(sm, 0); WALK.push({ x: wx, z: wz, y, hw: (sb - sa) / 2 + 0.02, hd: W / 2 - 0.3, ry: th, cam: true }); }

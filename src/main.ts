@@ -37,7 +37,7 @@ import { DAY_LEN, MORNING, skyAt, clockText, makeNightSky } from './daynight';
 import { makeRoam, FIRES } from './roam';
 import { GameAudio, type Region, type Surface } from './audio';
 import { ENNA_LINES, ENNA_NAME, LAMP_XP, LAMP_TOAST, FINAL_TITLE, FINAL_KICKER, FINAL_LINES, FINAL_REWARD, finalStats, CREDITS, sefaLines, dovLines, ressLines, nextUncharted } from './finale';
-import { trackMask, openingBusy, STREAM, POOL, ORCHARD, HAZEL, RSTAIR } from './world';
+import { pathX, trackMask, openingBusy, STREAM, POOL, ORCHARD, HAZEL, RSTAIR } from './world';
 import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, trailMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep, OUTPOSTS, outpostPad, onTrail, trailAt } from './world';
 import { makeOutposts, STANDS, standY, standPush, inStand, O as OP, type Loc } from './outposts';
 import { makeBarrow, BAR_O, type Barrow } from './barrow';
@@ -1717,7 +1717,7 @@ ${GRADE_GLSL}
     nightSky.mesh.position.copy(camera.position); nightSky.set(nightK, moonV, t); lantern.position.set(state.px - Math.sin(state.yaw) * 0.6, gy + 2.3, state.pz - Math.cos(state.yaw) * 0.6);
     const aloft = onIsland || !!lift; grassField.mesh.visible = !aloft; grassFar.mesh.visible = HIGH && !aloft;
     if (onIsland) { const L = toLocal(state.px, state.pz); island.treesNear(L.x, L.z); } else island.treesNear(1e4, 1e4);
-    updraft.update(t, lastDt); hollow.update(t, lastDt); grove.update(t, lastDt); grove.near(inCave || inCoast || inSea || inKeep || inCastle || inBarrow || aqLevel >= 2 ? 1e9 : Math.hypot(camera.position.x - ECHO.x, camera.position.z - ECHO.z)); updraft.setActive(save.done);
+    updraft.update(t, lastDt); reedTick(t); hollow.update(t, lastDt); grove.update(t, lastDt); grove.near(inCave || inCoast || inSea || inKeep || inCastle || inBarrow || aqLevel >= 2 ? 1e9 : Math.hypot(camera.position.x - ECHO.x, camera.position.z - ECHO.z)); updraft.setActive(save.done);
     stair.update(t, lastDt); if (inCave && cave) cave.update(t, lastDt); if (inCoast && coast) coast.update(t, lastDt, camera, camTarget);
     if (inKeep && keep && !(inFrame && !legacyMotion)) keep.update(t, lastDt, player.root.position); // M20b: in live frames the Keeper animates per presented frame (below)
     if (inCastle && castle) castle.update(lastDt, t); if (inBarrow && barrow) barrow.update(t, lastDt, state.px, state.pz); outposts.update(t, lastDt);
@@ -2278,7 +2278,20 @@ function makeCreek(normals: THREE.Texture) {
   const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#21424a', roughness: 0.06, metalness: 0.0, normalMap: normals, normalScale: new THREE.Vector2(0.35, 0.35), transparent: true, opacity: 0.88, envMapIntensity: 1.3 }));
   m.rotation.x = -Math.PI / 2; m.position.y = WATER_Y;
   const wmat = m.material as THREE.MeshStandardMaterial, c0 = new THREE.Color('#21424a'), c1 = new THREE.Color('#5a3a3c');
-  return { mesh: m as THREE.Object3D, update: (t: number) => { normals.offset.set(t * 0.01, -t * 0.05); }, setDawn: (k: number) => { wmat.color.copy(c0).lerp(c1, k); wmat.emissive.setRGB(0.16 * k, 0.07 * k, 0.04 * k); } };
+  // M30 · shallow edges and flow (Lite): toward the banks the water thins and shows a silty green-brown bed; soft flow streaks drift downstream
+  const wT = { value: 0 };
+  wmat.onBeforeCompile = (sh) => { sh.uniforms.uWT = wT;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWU;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWU = uv;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec2 vWU; uniform float uWT;
+float wH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float wN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(wH(i), wH(i + vec2(1, 0)), f.x), mix(wH(i + vec2(0, 1)), wH(i + vec2(1, 1)), f.x), f.y); }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  float wE = min(vWU.x, 1. - vWU.x) * 2.; float shal = 1. - smoothstep(.22, .62, wE + (wN(vWU * vec2(3., 6.)) - .5) * .15);
+  float fl = smoothstep(.62, .9, wN(vec2(vWU.x * 7., vWU.y * 2.2 + uWT * .35))) * (1. - shal * .6);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.27, .31, .22), shal * .75) + fl * .07;
+  diffuseColor.a *= mix(1., .5, shal);`); };
+  return { mesh: m as THREE.Object3D, update: (t: number) => { normals.offset.set(t * 0.01, -t * 0.05); wT.value = t; }, setDawn: (k: number) => { wmat.color.copy(c0).lerp(c1, k); wmat.emissive.setRGB(0.16 * k, 0.07 * k, 0.04 * k); } };
 }
 
 function prep(g: GLTF, cast = true): THREE.Object3D {
@@ -2304,6 +2317,7 @@ function standOn(o: THREE.Object3D, k: number) {
   const bb = new THREE.Box3().setFromObject(o), c = bb.getCenter(new THREE.Vector3()), h = Math.min(bb.max.x - bb.min.x, bb.max.z - bb.min.z) * 0.5 * k;
   if (h > 0.25 && bb.max.y - heightAt(c.x, c.z) > 0.12) STANDS.push({ x: c.x, z: c.z, top: bb.max.y - 0.04, r: h, tag: 'rock' });
 }
+let reedTick: (t: number) => void = () => {}; // M30 · reed sway clock (set by scatter)
 function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, shrubG: GLTF, fernG: GLTF) {
   const r = rng(42);
   const boulder = prep(boulderG), shrub = prep(shrubG, false), fern = prep(fernG, false);
@@ -2345,6 +2359,19 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
   const field = new TreeField(renderer, trees, treeList, SUN_DIR, { nearR: HIGH ? 52 : 38, triBudget: HIGH ? 300000 : 120000, shadowR: 0 });
   scene.add(field.group); field.update(SPAWN.x, SPAWN.z, true);
 
+  // ---- M30 · creek banks by the hub and the bridge: reed clumps (swaying) and wet stones at the waterline, merged (2 draws). ----
+  { let sd = 3030; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647); const reeds: THREE.BufferGeometry[] = [], wet: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 70; i++) { const z = -92 + rr() * 112, side = rr() < 0.5 ? -1 : 1, x = creekX(z) + side * (creekHalf(z) - 0.1 + rr() * 0.9); if (Math.abs(z + 59.2) < 4.5 || Math.abs(x - pathX(z)) < 3) continue;
+      const y = Math.max(heightAt(x, z), WATER_Y - 0.3), n = 7 + Math.floor(rr() * 6);
+      for (let k = 0; k < n; k++) { const h = 0.9 + rr() * 0.8, w = 0.035 + rr() * 0.02, a = rr() * 6.28, ox = (rr() - 0.5) * 0.5, oz = (rr() - 0.5) * 0.5, lean = 0.08 + rr() * 0.2, g = new THREE.PlaneGeometry(w, h, 1, 3);
+        const p = g.attributes.position; for (let j = 0; j < p.count; j++) { const v = (p.getY(j) + h / 2) / h; p.setX(j, p.getX(j) * (1 - v * 0.8)); p.setY(j, v * h); p.setZ(j, v * v * lean * h); }
+        g.rotateY(a); g.translate(x + ox, y - 0.05, z + oz); g.deleteAttribute('uv'); reeds.push(g); }
+      if (rr() < 0.7) for (let k = 0; k < 2; k++) { const sx = x + (rr() - 0.5) * 1.6, sz = z + (rr() - 0.5) * 1.6, sg = new THREE.DodecahedronGeometry(0.16 + rr() * 0.22, 0).scale(1.3, 0.55, 1); sg.rotateY(rr() * 6); sg.translate(sx, Math.max(heightAt(sx, sz), WATER_Y - 0.08), sz); sg.deleteAttribute('uv'); wet.push(sg); } }
+    const reedMat = new THREE.MeshStandardMaterial({ color: '#7d8a4a', roughness: 0.85, side: THREE.DoubleSide }); const rT = { value: 0 };
+    reedMat.onBeforeCompile = (sh) => { sh.uniforms.uRT = rT; sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uRT;').replace('#include <begin_vertex>', '#include <begin_vertex>\n{ vec4 wp = modelMatrix * vec4(position, 1.); float k = max(0., position.y - ' + (WATER_Y - 0.4).toFixed(2) + '); k = min(k, 2.) * .06; transformed.x += k * sin(uRT * 1.7 + wp.z * .7); transformed.z += k * .6 * sin(uRT * 1.3 + wp.x * .8); }'); };
+    const rm = new THREE.Mesh(mergeGeometries(reeds)!, reedMat); rm.receiveShadow = true; scene.add(rm);
+    const wm2 = new THREE.Mesh(mergeGeometries(wet)!, new THREE.MeshStandardMaterial({ color: '#6e685b', roughness: 0.3 })); wm2.receiveShadow = true; scene.add(wm2);
+    reedTick = (t: number) => { rT.value = t; }; }
   // ---- Meadow flora: clover carpets and wildflower patches near the path (instanced). ----
   const flora: number[][][] = plants.map(() => []);
   for (let i = 0; i < (HIGH ? 1400 : 600); i++) {
@@ -2358,6 +2385,11 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
       flora[k].push([x, heightAt(x, z) - 0.02, z, s, r() * 6.28]);
     }
   }
+  { // M30 · around the hub: denser, varied wildflower and clover drifts (own seed, so the rest of the scatter is unchanged)
+    let sd = 1407; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < (HIGH ? 160 : 90); i++) { const a = rr() * 6.28, d = 7 + rr() * 26, px = WAYFINDER.x + Math.cos(a) * d, pz = WAYFINDER.z + Math.sin(a) * d, k = rr() < 0.35 ? 2 + Math.floor(rr() * 3) : rr() < 0.6 ? Math.floor(rr() * 2) : 5;
+      for (let j = 0; j < 4; j++) { const x = px + (rr() - 0.5) * 3, z = pz + (rr() - 0.5) * 3; if (pathMask(x, z) > 0.15 || openingBusy(x, z) || Math.abs(x - creekX(z)) < creekHalf(z) + 0.8 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 18 || Math.hypot(x - SPAWN.x, z - SPAWN.z) < 3) continue;
+        flora[k].push([x, heightAt(x, z) - 0.02, z, (k <= 1 ? 0.15 : k === 5 ? 0.3 : 0.13) * (0.8 + rr() * 0.6), rr() * 6.28]); } } }
   // Flora triangle budget: keep the nearest patches (to spawn) within ~250k High / 60k Lite triangles.
   let floraTris = 0; const floraBudget = HIGH ? 250000 : 60000;
   const floraAll = flora.flatMap((l, k) => l.map((t) => ({ k, t, d: Math.hypot(t[0] - SPAWN.x, t[2] - SPAWN.z) }))).sort((a, b) => a.d - b.d);

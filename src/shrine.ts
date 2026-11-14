@@ -56,7 +56,17 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
   const g = new THREE.Group(); const y0 = heightAt(SHRINE.x, SHRINE.z) - 0.2;
   const base = new THREE.Mesh(new THREE.CylinderGeometry(6, 6.6, 0.8, 40), stone); base.position.y = 0.4; g.add(base);
   const step = new THREE.Mesh(new THREE.CylinderGeometry(7.2, 7.6, 0.35, 40), stone); step.position.y = 0.1; g.add(step);
-  for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2; const p = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.75, 6.2, 16), stone); p.position.set(Math.cos(a) * 3.2, 3.8, Math.sin(a) * 3.2); p.rotation.z = Math.cos(a) * 0.12; p.rotation.x = -Math.sin(a) * 0.12; g.add(p); }
+  // M30 · the pillars carry the wind spiral as a shallow groove CUT into the stone (same stone, darker only in the recess, a lit
+  // lower lip and a shaded upper lip so it reads as relief), computed per pixel in pillar space — no raised tubes.
+  const pillarStone = triplanar(rock, 1.5, '#e4d4b4', { sat: 0.55, gain: 1.55, rough: 0.95, emissive: '#15120d' });
+  { const prev = stone.onBeforeCompile; pillarStone.onBeforeCompile = (sh, r) => { prev.call(pillarStone, sh, r);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vOP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvOP = position;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vOP;').replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  { float u = (vOP.y + 2.4) / 4.8; float ph = atan(vOP.z, vOP.x) / 6.2832 - u * 3.; float f = fract(ph + .5) - .5; float d = abs(f);
+    float inU = step(0., u) * step(u, 1.); float rec = (1. - smoothstep(.02, .034, d)) * inU;
+    float lip = smoothstep(.03, .038, d) * (1. - smoothstep(.038, .052, d)) * inU, lipLo = lip * step(0., f), lipHi = lip * step(f, 0.);
+    diffuseColor.rgb *= (1. - .5 * rec) * (1. + .22 * lipLo) * (1. - .18 * lipHi); roughnessFactor = min(1., roughnessFactor + .05 * rec); }`); }; }
+  for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2; const p = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.75, 6.2, 32, 8), pillarStone); p.position.set(Math.cos(a) * 3.2, 3.8, Math.sin(a) * 3.2); p.rotation.z = Math.cos(a) * 0.12; p.rotation.x = -Math.sin(a) * 0.12; g.add(p); }
   const drumPts = [[2.6, 0], [3.0, 0.4], [3.0, 0.8], [2.5, 1.1], [2.35, 3.0], [2.9, 3.3], [2.9, 3.8], [2.4, 4.0]].map(([x, y]) => new THREE.Vector2(x, y));
   const drum = new THREE.Mesh(new THREE.LatheGeometry(drumPts, 40), stone); drum.position.y = 6.6; g.add(drum);
   const dome = new THREE.Mesh(new THREE.SphereGeometry(2.4, 40, 16, 0, Math.PI * 2, 0, Math.PI / 2), gold); dome.position.y = 10.6; g.add(dome);
@@ -90,9 +100,8 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
   // M29 · carved wind motifs: a shallow spiral groove winding up each pillar, and wind-scrolls cut round the drum
   const groove = new THREE.MeshStandardMaterial({ color: '#5b5142', roughness: 1 }); const G: THREE.BufferGeometry[] = [], S: THREE.BufferGeometry[] = []; // merged below: flat draw calls
   const pillars = g.children.filter((o) => (o as THREE.Mesh).geometry instanceof THREE.CylinderGeometry && Math.abs(o.position.y - 3.8) < 0.01) as THREE.Mesh[];
-  for (const p of pillars) { const pts: THREE.Vector3[] = []; for (let i = 0; i <= 60; i++) { const u = i / 60, a = u * Math.PI * 6, y = -2.4 + u * 4.8, r = 0.5 + (0.75 - 0.5) * (1 - (y + 3.1) / 6.2) - 0.015; pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r)); }
-    p.updateMatrix(); G.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, 0.035, 4).applyMatrix4(p.matrix)); }
-  for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2, sc = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 4, 14, Math.PI * 1.5), groove); sc.position.set(Math.cos(a) * 2.37, 6.6 + 2.0, Math.sin(a) * 2.37); sc.rotation.y = -a + Math.PI / 2; sc.rotation.z = k % 2 ? 0.6 : -0.6; sc.updateMatrix(); G.push(sc.geometry.applyMatrix4(sc.matrix)); }
+  // (M30: the spiral is carved in pillarStone's shader now; the old raised tube is gone)
+  for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2, sc = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 4, 14, Math.PI * 1.5), groove); sc.position.set(Math.cos(a) * 2.37, 6.6 + 2.0, Math.sin(a) * 2.37); sc.rotation.y = -a + Math.PI / 2; sc.rotation.z = k % 2 ? 0.6 : -0.6; sc.updateMatrix(); S.push(sc.geometry.applyMatrix4(sc.matrix)); } // M30: scrolls in relief, same stone (were dark)
   // worn steps: a few cracked, sunk slabs leading in from the hub side, chipped blocks at the step ring
   { let sd = 31; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647); const toHub = Math.atan2(-SHRINE.z, -SHRINE.x);
     for (let k = 0; k < 4; k++) { const r = 8.1 + k * 1.05, a = toHub + (rnd() - 0.5) * 0.05, wx = SHRINE.x + Math.cos(a) * r, wz = SHRINE.z + Math.sin(a) * r;

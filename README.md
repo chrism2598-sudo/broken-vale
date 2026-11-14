@@ -270,3 +270,10 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 ### M29 · Echo Grove crystal trees, Wind Shrine weathering
 - Echo Grove still has exactly five trees (echo.ts makeEchoGrove: i < 5, in a ring of radius 10, so the solids, light(i) and the memory quest are unchanged). Each is now a real crystal tree: a faceted pale trunk on crystal roots that dive into the ground, forking boughs and twigs that end in shard tufts, and a soft inner core glow up the trunk and boughs (Fresnel facet glow, transmission on High). Two half-buried stones, pale moss patches and fallen shards sit at the base.
 - Wind Shrine: weathered world-space stone (lichen, moss in the joints and at the foot, rain streaks), spiral wind grooves carved up each pillar, and wind-scrolls round the drum. Faded prayer strips hang on cords between the pillars and sway with a vertex shader driven by the shrine's update. Worn, sunk slabs lead in from the hub side, with chipped blocks at the step ring.
+
+### M30 · Carved shrine spirals, the hub river and bridge, the Pale road
+- Wind Shrine: the pillar wind-spirals are now a shallow groove carved into the stone (pillarStone shader in pillar space). The stone keeps its colour, darker only in the recess, with a lit lower lip and a shaded upper lip. The raised dark tubes are gone. The drum scrolls are now relief in the same stone.
+- River (Lite water): toward the banks the water thins and shows a silty green-brown bed, and soft flow streaks drift along it. Reed clumps sway on the banks between the hub and the bridge, with wet stones at the waterline (two merged meshes).
+- Bridge: weathered rock and voussoirs (moss, lichen, streaks, damp at the waterline) and worn deck flags in two tones with a slight uneven set. Cutwaters as before.
+- Hub: denser, varied wildflower and clover drifts around the Wayfinder (own seed, inside the existing flora triangle budget).
+- Pale road (bridge → Wing Gate): two worn cart ruts and a paler crown in the terrain shader, plus edge stones along both verges (some sunk, some missing).

@@ -384,6 +384,70 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   for (const [x, y, z, nx, nz, hi, lo] of T) torchAt(x, y, z, nx, nz, high ? hi : lo);
   const hearthL = new THREE.PointLight('#ff7a32', az ? 0 : 0, 8, 1.8); hearthL.position.set(-7.6, 1.0, -3); g.add(hearthL);
 
+  // ---- M34 · interior realism: worn flagstones, more rugs, woven tapestries and gallery banners (no lore text), warm glow pools under
+  //      torches and candles, dust motes in the window light, hall bookshelves and table clutter, ceiling joists, corbels and a ridge beam ----
+  let motesM: THREE.ShaderMaterial | null = null;
+  { let sd = 7; const R = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    // flagstones: per-stone tone, polished lanes along the walked lines and at doorways, grime toward the room edges (per pixel)
+    { const prev = floorM.onBeforeCompile; floorM.onBeforeCompile = (sh, r) => { prev.call(floorM, sh, r); sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { vec2 q = vTW.xz - vec2(${O.x.toFixed(2)}, ${O.z.toFixed(2)}); vec2 cell = floor(q / vec2(.9, .7) + vec2(floor(q.y / .7) * .5, 0.));
+        float tone = tH(cell) - .5, wear = 0.;
+        wear = max(wear, (1. - smoothstep(.9, 2.1, abs(q.x))) * step(-8.5, q.y) * step(q.y, 10.));                    // entry → table lane
+        for (int i = 0; i < 6; i++) { vec2 d = i == 0 ? vec2(0., 4.) : i == 1 ? vec2(4., 7.) : i == 2 ? vec2(-4., 7.) : i == 3 ? vec2(-9., -8.6) : i == 4 ? vec2(9., -8.6) : vec2(-13., -10.); wear = max(wear, 1. - smoothstep(.6, 2.2, length(q - d))); }
+        wear *= .65 + .35 * tVn(q * 1.7);
+        diffuseColor.rgb *= (1. + tone * .16) * (1. + .14 * wear); roughnessFactor = mix(roughnessFactor, .42, wear * .7);
+        diffuseColor.rgb *= 1. - .1 * smoothstep(.55, .8, tVn(q * .6)) * (1. - wear); } `); }; floorM.customProgramCacheKey = () => 'floorM34' + id; }
+    // rugs: before the hearth, under the library lectern, a chapel aisle runner
+    for (const [w, d, x, z, ry] of [[1.7, 2.6, -6.5, -3, 0], [1.8, 2.6, 7.6, 6.6, Math.PI / 2], [1.1, 4.6, -7.0, 7, Math.PI / 2]] as const) { const r = new THREE.PlaneGeometry(w, d); r.rotateX(-Math.PI / 2); put(rugM, r, x, 0.025, z, ry); }
+    // tapestries: a woven millefleur field with a tree-of-life panel, borders and fringe (abstract, no words)
+    const tapM = mat('#ffffff', 0.95, 0, { map: canvasTex(128, 192, (x) => { const pal = az ? ['#1d3354', '#2b4a74', '#c9b26a', '#8fb0d0', '#0f1a2c'] : ['#3a2418', '#5a2a1e', '#c9a24a', '#6f8a4a', '#1e120c'];
+      x.fillStyle = pal[0]; x.fillRect(0, 0, 128, 192); for (let i = 0; i < 260; i++) { x.fillStyle = pal[1 + (i % 3)]; x.globalAlpha = 0.5 + R() * 0.4; x.fillRect(10 + R() * 108, 12 + R() * 166, 2 + R() * 2, 2 + R() * 2); } x.globalAlpha = 1;
+      x.strokeStyle = pal[3]; x.lineWidth = 4; x.beginPath(); x.moveTo(64, 170); x.lineTo(64, 50); x.stroke(); x.lineWidth = 2.5;
+      for (let k = 0; k < 6; k++) { const y = 150 - k * 18, s = 34 - k * 4; x.beginPath(); x.moveTo(64, y); x.quadraticCurveTo(64 - s * 0.6, y - 14, 64 - s, y - 4); x.moveTo(64, y); x.quadraticCurveTo(64 + s * 0.6, y - 14, 64 + s, y - 4); x.stroke(); x.fillStyle = pal[2]; x.beginPath(); x.arc(64 - s, y - 5, 3, 0, 7); x.arc(64 + s, y - 5, 3, 0, 7); x.fill(); }
+      x.fillStyle = pal[2]; x.beginPath(); x.arc(64, 44, 9, 0, 7); x.fill(); x.strokeStyle = pal[4]; x.lineWidth = 10; x.strokeRect(5, 5, 118, 182); x.strokeStyle = pal[2]; x.lineWidth = 2; x.strokeRect(11, 11, 106, 170);
+      for (let i = 0; i < 128; i += 4) { x.fillStyle = pal[2]; x.fillRect(i, 186, 2, 6); }
+      const id2 = x.getImageData(0, 0, 128, 192), dd = id2.data; for (let i = 0; i < dd.length; i += 4) { const py = (i / 4 / 128) | 0; const wv = (py % 2 ? 0.93 : 1) * (0.94 + R() * 0.08); for (let k = 0; k < 3; k++) dd[i + k] *= wv; } x.putImageData(id2, 0, 0); }) });
+    const tap = (w: number, h: number, x: number, y: number, z: number, ry: number) => { const p = new THREE.PlaneGeometry(w, h, 6, 1); const pa = p.attributes.position; for (let i = 0; i < pa.count; i++) pa.setZ(i, 0.04 * Math.sin(pa.getX(i) / w * Math.PI * 5)); put(tapM, p, x, y, z, ry); box(darkWoodM, w + 0.3, 0.07, 0.07, x + Math.sin(ry) * 0.05, y + h / 2, z + Math.cos(ry) * 0.05, ry); };
+    tap(2.0, 2.5, -8.9, 2.75, -6.0, Math.PI / 2); tap(1.9, 2.4, 8.9, 2.75, 2.65, -Math.PI / 2); tap(1.9, 2.3, -6.7, 2.6, 9.9, Math.PI); if (!az) tap(2.0, 2.4, -8.9, UP + 2.2, -15.6, Math.PI / 2);
+    // banners hanging from the gallery rail: swallow-tailed, alternating colours, on iron rods
+    const sw = (() => { const s = new THREE.Shape(); s.moveTo(-0.45, 0); s.lineTo(0.45, 0); s.lineTo(0.45, -2.0); s.lineTo(0, -1.6); s.lineTo(-0.45, -2.0); s.lineTo(-0.45, 0); return s; })();
+    [-6, -0.9, 4.2].forEach((bx, i) => { put(i % 2 ? cloth2M : clothM, new THREE.ShapeGeometry(sw), bx, UP - 0.32, -6.47); box(ironM, 1.1, 0.04, 0.04, bx, UP - 0.32, -6.47); const c2 = new THREE.PlaneGeometry(0.5, 0.5); put(i % 2 ? clothM : cloth2M, c2, bx, UP - 0.95, -6.46, 0); });
+    // hall bookshelves under the gallery (north wall)
+    for (let k = 0; k < 5; k++) { const lx = -3.6 + k * 1.55; box(darkWoodM, 1.5, 2.6, 0.22, lx, 0, -9.88); put(bookM, new THREE.PlaneGeometry(1.36, 2.3), lx, 1.3, -9.765); } // shallow wall shelves: the under-gallery lane stays clear
+    const pewM = mat('#a39d92', 0.42, 0.75);
+    // table clutter: pewter plates, goblets, jugs, bread, a pair of candlesticks with live flames
+    for (let k = 0; k < 6; k++) for (const s of [-1, 1]) { const z = -6.4 + k * 1.3 + R() * 0.2; put(pewM, new THREE.CylinderGeometry(0.15, 0.11, 0.025, 14), s * 0.6, 0.952, z); if (R() < 0.7) put(cloth2M, new THREE.LatheGeometry([[0, 0], [0.05, 0], [0.05, 0.012], [0.013, 0.025], [0.011, 0.09], [0.045, 0.11], [0.052, 0.18]].map(([r, y]) => new THREE.Vector2(r, y)), 10), s * 0.82, 0.94, z + 0.25); }
+    for (const z of [-5.0, -1.4]) { put(darkWoodM, new THREE.LatheGeometry([[0, 0], [0.1, 0.01], [0.13, 0.12], [0.09, 0.24], [0.06, 0.3], [0.07, 0.33]].map(([r, y]) => new THREE.Vector2(r, y)), 10), 0.15, 0.94, z); }
+    for (const z of [-3.6, -0.3]) put(woodM, new THREE.SphereGeometry(0.14, 8, 6).scale(1.4, 0.6, 1), -0.1, 0.99, z);
+    const waxM2 = mat('#efe4c8', 0.6, 0, { emissive: '#ffcc88', emissiveIntensity: 0.25 });
+    for (const z of [-6.0, 0.0]) { cyl(ironM, 0.08, 0.03, 0, 0.94, z, 8); cyl(ironM, 0.025, 0.3, 0, 0.94, z, 6); cyl(waxM2, 0.03, 0.18, 0, 1.24, z, 6); const f = makeFlame(flameTex(), 0.26); f.position.set(0, 1.44, z); g.add(f); candles.push({ f, ph: z * 3.1 }); }
+    // library: a reading table with books and a candle, floor stacks, scroll rack
+    box(woodM, 1.4, 0.07, 0.8, 5.4, 0.78, 8.3); for (const [dx, dz] of [[-0.6, -0.32], [0.6, -0.32], [-0.6, 0.32], [0.6, 0.32]]) box(darkWoodM, 0.07, 0.78, 0.07, 5.4 + dx, 0, 8.3 + dz); block(4.6, 6.2, 7.8, 8.8, 0);
+    for (let k = 0; k < 4; k++) box(k % 2 ? clothM : cloth2M, 0.34, 0.06, 0.26, 5.1 + (k % 2) * 0.05, 0.85 + k * 0.06, 8.2, R() * 0.5);
+    cyl(waxM2, 0.03, 0.16, 5.9, 0.85, 8.4, 6); { const f = makeFlame(flameTex(), 0.24); f.position.set(5.9, 1.03, 8.4); g.add(f); candles.push({ f, ph: 4.2 }); }
+    for (const [x, z, n] of [[9.9, 8.6, 5], [8.8, 8.9, 3]] as const) for (let k = 0; k < n; k++) box(k % 3 === 0 ? clothM : k % 3 === 1 ? cloth2M : darkWoodM, 0.36, 0.08, 0.28, x, k * 0.08, z, R() * 0.6);
+    // chapel: altar candles and two tall stands
+    for (const z of [6.4, 7.6]) { cyl(waxM2, 0.035, 0.24, -10.2, 1.02, z, 6); const f = makeFlame(flameTex(), 0.26); f.position.set(-10.2, 1.27, z); g.add(f); candles.push({ f, ph: z }); }
+    // ceilings: joists between the beams, stone corbels under each beam end; the hall gets a ridge beam and purlins
+    for (const r of rooms) { if (r.id === 'shaft') continue; const top = r.y0 + r.h, d = r.z1 - r.z0, cz = (r.z0 + r.z1) / 2;
+      for (let u = r.x0 + 0.35; u < r.x1 - 0.2; u += 0.75) box(beamM, 0.1, 0.12, d, u, top - 0.13, cz);
+      if (r.h < 9) for (let k = 1; k * 2.4 < d; k++) for (const s of [r.x0 + 0.13, r.x1 - 0.13]) box(stoneM, 0.26, 0.3, 0.34, s, top - 0.62, r.z0 + k * 2.4); }
+    box(darkWoodM, 0.34, 0.4, 14, 0, 9.5 - 0.42, -3); for (const s of [-1, 1]) box(darkWoodM, 0.26, 0.3, 14, s * 4.3, 9.5 - 0.34, -3);
+    // warm glow pools: floor and wall light under every torch, under the candle-crowns and the cook-fire
+    const glowM = new THREE.MeshBasicMaterial({ map: canvasTex(64, 64, (x) => { const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); }), color: az ? '#c9a878' : '#ffae5e', transparent: true, opacity: high ? 0.32 : 0.4, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    const fpool = (x: number, y: number, z: number, r: number) => { const p = new THREE.PlaneGeometry(r * 2, r * 2); p.rotateX(-Math.PI / 2); put(glowM, p, x, y + 0.035, z); };
+    for (const [x, y, z, nx, nz] of T) { const fy = y < 0 ? CELLAR_Y : y >= UP + 4 ? -99 : y >= UP ? UP : 0; if (fy < -50) continue;
+      fpool(x + nx * 0.9, fy, z + nz * 0.9, 1.9); const p = new THREE.PlaneGeometry(2.4, 2.8); put(glowM, p, x - nx * 0.12, y + 0.2, z - nz * 0.12, Math.atan2(nx, nz)); }
+    for (const cz of [-4.9, -0.6]) { fpool(0, 0, cz, 3.0); fpool(0, 0.92, cz, 0.95); } fpool(-13.6, 0, -7, 2.6);
+    // dust motes drifting in the three window shafts (one Points draw, animated in the shader)
+    { const P: number[] = [], S: number[] = []; for (const [wx, wz, dir] of [[8.98, -4, -1], [8.98, 0.5, -1], [-8.98, -7.5, 1]] as const) for (let i = 0; i < (high ? 160 : 110); i++) { const t = R(); P.push(wx + dir * (0.3 + t * 6.0) + (R() - 0.5) * 0.6, 7.0 - t * 6.4 + (R() - 0.5) * 0.5, wz + (R() - 0.5) * 1.0); S.push(R() * 100); }
+      const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); mg.setAttribute('seed', new THREE.Float32BufferAttribute(S, 1));
+      motesM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uT: { value: 0 }, uC: { value: new THREE.Color(az ? '#cfe0ff' : '#ffe2b0') } },
+        vertexShader: 'attribute float seed; uniform float uT; varying float vA; void main(){ vec3 p = position + vec3(sin(uT*.21+seed)*.18, sin(uT*.13+seed*1.7)*.22, cos(uT*.17+seed*2.3)*.18); vec4 mv = modelViewMatrix*vec4(p,1.); gl_Position = projectionMatrix*mv; gl_PointSize = clamp(26./-mv.z, 1., 6.); vA = (.55+.45*sin(uT*.9+seed*5.))*smoothstep(.6, 2.5, -mv.z); }',
+        fragmentShader: 'uniform vec3 uC; varying float vA; void main(){ float d = length(gl_PointCoord-.5); if (d > .5) discard; gl_FragColor = vec4(uC*(1.-d*2.)*vA*.55, 1.); }' });
+      const pts = new THREE.Points(mg, motesM); pts.frustumCulled = false; g.add(pts); }
+  }
+
   // ---- enemies ----
   mobs.push({ id: id + '-hall', x: -3.4, z: -7.8, y: 0, face: 0 });
   mobs.push(az ? { id: id + '-gallery', x: -3, z: -8.2, y: UP, face: Math.PI / 2 } : { id: id + '-chapel', x: -7.2, z: 7, y: 0, face: Math.PI / 2 });
@@ -464,7 +528,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
       for (const k of flames) { const f = 0.82 + 0.18 * Math.sin(time * 15 + k.ph) * Math.sin(time * 6.1 + k.ph * 2); k.f.scale.set(0.36 * f, 0.68 * (0.92 + 0.16 * f), 1); if (k.l) k.l.intensity = 11 * f; }
       if (secretSlab.mesh) { secretSlab.open += (secretSlab.want - secretSlab.open) * Math.min(1, dt * 1.6); const m = secretSlab.mesh; m.visible = secretSlab.open < 0.98; if (id === 'pale') { m.visible = true; m.position.z = doors.find((d) => d.secret)!.z + secretSlab.open * 1.75; if (plate) plate.position.y = 0.035 - secretSlab.open * 0.03; } else m.scale.y = 1 - secretSlab.open * 0.92, m.position.y = UP + 2.4 * (1 - (1 - secretSlab.open * 0.92) / 2); }
       for (const c of chests) { c.open += (c.want - c.open) * Math.min(1, dt * 4); c.hinge.rotation.x = -c.open * 1.9; c.glow.visible = c.open > 0.05 && c.open < 0.97; c.glow.material.opacity = 1 - c.open; }
-      shafts.children.forEach((s, i) => { ((s as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = (high ? 0.32 : 0.26) * (0.85 + 0.15 * Math.sin(time * 0.4 + i)); });
+      if (motesM) motesM.uniforms.uT.value = time; shafts.children.forEach((s, i) => { ((s as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = (high ? 0.32 : 0.26) * (0.85 + 0.15 * Math.sin(time * 0.4 + i)); });
     },
   };
 }

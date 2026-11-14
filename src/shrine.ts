@@ -54,8 +54,8 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.33, .4, .2), clamp(moss, 0., .8)); }`); }; }
   const gold = new THREE.MeshStandardMaterial({ color: '#c99a45', metalness: 0.85, roughness: 0.32 }); addRimFill(gold, { fill: 0.15, rim: 0.35, rimColor: '#ffe3a0' });
   const g = new THREE.Group(); const y0 = heightAt(SHRINE.x, SHRINE.z) - 0.2;
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(6, 6.6, 0.8, 40), stone); base.position.y = 0.4; g.add(base);
-  const step = new THREE.Mesh(new THREE.CylinderGeometry(7.2, 7.6, 0.35, 40), stone); step.position.y = 0.1; g.add(step);
+  // M34 · base and step are one mesh (one draw)
+  const base = new THREE.Mesh(mergeGeometries([new THREE.CylinderGeometry(6, 6.6, 0.8, 40).translate(0, 0.4, 0), new THREE.CylinderGeometry(7.2, 7.6, 0.35, 40).translate(0, 0.1, 0)])!, stone); g.add(base);
   // M30 · the pillars carry the wind spiral as a shallow groove CUT into the stone (same stone, darker only in the recess, a lit
   // lower lip and a shaded upper lip so it reads as relief), computed per pixel in pillar space — no raised tubes.
   const pillarStone = triplanar(rock, 1.5, '#e4d4b4', { sat: 0.55, gain: 1.55, rough: 0.95, emissive: '#15120d' });
@@ -181,7 +181,7 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
       r.shake = Math.max(0, r.shake - dt); r.pulse = Math.max(0, r.pulse - dt * 1.5);
       r.o.children[0].position.x = Math.sin(t * 60) * 0.05 * r.shake * 2;
       r.plateMat.emissiveIntensity = 0.55 + r.pulse * 1.0 + fade * 1.0;
-      (r.ring.material as THREE.MeshBasicMaterial).opacity = Math.max(r.pulse * 0.8, fade * (0.55 + 0.25 * Math.sin(t * 3)));
+      { const op = Math.max(r.pulse * 0.8, fade * (0.55 + 0.25 * Math.sin(t * 3))); (r.ring.material as THREE.MeshBasicMaterial).opacity = op; r.ring.visible = op > 0.005; } // M34: a ring at opacity 0 still cost a draw call
     }
   }
   const root = new THREE.Group(); root.add(g, tablet, ...runeObjs.map((r) => r.o));

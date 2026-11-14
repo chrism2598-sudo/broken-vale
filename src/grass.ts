@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { trackMask, inStream, RSTAIR } from './world';
+import { trackMask, inStream, RSTAIR, WAYFINDER } from './world';
 import { heightAt, normalAt, pathMask, trailMask, creekX, creekHalf, rng, SHRINE, fbm, LANDMARKS, SPAWN } from './world';
 const PALE_YARD = LANDMARKS.find((l) => l.id === 'pale')!; // M24: no grass through Pale Keep's frosted courtyard flags or the Wing Gate plaza
 /** M25 · no grass through the grand stair's treads or its foot terraces. */
@@ -74,7 +74,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
         for (let k = 0; k < per; k++) {
           const x = (gx + rr()) * cell, z = (gz + rr()) * cell;
           const rot = rr() * Math.PI * 2, sc0 = rr(), sc1 = rr(), t0 = rr(), t1 = rr(), t2 = rr();
-          const pm = pathMask(x, z); if (pm > 0.42) continue; if (trackMask(x, z) > 0.42 || inStream(x, z) || (Math.abs(x - RSTAIR.x) < RSTAIR.half + 0.3 && z > RSTAIR.z0 - 0.6 && z < RSTAIR.z1 + 0.4)) continue; // M26
+          const pm = pathMask(x, z); if (pm > 0.42) continue; if (trackMask(x, z) > 0.42 || inStream(x, z) || (Math.abs(Math.hypot(x - LANDMARKS[0].x, z - LANDMARKS[0].z) - 26.3) < 1.3 && Math.abs(Math.sin(x * 7.13 + z * 31.7) * 9631.7) % 1 < 0.7) || (Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 4.6 && Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1 < 0.75) || (Math.abs(x - RSTAIR.x) < RSTAIR.half + 0.3 && z > RSTAIR.z0 - 0.6 && z < RSTAIR.z1 + 0.4)) continue; // M26
           const tm = trailMask(x, z); if (tm > 0.55) continue; // M22b: clear the Greycrown trail and outlook pad
           const dcr = Math.abs(x - creekX(z)); if (dcr < creekHalf(z) + 0.6) continue;
           if (Math.hypot(x - SHRINE.x, z - SHRINE.z) < 7) continue;

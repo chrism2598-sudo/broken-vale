@@ -334,6 +334,18 @@ function paleRock(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim
   const cs = Math.cos(face), sn = Math.sin(face), G = (u: number, v: number) => [cs * u + sn * v, -sn * u + cs * v] as const;
   const base = l.base!, top = l.pad, RI = PALE_ROCK.in, HALF = 2.5;
   const rock = triplanar(t.rock, 2.6, '#c4b9a3', { sat: 0.35, gain: 1.95, rough: 0.92, emissive: '#151210' });
+  // M32 · the castle rock weathers: bedding strata (alternating tone, thin dark partings), moss and damp in the cracks and partings,
+  // lichen blots on the faces, and darker, damper stone toward the foot. Per pixel (no extra geometry).
+  { const prev = rock.onBeforeCompile; rock.onBeforeCompile = (sh, r) => { prev.call(rock, sh, r); sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  { vec3 n = normalize(vTN); float side = 1. - smoothstep(.55, .85, n.y); float yy = vTW.y + .35 * tVn(vTW.xz * .35);
+    float band = .5 + .5 * sin(yy * 4.2 + tVn(vTW.xz * .5) * 2.); float part = 1. - smoothstep(.0, .06, abs(fract(yy * .72) - .5) - .44);
+    float crack = smoothstep(.62, .7, tVn(vec2((vTW.x - vTW.z) * 1.9, yy * .8))) * smoothstep(.45, .6, tVn(vTW.xz * 2.7 + yy));
+    float foot = 1. - smoothstep(${(base + 0.1).toFixed(2)}, ${(base + 1.6).toFixed(2)}, vTW.y);
+    float lich = side * smoothstep(.78, .84, tVn(vTW.xy * 4.1 + vTW.zy * 3.7));
+    diffuseColor.rgb *= mix(.8, 1.14, band) * (1. - .5 * part * side);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.24, .31, .13), clamp((part * .5 + crack) * side * (.55 + .45 * tVn(vTW.xz * 6.)) + (1. - side) * .25, 0., .8));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.76, .74, .58), lich * .5);
+    diffuseColor.rgb *= (1. - .16 * foot) * 1.1; roughnessFactor = mix(roughnessFactor, .45, foot * .6); }`); }; }
   // ---- the rock skirt: a lathe from the meadow to the rim, pushed outward by two octaves of noise (crags and ledges) ----
   { const prof: [number, number][] = [[25.45, base - 0.8], [25.3, base + 0.15], [24.95, base + 0.9], [24.55, base + 1.7], [24.15, base + 2.4], [23.65, base + 3.1], [23.15, base + 3.75], [22.8, top - 0.12], [22.5, top + 0.1], [21.9, top + 0.1]];
     const gap = 0.14, seg = 104, gq = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), seg, face + gap, Math.PI * 2 - gap * 2);
@@ -348,6 +360,11 @@ function paleRock(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim
     for (let c = 0; c < 12; c++) { const a0 = face + 0.3 + c / 12 * (Math.PI * 2 - 0.6) + (rnd() - 0.5) * 0.15, hT = 1.6 + rnd() * 2.8;
       for (let k = 0; k < 9; k++) { const y = top - 0.1 - rnd() * hT, f = (top - y) / 4.4, rr = 22.75 + f * 2.3 + 0.55, a = a0 + (rnd() - 0.5) * 0.09 * (1 + f);
         b.add(ivy, new THREE.IcosahedronGeometry(0.42 + rnd() * 0.3, 0).scale(1.4, 0.8 + rnd() * 0.4, 0.4), Math.sin(a) * rr, y, Math.cos(a) * rr, a); } }
+    // M32 · scree and fallen blocks round the foot (low, so feet pass over), heaviest by the stair and the gate; ivy and moss where the stair is cut into the rock
+    for (let i = 0; i < 260; i++) { const a = rnd() * Math.PI * 2, da = Math.atan2(Math.sin(a - face - 0.78), Math.cos(a - face - 0.78)); if (Math.abs(da) < 0.35) continue;
+      const rr = 25.2 + rnd() * rnd() * 2.2, x = Math.sin(a) * rr, z = Math.cos(a) * rr, u = x * cs - z * sn, v = x * sn + z * cs; if (v > 0 && Math.abs(u) < 4.2) continue;
+      const near = Math.abs(Math.atan2(Math.sin(a - face), Math.cos(a - face))) < 0.6, sz = (near ? 0.14 : 0.1) + rnd() * (near ? 0.42 : 0.3);
+      b.add(rock, new THREE.DodecahedronGeometry(sz, 0).scale(1.3, Math.min(0.62, 0.42 / sz), 1.1), l.x * 0 + x, heightAt(l.x + x, l.z + z) - sz * 0.12, z, rnd() * 6); }
     // the cliff stops walkers (a ring of solids round the foot, open where the stair is)
     //  (wider than the rock so feet never meet the coarse terrain mesh over the cliff; tighter by Enna's collapsed stair)
     for (let i = 0; i < 140; i++) { const a = i / 140 * Math.PI * 2, da = Math.atan2(Math.sin(a - face - 0.78), Math.cos(a - face - 0.78)), near = Math.abs(da) < 0.3;
@@ -380,7 +397,11 @@ function paleRock(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim
     WALK.push({ x: l.x + x, z: l.z + z, y: sg.y, hw: HALF + 0.05, hd: d / 2 + 0.02, ry: face, cam: true });
     // the side walls: retaining walls cut into the rock up top, a balustrade on plinths below
     for (const s of [-1, 1]) { const [wx, wz] = G(s * (HALF + 0.35), vc), rh = Math.max(rockH(s, sg.a), rockH(s, sg.b)), cut = rh > sg.y + 0.4;
-      if (cut) { const wt = Math.max(sg.y + 1.0, rh + 0.35); b.add(st, box(0.7, wt - foot, d + 0.01), wx, foot, wz, face); b.add(trim, box(0.86, 0.14, d + 0.02), wx, wt, wz, face); b.add(frost, box(0.88, 0.03, d + 0.03), wx, wt + 0.14, wz, face); }
+      if (cut) { const wt = Math.max(sg.y + 1.0, rh + 0.35); b.add(st, box(0.7, wt - foot, d + 0.01), wx, foot, wz, face); b.add(trim, box(0.86, 0.14, d + 0.02), wx, wt, wz, face); b.add(frost, box(0.88, 0.03, d + 0.03), wx, wt + 0.14, wz, face);
+        // M32 · where the stair is cut into the rock: ivy spilling over the wall tops and down the inner faces, moss where wall meets tread
+        for (let q = 0; q < 2; q++) if (rnd() < 0.7) { const vq = sg.a + rnd() * d, n = 2 + Math.floor(rnd() * 3); for (let k = 0; k < n; k++) { const [ix, iz] = G(s * (HALF + 0.02), vq + (rnd() - 0.5) * 0.25), yy = wt + 0.05 - k * 0.42 - rnd() * 0.12; if (yy < sg.y + 0.25) break;
+          b.add(rnd() < 0.75 ? ivy : leaf, new THREE.IcosahedronGeometry(0.3 + rnd() * 0.16 - k * 0.04, 0).scale(0.28, 1.3, 1.1), ix, yy, iz, face); } }
+        { const [mx, mz] = G(s * (HALF - 0.06), sg.a + rnd() * d); b.add(leaf, new THREE.IcosahedronGeometry(0.2 + rnd() * 0.1, 0).scale(0.7, 0.28, 1.6), mx, sg.y + 0.02, mz, face); } }
       else { b.add(st, box(0.7, sg.y + 0.22 - foot, d + 0.01), wx, foot, wz, face); b.add(trim, box(0.78, 0.1, d + 0.02), wx, sg.y + 0.22, wz, face);
         for (let q = 0; q < Math.max(1, Math.round(d / 0.34)); q++) { const [bx, bz] = G(s * (HALF + 0.35), sg.a + (q + 0.5) * d / Math.max(1, Math.round(d / 0.34))); b.add(trim, vase, bx, sg.y + 0.32, bz); }
         b.add(trim, box(0.5, 0.14, d + 0.02), wx, sg.y + 1.08, wz, face); b.add(frost, box(0.52, 0.03, d + 0.03), wx, sg.y + 1.22, wz, face); }

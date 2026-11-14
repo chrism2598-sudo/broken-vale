@@ -61,7 +61,9 @@ export function openingBusy(x: number, z: number): boolean {
 function ridgeRise(x: number, z: number): number {
   if (z < 50 || z > 84 || x < RIDGE.x0 - 7 || x > RIDGE.x1 + 11) return 0;
   const mx = smoothstep(RIDGE.x0 - 7, RIDGE.x0, x) * (1 - smoothstep(RIDGE.x1 - 1, RIDGE.x1 + 11, x));
-  const p = z < RIDGE.zc ? smoothstep(51.5, RIDGE.zc, z) : 1 - smoothstep(RIDGE.zc + 2, RIDGE.zc + 20, z);
+  let p = z < RIDGE.zc ? smoothstep(51.5, RIDGE.zc, z) : 1 - smoothstep(RIDGE.zc + 2, RIDGE.zc + 20, z);
+  // M32 · along the ridge stair the face climbs at an even grade (linear, same ends), so the treads rise evenly — no steep middle
+  if (z < RIDGE.zc) { const wl = 1 - smoothstep(RSTAIR.half + 0.4, RSTAIR.half + 3.2, Math.abs(x - RSTAIR.x)); if (wl > 0) p += (Math.min(1, Math.max(0, (z - 51.5) / (RIDGE.zc - 51.5))) - p) * wl; }
   let r = RIDGE.h * mx * p * (0.9 + 0.2 * fbm(x * 0.06 + 4, z * 0.06));
   r -= 0.3 * (1 - smoothstep(RSTAIR.half, RSTAIR.half + 0.6, Math.abs(x - RSTAIR.x))) * smoothstep(RSTAIR.z0 - 0.5, RSTAIR.z0 + 0.5, z) * (1 - smoothstep(RSTAIR.z1, RSTAIR.z1 + 1, z)); // the stair's shallow trench
   return r;

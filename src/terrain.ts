@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, creekX, creekHalf, pathX, TRAIL, PATH_BEND, TRACK, WORN, STREAM, POOL, type P2 } from './world';
+import { WAYFINDER, heightAt, creekX, creekHalf, pathX, TRAIL, PATH_BEND, TRACK, WORN, STREAM, POOL, type P2 } from './world';
 
 const B = PATH_BEND, f3 = (v: number) => v.toFixed(3);
 /** M26 · GLSL distance to a polyline (track / stream). */
@@ -47,6 +47,8 @@ vec4 W4; float SNOW; float RUT; float RCROWN; vec2 UVg; vec2 UVp; vec2 UVr; vec2
 { vec2 p=vWP.xz; float slope=1.-clamp(vWN.y,0.,1.);
   float dc=abs(p.x-creekX(p.y)); float bed=1.-smoothstep(creekHalf(p.y)*.9,creekHalf(p.y)+1.6,dc); bed=max(bed,max(1.-smoothstep(1.1,2.6,streamD(p)),1.-smoothstep(${f3(POOL.r - 0.3)},${f3(POOL.r + 1.6)},length(p-vec2(${f3(POOL.x)},${f3(POOL.z)})))));
   float tm=trailM(p); float pm=max(max(pathM(p),tm),max((1.-smoothstep(.75+.25*vn(p*.7),1.8,trackD(p)))*.9,(1.-smoothstep(.4+.2*vn(p*1.3),1.1,wornD(p)))*.75)); // M26: the quarry track // M22b: a hard packed cut, not a soft dirt tint
+  { // M32 · trampled earth at the hub where the paths meet by the Wayfinder: ragged, patchy, thinning into the meadow
+    float hd=length(p-vec2(${f3(WAYFINDER.x)},${f3(WAYFINDER.z)}))+2.2*(vn(p*.45)-.5)+1.2*(vn(p*1.6)-.5); pm=max(pm,(1.-smoothstep(2.6,6.2,hd))*(.55+.35*vn(p*.9))); }
   RUT=0.; RCROWN=0.;
   { float zr=smoothstep(-48.,-56.,p.y)*(1.-smoothstep(-96.,-100.,p.y));
     if (zr>0.) { float sl=pathX(p.y+.5)-pathX(p.y-.5); float dx=(p.x-pathX(p.y))/sqrt(1.+sl*sl); float wob=.08*sin(p.y*.9)+.05*vn(p*1.7);

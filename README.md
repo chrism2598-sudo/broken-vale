@@ -282,3 +282,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Pale road ruts (terrain shader): deeper, damp tone with a slight sheen and scattered dark standing puddles. Grass creeps in from the verges and tufts up the crown. The rut values are shader globals (RUT/RCROWN) so roughness can use them.
 - High-quality water now has the Lite shallows too: it thins toward the banks over a silty bed, with soft flow streaks. Injected into three's Water shader; GRADE_GLSL is untouched.
 - The "mossy standing stone with a gold ring" near the bridge is the Wind Shrine's West Rune (shrine.ts RUNES), part of the rune puzzle. The ring was the glowing ○ glyph state on its plate. Its function is kept, and the glyph and ground pulse ring now glow pale and cold, not gold.
+
+### M32 · stair margin, castle rock weathering, hub ground
+- Ridge stair: inside the stair corridor the ridge face now climbs at an even (linear) grade between the same ends, so qa-opening's largest step is 0.62 m (was 0.91, limit 0.9). Stair ends and Ress unchanged.
+- Castle rock (paleRock): per-pixel bedding strata with dark partings, moss and damp in cracks/partings, lichen blots, darker damp foot; ~260 low scree stones and fallen blocks round the foot (open at the stair and Enna's stair) with grass thinned on that band; ivy spilling over the cut retaining-wall tops and down their inner faces, moss pads where wall meets tread. Keep, gate and stair not moved.
+- Hub: ragged trampled-earth patch where the paths meet by the Wayfinder (terrain shader) and grass thinned there; he stays put.

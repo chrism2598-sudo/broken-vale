@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { heightAt, normalAt, pathMask, trailMask, creekX, creekHalf, rng, SHRINE, fbm, LANDMARKS, SPAWN } from './world';
 const PALE_YARD = LANDMARKS.find((l) => l.id === 'pale')!; // M24: no grass through Pale Keep's frosted courtyard flags or the Wing Gate plaza
-const PALE_F = Math.atan2(SPAWN.x - PALE_YARD.x, SPAWN.z - PALE_YARD.z), PALE_PLAZA = { x: PALE_YARD.x + Math.sin(PALE_F) * 30.2, z: PALE_YARD.z + Math.cos(PALE_F) * 30.2 };
+/** M25 · no grass through the grand stair's treads or its foot terraces. */
+const paleStair = (x: number, z: number) => { const dx = x - PALE_YARD.x, dz = z - PALE_YARD.z, v = dx * Math.sin(PALE_F) + dz * Math.cos(PALE_F), u = Math.abs(dx * Math.cos(PALE_F) - dz * Math.sin(PALE_F)); return v > 17.5 && v < 31.8 && (u < 3.5 || (v > 25.4 && u < 7.9)); };
+const PALE_F = Math.atan2(SPAWN.x - PALE_YARD.x, SPAWN.z - PALE_YARD.z), PALE_PLAZA = { x: PALE_YARD.x + Math.sin(PALE_F) * 30.2, z: PALE_YARD.z + Math.cos(PALE_F) * 38.2 }; // M25: the Wing Gate moved out to the rock's foot
 
 /** Instanced grass clumps (tapered curved blades) with GPU wind sway and distance fade. */
 export function makeGrass(count: number, radius: number, bladesPerClump: number, seg = 4, inner = 0): { mesh: THREE.InstancedMesh; uniforms: { uTime: THREE.IUniform; uPlayer: THREE.IUniform }; center: THREE.Vector2; recenter: (x: number, z: number) => void; recenterSoon: (x: number, z: number) => void; pump: (ms: number) => void; busy: () => boolean } {
@@ -75,7 +77,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
           const tm = trailMask(x, z); if (tm > 0.55) continue; // M22b: clear the Greycrown trail and outlook pad
           const dcr = Math.abs(x - creekX(z)); if (dcr < creekHalf(z) + 0.6) continue;
           if (Math.hypot(x - SHRINE.x, z - SHRINE.z) < 7) continue;
-          if (Math.hypot(x - PALE_YARD.x, z - PALE_YARD.z) < 16.6 || Math.hypot(x - PALE_PLAZA.x, z - PALE_PLAZA.z) < 7.4) continue;
+          if (Math.hypot(x - PALE_YARD.x, z - PALE_YARD.z) < 21.8 || Math.abs(Math.hypot(x - PALE_YARD.x, z - PALE_YARD.z) - 23.8) < 2.0 || paleStair(x, z) || Math.hypot(x - PALE_PLAZA.x, z - PALE_PLAZA.z) < 7.4) continue;
           const nrm = normalAt(x, z); if (nrm[1] < 0.86) continue;
           p.set(x, heightAt(x, z) - 0.02, z);
           q.setFromAxisAngle(up, rot);

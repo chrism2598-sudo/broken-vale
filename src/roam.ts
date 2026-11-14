@@ -31,7 +31,7 @@ type GroupDef = { id: string; night: boolean; x: number; z: number; mobs: MobLoo
 export const GROUPS: GroupDef[] = [
   { id: 'n-road', night: true, x: -12, z: -32, mobs: ['shade', 'shade'], r: 14 },
   { id: 'n-shrine', night: true, x: -60, z: -38, mobs: ['shade', 'brute', 'shade'], r: 14 },
-  { id: 'n-pale', night: true, x: -82, z: -104, mobs: ['shade', 'shade', 'shade'], r: 12 },
+  { id: 'n-pale', night: true, x: -67, z: -83, /* M25: out past the Wing Gate (was at the stair foot) */ mobs: ['shade', 'shade', 'shade'], r: 12 },
   { id: 'n-azure', night: true, x: 62, z: -76, mobs: ['shade', 'brute', 'shade'], r: 14 },
   { id: 'n-sun', night: true, x: -44, z: 52, mobs: ['shade', 'shade'], r: 14 },
   { id: 'n-dome', night: true, x: 72, z: 68, mobs: ['brute', 'shade'], r: 12 },

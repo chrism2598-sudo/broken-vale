@@ -1608,7 +1608,7 @@ ${GRADE_GLSL}
     if (inSea && sea) sea.clampCam(camTarget, camPos);
     if (inKeep && keep) keep.clampCam(camTarget, camPos);
     if (inCastle && castle) castle.clampCam(camTarget, camPos); else if (inBarrow && barrow) barrow.clampCam(camPos, camTarget); else if (perch) perchCam(camTarget, camPos);
-    const floor = inCoast && coast ? coast.camFloor(camPos.x, camPos.z) + 0.25 : inCave || inSea || inKeep || inCastle || inBarrow ? -1e9 : perch ? perch.y + 0.4 : (onIsland || lift ? (islandY(camPos.x, camPos.z) ?? -1e9) : heightAt(camPos.x, camPos.z)) + 0.6;
+    const floor = inCoast && coast ? coast.camFloor(camPos.x, camPos.z) + 0.25 : inCave || inSea || inKeep || inCastle || inBarrow ? -1e9 : perch ? perch.y + 0.4 : (onIsland || lift ? (islandY(camPos.x, camPos.z) ?? -1e9) : Math.max(heightAt(camPos.x, camPos.z), walkY(camPos.x, camPos.z, true))) + 0.6; // M25: the camera rides above Pale's grand stair
     // Rigid horizontal follow (no positional lag): a lagged lerp toward a moving target leaves a dt-dependent gap, so on a phone with
     // uneven frame times the camera→player distance pumped every frame while running ("view goes back and forth").
     // Only the occlusion pull-in and the terrain floor push are smoothed (dt-correct), as offsets along the boom / in height.
@@ -2254,6 +2254,7 @@ function okSpot(x: number, z: number, clearPath = 2.2, clearCreek = 2): boolean 
   if (pathMask(x, z) > 0.05 || Math.abs(x - creekX(z)) < creekHalf(z) + clearCreek) return false;
   if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < 6 || Math.hypot(x - SPAWN.x, z - SPAWN.z - 6) < 6 || Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 3 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 20) return false;
   for (const l of LANDMARKS) if (Math.hypot(x - l.x, z - l.z) < l.r * (l.id === 'veilfall' ? 1.7 : 1.25)) return false;
+  { const l = LANDMARKS[0], f = Math.atan2(SPAWN.x - l.x, SPAWN.z - l.z); if (Math.hypot(x - l.x - Math.sin(f) * 38.5, z - l.z - Math.cos(f) * 38.5) < 10) return false; } // M25: the Wing Gate forecourt
   for (const d of SEALS) if (Math.hypot(x - d.x, z - d.z) < 7) return false;
   for (const o of OUTPOSTS) if (Math.hypot(x - o.x, z - o.z) < o.flat * 1.3) return false;
   if (Math.hypot(x - WARDEN.x, z - WARDEN.z) < 14 || Math.hypot(x - UPDRAFT.x, z - UPDRAFT.z) < 9 || Math.hypot(x - ECHO.x, z - ECHO.z) < 16) return false;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LANDMARKS, SPAWN, heightAt, type Landmark } from './world';
+import { LANDMARKS, SPAWN, heightAt, fbm, PALE_ROCK, type Landmark } from './world';
 import { addRimFill } from './shading';
 import type { GroundTex } from './terrain';
 
@@ -54,12 +54,12 @@ float MAC;`)
 }
 
 /** M20b · raised walk-surfaces on landmarks (world coords): discs and rotated boxes whose top the feet stand on. */
-type Walk = { x: number; z: number; y: number; r?: number; hw?: number; hd?: number; ry?: number };
+type Walk = { x: number; z: number; y: number; r?: number; hw?: number; hd?: number; ry?: number; cam?: boolean };
 export const WALK: Walk[] = [];
 /** Highest walk-surface top under (x,z) or -Infinity. */
-export function walkY(x: number, z: number): number {
+export function walkY(x: number, z: number, camOnly = false): number {
   let y = -Infinity;
-  for (const w of WALK) {
+  for (const w of WALK) { if (camOnly && !w.cam) continue;
     const dx = x - w.x, dz = z - w.z;
     if (w.r !== undefined) { if (dx * dx + dz * dz < w.r * w.r && w.y > y) y = w.y; continue; }
     const c = Math.cos(w.ry ?? 0), s = Math.sin(w.ry ?? 0), lx = dx * c - dz * s, lz = dx * s + dz * c;
@@ -77,7 +77,7 @@ class Builder {
   }
   build(): THREE.Group {
     const grp = new THREE.Group();
-    for (const [mat, gs] of this.parts) { const m = new THREE.Mesh(mergeGeometries(gs), mat); m.castShadow = true; m.receiveShadow = true; grp.add(m); }
+    for (const [mat, gs] of this.parts) { const m = new THREE.Mesh(mergeGeometries(gs), mat); m.castShadow = !mat.userData.noCast; /* M25: thin frost and ivy skip the shadow pass */ m.receiveShadow = true; grp.add(m); }
     return grp;
   }
 }
@@ -212,7 +212,7 @@ function paleKeepYard(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, 
   const cs = Math.cos(face), sn = Math.sin(face), K = (u: number, v: number) => [kx + cs * u + sn * v, kz - sn * u + cs * v] as const;
   const pad = y0 + 0.3; let sd = 24; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
   const leaf = triplanar(t.rock, 0.9, '#62873e', { sat: 0.3, gain: 1.4, rough: 0.95 }), ivy = triplanar(t.rock, 0.7, '#5a8a3a', { sat: 0.25, gain: 1.35, rough: 0.95 });
-  const frost = triplanar(t.brick, 2.2, '#e6edf2', { sat: 0.12, gain: 2.1, rough: 0.5 });
+  const frost = triplanar(t.brick, 2.2, '#e6edf2', { sat: 0.12, gain: 2.1, rough: 0.5 }); frost.userData.noCast = true; ivy.userData.noCast = true;
   const clump = (m: THREE.Material, s: number, sx: number, sy: number, sz: number, x: number, y: number, z: number, ry = 0) => b.add(m, new THREE.IcosahedronGeometry(s, m === ivy ? 0 : 1).scale(sx, sy, sz), x, y, z, ry);
   // taller clustered towers: two at the back corners, two lower at the front corners (clear of the roof walk and the door)
   for (const [u, v, r, h, rh] of [[8.6, -8.6, 2.1, 27, 9.5], [-8.6, -8.6, 2.3, 24, 9], [9.3, 5.4, 1.7, 20, 7.5], [-9.3, 5.4, 1.9, 17, 7.5]]) {
@@ -257,11 +257,14 @@ function paleKeepYard(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, 
   }
   const gold = GOLD, frostCap = FROST_CAP;
   // the heart-crystal under a crown on the keep wall above the door (scenery only, not interactive)
-  { const [x, z] = K(0, KEEP_D / 2 + 0.5), Y = y0 + 10.6;
-    b.add(trim, box(1.5, 0.35, 1.0), x, Y - 1.45, z, face); b.add(trim, cone(0.55, 0.7, 4).rotateX(Math.PI), x, Y - 1.1, z, face);
-    b.add(HEART, new THREE.OctahedronGeometry(0.62, 0).scale(0.8, 1.25, 0.55), x, Y, z, face);
-    b.add(gold, cyl(0.5, 0.56, 0.32, 16), x, Y + 0.9, z); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; b.add(gold, cone(0.09, 0.42, 5), x + Math.sin(a) * 0.5, Y + 1.22, z + Math.cos(a) * 0.5); b.add(gold, new THREE.SphereGeometry(0.06, 6, 4), x + Math.sin(a) * 0.5, Y + 1.66, z + Math.cos(a) * 0.5); }
-    b.add(frostCap, cyl(0.5, 0.5, 0.03, 16), x, Y + 1.22, z); }
+  // M25 · brought down to just over the door arch and enlarged by a third, on a moulded corbel with a dressed
+  //       backing roundel, so it reads from the courtyard (was 10.6 m up, out of frame from the yard)
+  { const [x, z] = K(0, KEEP_D / 2 + 0.5), Y = y0 + 7.3, S = 1.35, [rx, rz] = K(0, KEEP_D / 2 + 0.12);
+    b.add(trim, new THREE.CylinderGeometry(1.25, 1.25, 0.2, 28).rotateX(Math.PI / 2), rx, Y + 0.25, rz, face); b.add(gold, new THREE.TorusGeometry(1.2, 0.06, 6, 28), rx, Y + 0.25, rz + 0, face);
+    b.add(trim, box(1.5 * S, 0.35, 1.0), x, Y - 1.45 * S, z, face); b.add(trim, cone(0.55 * S, 0.7 * S, 4).rotateX(Math.PI), x, Y - 1.1 * S, z, face);
+    b.add(HEART, new THREE.OctahedronGeometry(0.62 * S, 0).scale(0.8, 1.25, 0.55), x, Y, z, face);
+    b.add(gold, cyl(0.5 * S, 0.56 * S, 0.32 * S, 16), x, Y + 0.9 * S, z); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; b.add(gold, cone(0.09 * S, 0.42 * S, 5), x + Math.sin(a) * 0.5 * S, Y + 1.22 * S, z + Math.cos(a) * 0.5 * S); b.add(gold, new THREE.SphereGeometry(0.06 * S, 6, 4), x + Math.sin(a) * 0.5 * S, Y + 1.66 * S, z + Math.cos(a) * 0.5 * S); }
+    b.add(frostCap, cyl(0.5 * S, 0.5 * S, 0.03, 16), x, Y + 1.22 * S, z); }
   // the gold crown fountain in the upper courtyard, frozen solid: stone basin, ice, a crown iced over with icicles
   { const [x, z] = K(-6.6, 10.2);
     b.add(trim, lathe([[0, 0], [1.45, 0], [1.5, 0.2], [1.4, 0.75], [1.55, 0.82], [1.55, 0.9], [1.25, 0.9], [1.2, 0.3], [0, 0.3]], 32), x, pad - 0.05, z);
@@ -272,7 +275,7 @@ function paleKeepYard(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, 
     b.add(ICE, lathe([[0, 0], [0.45, 0], [0.3, 0.5], [0.12, 0.8], [0, 0.85]], 10), x, pad + 0.7, z); // the frozen spill down the pedestal
     solids.push({ x: l.x + x, z: l.z + z, r: 1.7 }); }
   // ---- the Wing Gate: the outer gate at the foot of the rock, on the road from the meadow, facing it ----
-  const D = 25, G = (u: number, v: number) => [Math.sin(face) * D + cs * u + sn * v, Math.cos(face) * D - sn * u + cs * v] as const;
+  const D = PALE_ROCK.gate, G = (u: number, v: number) => [Math.sin(face) * D + cs * u + sn * v, Math.cos(face) * D - sn * u + cs * v] as const;
   const hy = (u: number, v: number) => { const [x, z] = G(u, v); return heightAt(l.x + x, l.z + z); };
   const gy = Math.min(hy(0, 0), hy(-4.4, 0), hy(4.4, 0)) - 0.05;
   const red = triplanar(t.sand, 2.0, '#b8402f', { sat: 0.6, gain: 1.75, rough: 0.75, emissive: '#2a0a06' }), white = WHITE_STONE;
@@ -307,7 +310,7 @@ function paleKeepYard(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, 
     b.add(white, box(1.7, 1.5, 1.7), x, py - 0.3, z, face); b.add(white, box(2.0, 0.22, 2.0), x, py - 0.3, z, face); b.add(white, box(1.9, 0.2, 1.9), x, py + 1.2, z, face);
     const Y = py + 1.4; figure(b, gold, FROST_CAP, x, Y, z, face);
     solids.push({ x: l.x + x, z: l.z + z, r: 1.4 });
-    for (const s of [-1, 1]) { const [ox, oz] = G(s * 5.6, 4.6), oy = hy(s * 5.6, 4.6);
+    for (const s of [-1, 1]) { const [ox, oz] = G(s * 5.6, 3.2), oy = hy(s * 5.6, 3.2); // M25: tucked in (the Dawn seal plinth stands just beyond)
       b.add(white, box(1.4, 1.1, 1.4), ox, oy - 0.3, oz, face); b.add(white, box(1.6, 0.2, 1.6), ox, oy - 0.3, oz, face);
       b.add(gold, cyl(0.46, 0.3, 5.0, 4), ox, oy + 0.8, oz, face + Math.PI / 4); b.add(gold, cone(0.32, 0.6, 4), ox, oy + 5.8, oz, face + Math.PI / 4); b.add(frostCap, cone(0.15, 0.28, 4), ox, oy + 6.12, oz, face + Math.PI / 4);
       solids.push({ x: l.x + ox, z: l.z + oz, r: 1.05 }); } }
@@ -316,7 +319,82 @@ function paleKeepYard(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, 
   { const pp = plaza.attributes.position; for (let i = 0; i < pp.count; i++) pp.setY(i, heightAt(l.x + px + pp.getX(i), l.z + pz + pp.getZ(i)) + 0.035); plaza.computeVertexNormals(); }
   const pm = new THREE.Mesh(plaza, new THREE.MeshStandardMaterial({ map: plazaTex(), color: '#ffffff', metalness: 0.45, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -2 }));
   pm.position.set(px, 0, pz); pm.receiveShadow = true;
+  paleRock(b, l, t, st, trim, frost, ivy, leaf, face, gy, solids, rnd);
   return [pm];
+}
+
+/** M25 · Pale Keep's castle rock and the grand stair. The keep's pad is 4.4 m above the meadow (world.ts PALE_ROCK): a craggy
+ *  rock skirt rings the plateau (a gap where the stair is cut in), a frosted terrace parapet runs along its rim, and a wide
+ *  two-flight stair climbs from just inside the Wing Gate to a top landing before the gatehouse: dressed treads with frosted
+ *  ends, tall retaining walls where it is cut into the rock, a balustrade on the lower flight, newels with lanterns at the
+ *  landings, ivy, and planted terraces either side of the stair foot. Feet use WALK boxes (camera-floor too); solids keep the
+ *  player on the stair and off the cliff. */
+function paleRock(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim: THREE.Material, frost: THREE.Material, ivy: THREE.Material, leaf: THREE.Material, face: number, gy: number, solids: Solid[], rnd: () => number) {
+  const cs = Math.cos(face), sn = Math.sin(face), G = (u: number, v: number) => [cs * u + sn * v, -sn * u + cs * v] as const;
+  const base = l.base!, top = l.pad, RI = PALE_ROCK.in, HALF = 2.5;
+  const rock = triplanar(t.rock, 2.6, '#c4b9a3', { sat: 0.35, gain: 1.95, rough: 0.92, emissive: '#151210' });
+  // ---- the rock skirt: a lathe from the meadow to the rim, pushed outward by two octaves of noise (crags and ledges) ----
+  { const prof: [number, number][] = [[25.45, base - 0.8], [25.3, base + 0.15], [24.95, base + 0.9], [24.55, base + 1.7], [24.15, base + 2.4], [23.65, base + 3.1], [23.15, base + 3.75], [22.8, top - 0.12], [22.5, top + 0.1], [21.9, top + 0.1]];
+    const gap = 0.14, seg = 104, gq = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), seg, face + gap, Math.PI * 2 - gap * 2);
+    const p = gq.attributes.position;
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), r = Math.hypot(x, z), a = Math.atan2(x, z), arc = a * 24;
+      const w = THREE.MathUtils.smoothstep(y, base - 0.4, base + 0.6) * (1 - THREE.MathUtils.smoothstep(y, top - 0.6, top + 0.05) * 0.75);
+      const n = (0.5 + 0.5 * fbm(arc * 0.16, y * 0.32)) * 0.75 + 0.3 * fbm(arc * 0.55 + 5, y * 0.9) + 0.12 * Math.sin(y * 3.1 + fbm(arc * 0.3, 2) * 4); // + strata
+      const rr = Math.min(25.45, r + n * w); p.setX(i, Math.sin(a) * rr); p.setZ(i, Math.cos(a) * rr); }
+    gq.computeVertexNormals(); b.add(rock, gq);
+    // frost/snow lying on the rim, and ivy cascading down the rock in a dozen curtains
+    b.add(frost, new THREE.RingGeometry(21.95, 22.95, seg, 1, face + gap, Math.PI * 2 - gap * 2).rotateX(-Math.PI / 2), 0, top + 0.13, 0);
+    for (let c = 0; c < 12; c++) { const a0 = face + 0.3 + c / 12 * (Math.PI * 2 - 0.6) + (rnd() - 0.5) * 0.15, hT = 1.6 + rnd() * 2.8;
+      for (let k = 0; k < 9; k++) { const y = top - 0.1 - rnd() * hT, f = (top - y) / 4.4, rr = 22.75 + f * 2.3 + 0.55, a = a0 + (rnd() - 0.5) * 0.09 * (1 + f);
+        b.add(ivy, new THREE.IcosahedronGeometry(0.42 + rnd() * 0.3, 0).scale(1.4, 0.8 + rnd() * 0.4, 0.4), Math.sin(a) * rr, y, Math.cos(a) * rr, a); } }
+    // the cliff stops walkers (a ring of solids round the foot, open where the stair is)
+    //  (wider than the rock so feet never meet the coarse terrain mesh over the cliff; tighter by Enna's collapsed stair)
+    for (let i = 0; i < 140; i++) { const a = i / 140 * Math.PI * 2, da = Math.atan2(Math.sin(a - face - 0.78), Math.cos(a - face - 0.78)), near = Math.abs(da) < 0.3;
+      const rc = near ? 24.0 : 24.6, r = near ? 1.45 : 2.0, x = Math.sin(a) * rc, z = Math.cos(a) * rc, u = x * cs - z * sn, v = x * sn + z * cs;
+      if (v > 0 && Math.abs(u) < 3.25 + r) continue; solids.push({ x: l.x + x, z: l.z + z, r }); } }
+  // ---- the terrace parapet along the rim (inside the frost), broken for the stair ----
+  { const n = 48, R = 23.2; for (let i = 0; i < n; i++) { const a0 = i / n * Math.PI * 2, a1 = (i + 1) / n * Math.PI * 2, am = (a0 + a1) / 2, x = Math.sin(am) * R, z = Math.cos(am) * R, u = x * cs - z * sn, v = x * sn + z * cs;
+    if (v > 0 && Math.abs(u) < 3.3) continue; const len = R * (a1 - a0) + 0.02;
+    b.add(st, box(len, 1.8, 0.5), x, top - 1.23, z, am); b.add(trim, box(len + 0.04, 0.12, 0.62), x, top + 0.57, z, am); b.add(frost, box(len + 0.05, 0.03, 0.6), x, top + 0.69, z, am); } }
+  // ---- the grand stair ----
+  const v0 = PALE_ROCK.cut + 0.2, v1 = PALE_ROCK.gate - 1.4, LG = 1.8, N = 14, T = (v1 - v0 - LG) / N, rise = (top - (gy + 0.05)) / (N + 2);
+  const foot = gy - 0.7, rockH = (s: number, v: number) => { const [x, z] = G(s * 3.9, v); return heightAt(l.x + x, l.z + z); };
+  type Seg = { a: number; b: number; y: number; land?: boolean };
+  const segs: Seg[] = [{ a: PALE_ROCK.cut - 2.4, b: v0, y: top, land: true }];
+  for (let k = 0; k < 7; k++) segs.push({ a: v0 + k * T, b: v0 + (k + 1) * T, y: top - (k + 1) * rise });
+  segs.push({ a: v0 + 7 * T, b: v0 + 7 * T + LG, y: top - 8 * rise, land: true });
+  for (let k = 0; k < 7; k++) segs.push({ a: v0 + 7 * T + LG + k * T, b: v0 + 7 * T + LG + (k + 1) * T, y: top - (9 + k) * rise });
+  const lantern = (u: number, v: number, y: number) => { const [x, z] = G(u, v);
+    b.add(KEEP_IRON, cyl(0.05, 0.05, 0.5, 6), x, y, z); b.add(KEEP_IRON, box(0.36, 0.05, 0.36), x, y + 0.5, z, face); b.add(KEEP_LAMP, box(0.26, 0.38, 0.26), x, y + 0.55, z, face); b.add(KEEP_IRON, cone(0.27, 0.3, 4), x, y + 0.93, z, face + Math.PI / 4); b.add(FROST_CAP, cone(0.14, 0.1, 4), x, y + 1.13, z, face + Math.PI / 4); };
+  const newel = (s: number, v: number, y: number, lamp: boolean) => { const [x, z] = G(s * (HALF + 0.38), v), h = 1.35;
+    b.add(trim, box(0.95, y + h - foot, 0.95), x, foot, z, face); b.add(trim, box(1.12, 0.16, 1.12), x, y + h, z, face); b.add(FROST_CAP, box(1.13, 0.03, 1.13), x, y + h + 0.16, z, face);
+    if (lamp) lantern(s * (HALF + 0.38), v, y + h + 0.16); else { b.add(trim, new THREE.SphereGeometry(0.3, 10, 6), x, y + h + 0.45, z); b.add(FROST_CAP, new THREE.SphereGeometry(0.31, 10, 4, 0, Math.PI * 2, 0, 1.0), x, y + h + 0.47, z); } };
+  const vase = lathe([[0.12, 0], [0.065, 0.12], [0.06, 0.3], [0.13, 0.48], [0.07, 0.68], [0.1, 0.76]], 6);
+  for (const sg of segs) { const vc = (sg.a + sg.b) / 2, d = sg.b - sg.a, [x, z] = G(0, vc);
+    // tread block from below the meadow to the tread, a dressed nosing, frost in the corners against the walls
+    if (!sg.land || sg.y < top - 0.01) b.add(trim, box(HALF * 2, sg.y - foot, d + 0.01), x, foot, z, face);
+    else b.add(trim, box(HALF * 2, 0.3, d), x, sg.y - 0.3, z, face);
+    if (!sg.land) { const [nx, nz] = G(0, sg.b - 0.05); b.add(st, box(HALF * 2, 0.08, 0.14), nx, sg.y - 0.06, nz, face); }
+    for (const s of [-1, 1]) { const [fx, fz] = G(s * (HALF - 0.3), vc); b.add(frost, box(0.6, 0.015, d - 0.04), fx, sg.y, fz, face); }
+    WALK.push({ x: l.x + x, z: l.z + z, y: sg.y, hw: HALF + 0.05, hd: d / 2 + 0.02, ry: face, cam: true });
+    // the side walls: retaining walls cut into the rock up top, a balustrade on plinths below
+    for (const s of [-1, 1]) { const [wx, wz] = G(s * (HALF + 0.35), vc), rh = Math.max(rockH(s, sg.a), rockH(s, sg.b)), cut = rh > sg.y + 0.4;
+      if (cut) { const wt = Math.max(sg.y + 1.0, rh + 0.35); b.add(st, box(0.7, wt - foot, d + 0.01), wx, foot, wz, face); b.add(trim, box(0.86, 0.14, d + 0.02), wx, wt, wz, face); b.add(frost, box(0.88, 0.03, d + 0.03), wx, wt + 0.14, wz, face); }
+      else { b.add(st, box(0.7, sg.y + 0.22 - foot, d + 0.01), wx, foot, wz, face); b.add(trim, box(0.78, 0.1, d + 0.02), wx, sg.y + 0.22, wz, face);
+        for (let q = 0; q < Math.max(1, Math.round(d / 0.34)); q++) { const [bx, bz] = G(s * (HALF + 0.35), sg.a + (q + 0.5) * d / Math.max(1, Math.round(d / 0.34))); b.add(trim, vase, bx, sg.y + 0.32, bz); }
+        b.add(trim, box(0.5, 0.14, d + 0.02), wx, sg.y + 1.08, wz, face); b.add(frost, box(0.52, 0.03, d + 0.03), wx, sg.y + 1.22, wz, face); }
+      // ivy over the outer face of the stair walls
+      for (let q = 0; q < 2; q++) if (rnd() < 0.55) { const [ix, iz] = G(s * (HALF + 0.78), sg.a + rnd() * d); b.add(ivy, new THREE.IcosahedronGeometry(0.38 + rnd() * 0.25, 0).scale(0.45, 1.3, 1.2), ix, foot + 0.9 + rnd() * (sg.y - foot - 0.4), iz, face); } }
+  }
+  for (let v = PALE_ROCK.cut - 2.2; v <= v1 + 0.05; v += 0.45) for (const s of [-1, 1]) { const [x, z] = G(s * (HALF + 0.72), v); solids.push({ x: l.x + x, z: l.z + z, r: 0.72 }); } // thick and dense: no slipping between
+  // newels: lanterns at the top landing and the stair foot, ball finials at the mid landing
+  for (const s of [-1, 1]) { newel(s, v0 - 0.45, top, true); newel(s, v0 + 7 * T + 0.45, top - 8 * rise, false); newel(s, v0 + 7 * T + LG - 0.45, top - 8 * rise, false); newel(s, v1 - 0.45, gy + 0.05 + rise, true); }
+  // planted terraces either side of the stair foot: two stepped beds with coping, hedge and frosted shrubs
+  for (const s of [-1, 1]) for (const [u0, u1, va, vb, h] of [[3.4, 7.6, 25.7, 30.4, 0.75], [3.4, 5.6, 25.7, 28.2, 1.5]]) {
+    const um = s * (u0 + u1) / 2, vm = (va + vb) / 2, [x, z] = G(um, vm), w = u1 - u0, dd = vb - va, hy0 = gy - 0.4;
+    b.add(st, box(w, gy + h - hy0, dd), x, hy0, z, face); b.add(trim, box(w + 0.16, 0.12, dd + 0.16), x, gy + h, z, face); b.add(leaf, box(w - 0.5, 0.25, dd - 0.5), x, gy + h + 0.02, z, face);
+    for (let k = 0; k < Math.round(w * dd / 4.4); k++) { const [cx, cz] = G(s * (u0 + 0.6 + rnd() * (w - 1.2)), va + 0.6 + rnd() * (dd - 1.2)); const g2 = new THREE.IcosahedronGeometry(0.45 + rnd() * 0.15, 1).scale(1, 0.8, 1); b.add(leaf, g2, cx, gy + h + 0.35, cz); b.add(FROST_CAP, new THREE.SphereGeometry(0.3, 6, 2, 0, Math.PI * 2, 0, 0.9), cx, gy + h + 0.55, cz); }
+    for (let k = 0; k <= 3; k++) { const [cx, cz] = G(um, va + 0.3 + k * (dd - 0.6) / 3); solids.push({ x: l.x + cx, z: l.z + cz, r: w / 2 + 0.2 }); } }
 }
 
 /** M24 · the Wing Gate's gilded figure: a robed body with folds, shoulders, head, raised arms and feathered wings

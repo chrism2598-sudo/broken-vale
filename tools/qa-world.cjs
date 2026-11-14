@@ -45,7 +45,7 @@ const d0=w.day;await p.evaluate(()=>window.__vale.interact());await p.waitForFun
 const st=await p.evaluate(()=>JSON.parse(localStorage.getItem('vale3d-save')));
 ok('rest → morning, new day, saved, records cleared',Math.abs(w.tod-0.27)<0.002&&w.day===d0+1&&Object.keys(w.rk).length===0&&Math.abs(st.tod-0.27)<0.002&&st.day===w.day,{tod:w.tod,day:w.day,saved:{tod:st.tod,day:st.day}});
 // 6 · defeat in the open → nearest fire
-await p.evaluate(()=>window.__vale.setTime(0.97));await p.evaluate(()=>window.__vale.warp(-78,-100));let moved=false;
+await p.evaluate(()=>window.__vale.setTime(0.97));await p.evaluate(()=>window.__vale.warp(-68,-86));let moved=false; /* M25: the n-pale shades moved out past the Wing Gate (-67,-83) */
 for(let i=0;i<60&&!moved;i++){await sim(20);const s=await p.evaluate(()=>window.__vale.camInfo().st);if(Math.hypot(s.px-(-62+1.6),s.pz-(-98+1.6))<0.5)moved=true;}
 w=await W();ok('beaten at night → wake by the nearest fire, HP full',moved&&w.playerHp>=3,{hp:w.playerHp});
 // 7 · reload keeps the clock

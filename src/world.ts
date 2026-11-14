@@ -9,16 +9,21 @@ export const MAP_SCALE = 0.36;
 export function fromMap(mx: number, my: number): { x: number; z: number } {
   return { x: WAYFINDER.x + (mx - 360) * MAP_SCALE, z: WAYFINDER.z + (my - 420) * MAP_SCALE };
 }
-export type Landmark = { id: string; name: string; x: number; z: number; r: number; pad: number };
-const L = (id: string, name: string, mx: number, my: number, r: number, pad: number): Landmark => ({ id, name, ...fromMap(mx, my), r, pad });
+/** pad = the floor the landmark stands on; base (M25, Pale only) = the meadow level round a raised castle rock. */
+export type Landmark = { id: string; name: string; x: number; z: number; r: number; pad: number; base?: number };
+const L = (id: string, name: string, mx: number, my: number, r: number, pad: number, base?: number): Landmark => ({ id, name, ...fromMap(mx, my), r, pad, base });
 /** Landmarks at their Page positions (map units → metres). r = footprint radius used to level the ground. */
 export const LANDMARKS: Landmark[] = [
-  L('pale', 'Pale Keep', 95, 70, 30, 1.2),
+  L('pale', 'Pale Keep', 95, 70, 30, 5.6, 1.2), // M25: the keep stands on a 4.4 m castle rock above the meadow
   L('azure', 'Azure Keep', 550, 70, 30, 1.2),
   L('sunspire', 'Sunspire', 95, 660, 28, 0.8),
   L('dome', 'Iron Dome', 480, 665, 24, 0.6),
   L('veilfall', 'Veilfall', 60, 200, 26, 0.4),
 ];
+/** M25 · Pale Keep's castle rock: flat top to `in`, cliff down to the meadow by `out` (clear of Enna's stair at 25.5 m);
+ *  the grand stair's corridor (|u| < half, v > cut along the gate axis) is cut down to the meadow under the steps. */
+const PALE_F = Math.atan2(SPAWN.x - LANDMARKS[0].x, SPAWN.z - LANDMARKS[0].z);
+export const PALE_ROCK = { in: 22.6, out: 25.3, half: 3.25, cut: 20.6, gate: 33, sf: Math.sin(PALE_F), cf: Math.cos(PALE_F), face: PALE_F };
 export type SealDef = { id: string; name: string; short: string; color: string; x: number; z: number; at: string };
 const S = (id: string, name: string, short: string, color: string, mx: number, my: number, at: string): SealDef => ({ id, name, short, color, ...fromMap(mx, my), at });
 /** The four seals (Page makeItems positions). */
@@ -135,7 +140,11 @@ function baseHeight0(x: number, z: number): number {
   h -= 1.9 * (1 - smoothstep(half * 0.55, half + 3.2, dc));
   h -= 0.07 * pathMask(x, z);
   // Level the ground under each landmark (and its seal plinth).
-  for (const l of LANDMARKS) { const d = Math.hypot(x - l.x, z - l.z); if (d < l.r * 1.4) h += (l.pad - h) * (1 - smoothstep(l.r * 0.85, l.r * 1.4, d)); }
+  for (const l of LANDMARKS) { const d = Math.hypot(x - l.x, z - l.z); if (d < l.r * 1.4) h += ((l.base ?? l.pad) - h) * (1 - smoothstep(l.r * 0.85, l.r * 1.4, d)); }
+  { const l = LANDMARKS[0], dx = x - l.x, dz = z - l.z, d = Math.hypot(dx, dz); // M25 · Pale Keep's castle rock, with the grand stair's cut
+    if (d < PALE_ROCK.out) { const v = dx * PALE_ROCK.sf + dz * PALE_ROCK.cf, u = dx * PALE_ROCK.cf - dz * PALE_ROCK.sf;
+      const cut = v > PALE_ROCK.cut ? 1 - smoothstep(PALE_ROCK.half - 0.4, PALE_ROCK.half, Math.abs(u)) : 0;
+      h += (l.pad - l.base!) * (1 - smoothstep(PALE_ROCK.in, PALE_ROCK.out, d)) * (1 - cut); } }
   for (const sd of SEALS) { const d = Math.hypot(x - sd.x, z - sd.z); if (d < 7) h += (Math.max(h, 0.3) - h) * (1 - smoothstep(3, 7, d)); }
   return h;
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, creekX, creekHalf, pathX, TRAIL, PATH_BEND, TRACK, STREAM, POOL, type P2 } from './world';
+import { heightAt, creekX, creekHalf, pathX, TRAIL, PATH_BEND, TRACK, WORN, STREAM, POOL, type P2 } from './world';
 
 const B = PATH_BEND, f3 = (v: number) => v.toFixed(3);
 /** M26 · GLSL distance to a polyline (track / stream). */
@@ -35,6 +35,7 @@ float creekHalf(float z){return 2.6+.9*sin(z/13.+2.1)+.5*sin(z/5.3);}
 float pathX0(float z){float t=max(0.,-z);return 1.2*sin(z/9.)*smoothstep(0.,10.,t)-.0105*t*t-.25*t;}
 float pathX(float z){float t=max(0.,-z);if(t<=${f3(B.t0)})return pathX0(z);float u=min(1.,(t-${f3(B.t0)})/${f3(B.L)}),u2=u*u,u3=u2*u;return (2.*u3-3.*u2+1.)*${f3(B.x0)}+(u3-2.*u2+u)*${f3(B.L * B.m0)}+(-2.*u3+3.*u2)*${f3(B.x1)}+(u3-u2)*${f3(B.L * B.m1)}+max(0.,t-${f3(B.t0 + B.L)})*${f3(B.m1)};}
 ${polyD('trackD', TRACK)}
+${polyD('wornD', WORN)}
 ${polyD('streamD', STREAM)}
 float pathM(vec2 p){if(p.y>22.)return 0.;float d=abs(p.x-pathX(p.y));float w=1.25+.35*sin(p.y*.37)+(p.y< -40.?.4:0.);w*=.85+.3*vn(p*.6);
  w*=.85+.35*vn(p*.35); return (1.-smoothstep(w*.3,w*1.6,d))*smoothstep(26.,16.,p.y)*(p.y< -92.?smoothstep(-100.,-92.,p.y):1.);}
@@ -45,7 +46,7 @@ vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
       .replace('#include <map_fragment>', `
 { vec2 p=vWP.xz; float slope=1.-clamp(vWN.y,0.,1.);
   float dc=abs(p.x-creekX(p.y)); float bed=1.-smoothstep(creekHalf(p.y)*.9,creekHalf(p.y)+1.6,dc); bed=max(bed,max(1.-smoothstep(1.1,2.6,streamD(p)),1.-smoothstep(${f3(POOL.r - 0.3)},${f3(POOL.r + 1.6)},length(p-vec2(${f3(POOL.x)},${f3(POOL.z)})))));
-  float tm=trailM(p); float pm=max(max(pathM(p),tm),(1.-smoothstep(.75+.25*vn(p*.7),1.8,trackD(p)))*.9); // M26: the quarry track // M22b: a hard packed cut, not a soft dirt tint
+  float tm=trailM(p); float pm=max(max(pathM(p),tm),max((1.-smoothstep(.75+.25*vn(p*.7),1.8,trackD(p)))*.9,(1.-smoothstep(.4+.2*vn(p*1.3),1.1,wornD(p)))*.75)); // M26: the quarry track // M22b: a hard packed cut, not a soft dirt tint
   float alt=vWP.y; float macro=vn(p*.011), macro2=vn(p*.043+3.1);
   float rock=smoothstep(.2,.42,slope+.14*(macro2-.5)+smoothstep(18.,45.,alt)*.22*(.6+.8*macro));
   float n=vn(p*.08);

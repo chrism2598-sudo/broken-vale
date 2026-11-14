@@ -37,7 +37,9 @@ export function lineDist(pts: P2[], x: number, z: number): number {
   let bd = 1e9; for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz, u = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / l2)); bd = Math.min(bd, Math.hypot(x - a.x - dx * u, z - a.z - dz * u)); } return bd;
 }
 /** 0..1 packed earth on the quarry track. */
-export function trackMask(x: number, z: number): number { if (x < -40 || x > 6 || z < 4 || z > 56) return 0; return 1 - smoothstep(0.85, 1.9, lineDist(TRACK, x, z)); }
+/** M27 · the worn footpath from the ridge-stair head over the crest (narrower than the track). */
+export const WORN: P2[] = [{ x: -34, z: 62.6 }, { x: -34.5, z: 67 }, { x: -35.8, z: 72 }, { x: -37.8, z: 77.5 }];
+export function trackMask(x: number, z: number): number { if (x < -42 || x > 6 || z < 4 || z > 80) return 0; return Math.max(z > 56 ? 0 : 1 - smoothstep(0.85, 1.9, lineDist(TRACK, x, z)), 0.85 * (1 - smoothstep(0.45, 1.15, lineDist(WORN, x, z)))); }
 /** True on open water of the quarry stream or pool (wading). */
 export function inStream(x: number, z: number): boolean { if (x < -52 || x > -12 || z < 36 || z > 55) return false; return lineDist(STREAM, x, z) < 1.4 || Math.hypot(x - POOL.x, z - POOL.z) < POOL.r; }
 /** M26 · the wandering orchard: old apple trees in rows that drift and break, either side of the quarry track (main.ts plants them). */

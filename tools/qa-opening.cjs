@@ -23,5 +23,19 @@ t=await run(-42.5,-53.2,-61.7,-65.2,420);const mid=t.filter(s=>Math.hypot(s[0]+5
 ok('cross the bridge end to end',Math.min(...t.map(s=>s[1]))<-63.5,{last:t[t.length-1]});
 ok('bridge deck holds the walker above the water',mid.length>0&&mid.every(s=>s[2]>0.25),{mid});
 ok('bridge: no big vertical jumps',jumps(t)<0.9,{max:jumps(t)});
+// 4 · Ress at the stair head: one-time talk (5 verbatim lines, rope + fish weight), saved; idle line after; no coast-only line; sq.ress untouched
+const R=await p.evaluate(()=>window.__vale.quest().ress);
+const talk=async()=>{await p.evaluate((x,z)=>{window.__vale.warp(x,z);window.__vale.sim(Array(6).fill(1/30),0,0);},R.x,R.z-1.6);const near=await p.evaluate(()=>window.__vale.quest().near);await p.evaluate(()=>window.__vale.interact());const got=[];for(let i=0;i<12;i++){const q=await p.evaluate(()=>window.__vale.quest());if(!q.talking)break;got.push(q.dlg);await p.evaluate(()=>window.__vale.advance());}return {near,got};};
+const sq0=await p.evaluate(()=>JSON.stringify(window.__vale.quest().save.sq||{}));
+let tk=await talk();const sv=await p.evaluate(()=>window.__vale.quest().save);
+const want=['I resoled her boots. Ress.','I guessed. You’ve got her chin.','Quarrymen used the north shelf','Tie the rope to it.','Don’t thank me yet.'];
+ok('Ress at the stair head offers a talk',tk.near==='Talk · Ress',{near:tk.near,R});
+ok('her five lines in order, verbatim',tk.got.length===5&&want.every((w,i)=>tk.got[i].includes(w)),tk.got);
+ok('coast-only line never at the stair',!tk.got.some(l=>/never paid me to follow her map/.test(l)),{});
+ok('talk saved once with the rope and fish weight',sv.ressStair===1&&(sv.kit||[]).includes('rope-12yd')&&(sv.kit||[]).includes('fish-weight'),{ressStair:sv.ressStair,kit:sv.kit});
+ok('coast Ress tale untouched',JSON.stringify(sv.sq||{})===sq0,{sq:sv.sq});
+await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(1000);
+tk=await talk();ok('after reload: one idle line only',tk.got.length===1&&/Hold still, .+\. That heel is arguing with the road\./.test(tk.got[0]),tk.got);
+const ressPos=await p.evaluate(()=>window.__vale.quest().ress);ok('Ress stays at the stair',Math.hypot(ressPos.x-R.x,ressPos.z-R.z)<0.01,ressPos);
 ok('no page errors',errs.length===0,errs.slice(0,3));
 console.log(fails?`QA-OPENING FAIL ${fails}`:'QA-OPENING ALL PASS');await b.close();process.exit(fails?1:0);})().catch(e=>{console.error(e);process.exit(2);});

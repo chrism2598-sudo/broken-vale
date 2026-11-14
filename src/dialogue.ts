@@ -29,6 +29,17 @@ export const LINES = {
   // Canon lines for upcoming NPCs.
   sefa: { meet: '{name} Marr? You have Enna’s way of listening with your whole face.' },
   ress: { steady: 'Hold still, {name}.' },
+  // M27 · Author canon: Ress at the head of the broken ridge stair (opening). Verbatim; the coast-only line never plays here.
+  ressStair: {
+    meet: [
+      'I resoled her boots. Ress. If you’re going to have a complaint.',
+      'I guessed. You’ve got her chin. She said she’d be back for winter soles.',
+      'Quarrymen used the north shelf when the stair iced. There’s a water cut halfway along. The plank went with the slide.',
+      'Tie the rope to it. Wedge it in a crack. Hit somebody if you have to. It’s paid for. Your mother left a copper over.',
+      'Don’t thank me yet. I haven’t seen you get down.',
+    ],
+    idle: 'Hold still, {name}. That heel is arguing with the road.',
+  },
 } as const;
 
 export function say(speaker: string, line: string, p: Profile): string {

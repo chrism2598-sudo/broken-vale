@@ -667,10 +667,9 @@ function brokenFoamTex(): THREE.Texture {
 function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update: (time: number) => void } {
   const b = new Builder(); let sd = 77; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
   const hewn = triplanar(t.rock, 2.2, '#b5ab9a', { sat: 0.35, gain: 1.7, rough: 0.92 });
-  const sawn = triplanar(t.sand, 2.6, '#d2c7b0', { sat: 0.3, gain: 1.7, rough: 0.9, emissive: '#1d1a15' }); // north-facing: lifted a little so the cut reads in shade
-  const bark = new THREE.MeshStandardMaterial({ color: '#5b4a3a', roughness: 0.95 });
   const fruitR = new THREE.MeshStandardMaterial({ color: '#b8352a', roughness: 0.5 }), fruitY = new THREE.MeshStandardMaterial({ color: '#d4b23c', roughness: 0.5 });
   const wood = new THREE.MeshStandardMaterial({ color: '#6a5139', roughness: 0.9 });
+  const nose = triplanar(t.rock, 1.8, '#e6dece', { sat: 0.3, gain: 1.85, rough: 0.85, emissive: '#1a1813' }), drill = new THREE.MeshStandardMaterial({ color: '#4a4436', roughness: 1 });
   const update: ((time: number) => void)[] = [];
   // ---- the ridge stair: up the north face of the ridge (south out of the meadow) ----
   { const x = RSTAIR.x, yb = heightAt(x, RSTAIR.z0 - 0.3), yt = heightAt(x, RSTAIR.z1 + 0.3), N = Math.max(8, Math.round((yt - yb) / 0.27)), T = (RSTAIR.z1 - RSTAIR.z0) / N, foot = yb - 0.6;
@@ -678,22 +677,48 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
       const top = Math.max(yb + (k + 1) * (yt - yb) / N, ground + 0.04), w = RSTAIR.half * 2 - 0.1 + (rnd() - 0.5) * 0.25;
       b.add(hewn, box(w, top - foot, T + 0.06), x + (rnd() - 0.5) * 0.12, foot, (z0 + z1) / 2, (rnd() - 0.5) * 0.04);
       WALK.push({ x, z: (z0 + z1) / 2, y: top, hw: RSTAIR.half, hd: T / 2 + 0.01, ry: 0, cam: true });
+      b.add(nose, box(w - 0.08, 0.06, 0.16), x, top - 0.035, z0 + 0.08); b.add(drill, box(w - 0.1, Math.min(0.2, top - foot - 0.1), 0.03), x, top - 0.26, z0 - 0.025); // M27: a pale worn nosing over a shadowed riser line
       if (k % 2 === 0) for (const s of [-1, 1]) { const gx = x + s * (RSTAIR.half + 0.35); b.add(hewn, new THREE.DodecahedronGeometry(0.42 + rnd() * 0.18, 0).scale(1, 0.75, 1.2), gx, heightAt(gx, z0) + 0.12, z0 + rnd() * T, rnd() * 3); } }
+    // M27 · a waymark cairn at the stair head, readable from the meadow
+    { const cx = x - RSTAIR.half - 1.3, cz = RSTAIR.z1 + 0.6; let cy = heightAt(cx, cz) - 0.05; for (let k = 0; k < 7; k++) { const r = 0.55 - k * 0.06, hh = 0.26 - k * 0.012; b.add(nose, new THREE.DodecahedronGeometry(r, 0).scale(1, hh / r, 1.1), cx + (rnd() - 0.5) * 0.1, cy + hh * 0.8, cz + (rnd() - 0.5) * 0.1, rnd() * 3); cy += hh * 1.5; } solids.push({ x: cx, z: cz, r: 0.6 }); }
     // a waymark post at the foot and the top
     for (const [zz, yy] of [[RSTAIR.z0 - 1.0, yb], [RSTAIR.z1 + 0.9, yt]]) { b.add(wood, box(0.22, 1.5, 0.22), x + RSTAIR.half + 0.5, yy - 0.1, zz); b.add(wood, box(0.7, 0.18, 0.08), x + RSTAIR.half + 0.62, yy + 1.15, zz, 0.15); } }
   // ---- the quarry: three benches of sawn stone stepping back into the ridge face, the water-cut falls down a notch ----
   const yf = heightAt(POOL.x, POOL.z + POOL.r + 0.6), QX = (QUARRY.x0 + QUARRY.x1) / 2, QW = QUARRY.x1 - QUARRY.x0, BENCH = 3;
   const benchTop: number[] = [], benchFront: number[] = [];
+  // M27 · weathered quarry stone: moss on the tops and creeping down the joints, lichen blots, rain streaks, chisel striations,
+  // and damp darkening (glossier) close to the water-cut and the pool. Per pixel, so no extra geometry.
+  const weather = (m: THREE.MeshStandardMaterial, wetX: number): THREE.MeshStandardMaterial => { const prev = m.onBeforeCompile; m.onBeforeCompile = (sh, r) => { prev.call(m, sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  { vec3 n = normalize(vTN); float up = smoothstep(.5, .88, n.y), side = 1. - up;
+    float mn = tVn(vTW.xz * 1.6) * .6 + tVn(vTW.xz * 5.1) * .4;
+    float moss = up * smoothstep(.4, .64, mn) + side * smoothstep(.66, .82, tVn(vec2(vTW.x + vTW.z, vTW.y) * 2.4)) * .7;
+    float lich = side * smoothstep(.8, .86, tVn(vTW.xy * 6.3 + vTW.zy * 5.7));
+    float streak = side * smoothstep(.45, .85, tVn(vec2((vTW.x + vTW.z) * 5.5, vTW.y * .35)));
+    float chis = side * (.5 + .5 * sin((vTW.x + vTW.z) * 31. + vTW.y * 23. + tVn(vTW.xy * 3.) * 4.)) * smoothstep(.35, .7, tVn(vTW.zy * 1.3 + vTW.xy * 1.1));
+    float wet = max(1. - smoothstep(.7, 2.6, abs(vTW.x - (${wetX.toFixed(2)}))), 1. - smoothstep(.0, 1.3, vTW.y - (${(WATER_Y).toFixed(2)})));
+    vec3 mc = mix(vec3(.2, .3, .1), vec3(.36, .42, .16), tVn(vTW.xz * 9.));
+    diffuseColor.rgb *= 1. - .18 * streak - .1 * chis;
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.74, .73, .52), lich * .55);
+    diffuseColor.rgb = mix(diffuseColor.rgb, mc, clamp(moss * (1. + .6 * wet), 0., 1.));
+    diffuseColor.rgb *= 1. - .48 * wet; roughnessFactor = mix(roughnessFactor, .22, wet * .85); }`); }; return m; };
+  const qstone = weather(triplanar(t.rock, 2.4, '#c4b8a0', { sat: 0.4, gain: 1.65, rough: 0.9, emissive: '#16140f' }), QX);
   for (let k = 0; k < BENCH; k++) { const zf = POOL.z + POOL.r + 0.5 + k * 2.1, yTop = yf + 0.6 + (k + 1) * 1.75; benchTop.push(yTop); benchFront.push(zf);
     const notch = 1.4; // the water-cut: a notch down the middle of each bench
-    for (const side of [-1, 1]) { const w = QW / 2 - notch / 2 - k * 0.6, cx = QX + side * (notch / 2 + w / 2);
-      b.add(sawn, box(w, yTop - (yf - 1.2), 64 - zf), cx, yf - 1.2, (zf + 64) / 2);
-      for (let r = 0; r < 3; r++) b.add(sawn, box(w + 0.02, 0.05, 0.04), cx, yTop - 0.55 - r * 0.58, zf - 0.01); // sawn courses on the face
-      for (let c = 1; c < Math.floor(w / 1.6); c++) b.add(sawn, box(0.05, yTop - yf - 0.6, 0.04), cx - w / 2 + c * w / Math.floor(w / 1.6), yf + 0.6, zf - 0.01); }
-    b.add(hewn, box(notch + 0.1, yTop - 0.35 - (yf - 1.2), 64 - zf), QX, yf - 1.2, (zf + 64) / 2); // the notch floor, worn lower
-    for (let i = 0; i < 4; i++) b.add(sawn, box(0.9 + rnd() * 0.6, 0.6 + rnd() * 0.4, 0.8 + rnd() * 0.4), QUARRY.x0 + 0.8 + rnd() * (QW - 1.6), yTop - 0.1, zf + 0.6 + rnd() * 1.0, rnd()); }
+    for (const side of [-1, 1]) { const w = QW / 2 - notch / 2 - k * 0.6, x0 = QX + side * notch / 2, x1 = QX + side * (notch / 2 + w), back = k + 1 < BENCH ? POOL.z + POOL.r + 0.5 + (k + 1) * 2.1 + 0.3 : 64;
+      b.add(qstone, box(w, yTop - 0.25 - (yf - 1.2), 64 - zf - 0.9), (x0 + x1) / 2, yf - 1.2, (zf + 0.9 + 64) / 2); // the core behind the face blocks
+      // the face: courses of sawn blocks of varied length and height, a little proud or sunk, one or two pulled out
+      let yc = yf - 1.2; const courses: number[] = []; while (yc < yTop - 0.3) { const hh = Math.min(0.5 + rnd() * 0.45, yTop - yc); courses.push(hh); yc += hh; } courses[courses.length - 1] += yTop - yc;
+      yc = yf - 1.2; courses.forEach((hh, ci) => { let xc = Math.min(x0, x1); const xe = Math.max(x0, x1); while (xc < xe - 0.05) { const L = Math.min(0.7 + rnd() * 1.3, xe - xc); const out = (rnd() - 0.5) * 0.12, gone = ci === courses.length - 1 && rnd() < 0.18;
+          if (!gone) { const top = ci === courses.length - 1 ? hh - 0.04 - rnd() * 0.12 : hh - 0.025; b.add(qstone, box(L - 0.035, top, 1.0 + rnd() * 0.25), xc + L / 2, yc, zf + 0.5 - out + 0.02, (rnd() - 0.5) * 0.03); }
+          else b.add(qstone, new THREE.DodecahedronGeometry(0.28, 0).scale(1.3, 0.7, 1), xc + L / 2, yc + 0.12, zf + 0.25, rnd() * 3);
+          if (rnd() < 0.3 && L > 0.9) for (let d = 0.2; d < L - 0.1; d += 0.24) b.add(drill, cyl(0.028, 0.028, Math.min(0.75, hh), 5), xc + d, yc + Math.max(0, hh - 0.75), zf - out + 0.02); // half-drill (plug-and-feather) marks
+          xc += L; } yc += hh; });
+      void back; }
+    b.add(qstone, box(notch + 0.1, yTop - 0.35 - (yf - 1.2), 64 - zf), QX, yf - 1.2, (zf + 64) / 2); // the notch floor, worn lower
+    for (let i = 0; i < 5; i++) { const s2 = 0.35 + rnd() * 0.75; b.add(qstone, box(s2 * (1.2 + rnd()), s2 * 0.8, s2 * (1 + rnd() * 0.5)), QUARRY.x0 + 0.8 + rnd() * (QW - 1.6), yTop - 0.08, zf + 0.6 + rnd() * 1.0, rnd()); } }
   // loose cut blocks and a timber hoist on the quarry floor
-  for (let i = 0; i < 6; i++) { const bx = QUARRY.x0 - 1.5 + rnd() * (QW + 3), bz = POOL.z - 3 - rnd() * 3; if (Math.hypot(bx - POOL.x, bz - POOL.z) < POOL.r + 1.8) continue; b.add(sawn, box(1.0 + rnd() * 0.7, 0.55 + rnd() * 0.5, 0.8 + rnd() * 0.5), bx, heightAt(bx, bz) - 0.1, bz, rnd() * 3); solids.push({ x: bx, z: bz, r: 0.75 }); }
+  for (let i = 0; i < 6; i++) { const bx = QUARRY.x0 - 1.5 + rnd() * (QW + 3), bz = POOL.z - 3 - rnd() * 3; if (Math.hypot(bx - POOL.x, bz - POOL.z) < POOL.r + 1.8) continue; b.add(qstone, box(1.0 + rnd() * 0.7, 0.55 + rnd() * 0.5, 0.8 + rnd() * 0.5), bx, heightAt(bx, bz) - 0.1, bz, rnd() * 3); solids.push({ x: bx, z: bz, r: 0.75 }); }
   { const hx = QUARRY.x1 - 1.2, hz = POOL.z + 1.8, hy = heightAt(hx, hz); for (const dx of [-0.9, 0.9]) b.add(wood, box(0.22, 4.2, 0.22), hx + dx, hy - 0.2, hz); b.add(wood, box(2.4, 0.22, 0.22), hx, hy + 3.9, hz); b.add(wood, box(0.22, 0.22, 2.6), hx, hy + 3.7, hz - 1.0);
     b.add(KEEP_IRON, cyl(0.02, 0.02, 2.2, 4), hx, hy + 1.5, hz - 2.2); solids.push({ x: hx - 0.9, z: hz, r: 0.35 }, { x: hx + 0.9, z: hz, r: 0.35 }); }
   { const topAt = (z: number, notch: boolean) => { let y = -9; for (let k = 0; k < BENCH; k++) if (z >= benchFront[k]) y = Math.max(y, benchTop[k] - (notch ? 0.35 : 0)); return y; };
@@ -707,13 +732,34 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
       float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
       void main(){float s=n(vec2(vUv.x*9.,vUv.y*3.+uTime*3.2))*.55+n(vec2(vUv.x*21.,vUv.y*7.+uTime*4.1))*.45;
         float edge=smoothstep(0.,.25,vUv.x)*smoothstep(1.,.75,vUv.x);float thin=.55+.45*n(vec2(vUv.x*5.,uTime*.7));
-        gl_FragColor=vec4(mix(vec3(.55,.72,.76),vec3(.97,.99,1.),s),edge*thin*(.45+.5*s));}` });
+        float streaks=n(vec2(vUv.x*34.,vUv.y*1.2+uTime*5.));float foot=smoothstep(.22,0.,vUv.y);
+        vec3 c=mix(vec3(.62,.78,.82),vec3(1.),clamp(s*.8+streaks*.45+foot*.6,0.,1.));
+        gl_FragColor=vec4(c,clamp(edge*(.6+.4*thin)*(.62+.38*s+.25*streaks)+foot*.3*edge,0.,.96));}` });
   const foamMat = new THREE.MeshBasicMaterial({ color: '#f4fbff', map: brokenFoamTex(), transparent: true, opacity: 0.75, depthWrite: false });
   const lips = benchTop.map((y, k) => ({ y: y - 0.35, z: benchFront[k] })).reverse(); // from the top bench down
   for (let i = 0; i < lips.length; i++) { const top = lips[i], botY = i + 1 < lips.length ? lips[i + 1].y : WATER_Y + 0.02, h = top.y - botY + 0.15;
-    const g = new THREE.PlaneGeometry(1.5, h, 1, 4); const fp = g.attributes.position; for (let j = 0; j < fp.count; j++) { const yy = fp.getY(j); fp.setZ(j, -Math.pow((h / 2 - yy) / h, 2) * 0.55); }
+    const g = new THREE.PlaneGeometry(1.95, h, 1, 6); const fp = g.attributes.position; for (let j = 0; j < fp.count; j++) { const yy = fp.getY(j); fp.setZ(j, -Math.pow((h / 2 - yy) / h, 2) * 0.55); }
     const m = new THREE.Mesh(g, fallMat); m.position.set(QX, botY + h / 2, top.z - 0.08); m.rotation.y = Math.PI; m.renderOrder = 2; b.extra.push(m);
     const f = new THREE.Mesh(new THREE.CircleGeometry(i + 1 < lips.length ? 0.75 : 1.6, 16).rotateX(-Math.PI / 2), foamMat); f.position.set(QX, botY + 0.03, top.z - (i + 1 < lips.length ? 0.6 : 0.9)); b.extra.push(f); }
+  // M27 · spray and mist at the pool, wet rocks, ferns in the damp, rubble at the bench feet
+  { const mistTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,0.85)'); g.addColorStop(0.45, 'rgba(255,255,255,0.35)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+    const fz = benchFront[0] - 0.9, mists: { s: THREE.Sprite; a: number; r: number; y0: number }[] = [];
+    for (let i = 0; i < 6; i++) { const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: mistTex, color: '#eef6f8', transparent: true, opacity: 0.32, depthWrite: false })); const a = rnd() * 6.28, r = 0.4 + rnd() * 1.2, y0 = WATER_Y + 0.35 + rnd() * 0.8; m.position.set(QX + Math.sin(a) * r, y0, fz + Math.cos(a) * r * 0.7); m.scale.setScalar(1.6 + rnd() * 1.4); m.renderOrder = 3; b.extra.push(m); mists.push({ s: m, a, r, y0 }); }
+    const N = 70, sp = new Float32Array(N * 3), seed = new Float32Array(N); for (let i = 0; i < N; i++) seed[i] = rnd();
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+    const spray = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#f6fbff', size: 0.09, transparent: true, opacity: 0.8, depthWrite: false })); spray.frustumCulled = false; b.extra.push(spray);
+    update.push((time) => { for (let i = 0; i < N; i++) { const ph = (time * 0.9 + seed[i] * 7) % 1, a = seed[i] * 40; sp[i * 3] = QX + Math.sin(a) * (0.3 + ph * 1.1); sp[i * 3 + 1] = WATER_Y + 0.1 + Math.sin(ph * Math.PI) * (0.5 + seed[i] * 0.6); sp[i * 3 + 2] = fz + Math.cos(a) * (0.2 + ph * 0.8); } sg.attributes.position.needsUpdate = true;
+      for (const m of mists) { m.s.position.y = m.y0 + Math.sin(time * 0.5 + m.a) * 0.15; m.s.position.x = QX + Math.sin(m.a + time * 0.12) * m.r; (m.s.material as THREE.SpriteMaterial).opacity = 0.22 + 0.12 * Math.sin(time * 0.7 + m.a * 3); } });
+    const wetRock = new THREE.MeshStandardMaterial({ color: '#4e4a42', roughness: 0.28, metalness: 0.05 });
+    for (let i = 0; i < 13; i++) { const a = rnd() * 6.28, r = POOL.r - 0.3 + rnd() * 1.1, x = POOL.x + Math.sin(a) * r, z = POOL.z + Math.cos(a) * r; if (z > benchFront[0] - 0.2) continue; const sz = 0.25 + rnd() * 0.45; b.add(wetRock, new THREE.DodecahedronGeometry(sz, 1).scale(1.2, 0.6 + rnd() * 0.3, 1), x, Math.max(heightAt(x, z), WATER_Y - 0.1), z, rnd() * 3); }
+    for (let i = 0; i < 4; i++) { const x = QX + (rnd() - 0.5) * 1.2, z = benchFront[0] - 0.4 - rnd() * 0.6; b.add(wetRock, new THREE.DodecahedronGeometry(0.3 + rnd() * 0.25, 1).scale(1.1, 0.55, 1), x, WATER_Y - 0.05, z, rnd() * 3); }
+    // ferns: arched fronds (tapered strips) in a rosette
+    const fern = (() => { const parts: THREE.BufferGeometry[] = []; for (let f = 0; f < 9; f++) { const g = new THREE.PlaneGeometry(0.16, 0.85, 1, 5); const p = g.attributes.position; for (let j = 0; j < p.count; j++) { const v = (p.getY(j) + 0.425) / 0.85; p.setX(j, p.getX(j) * (1 - v * 0.85)); p.setY(j, v * 0.62); p.setZ(j, v * v * 0.5); } g.rotateY(f / 9 * 6.28 + (f % 2) * 0.3); parts.push(g); } return mergeGeometries(parts)!; })();
+    const fernMat = new THREE.MeshStandardMaterial({ color: '#4d7a2e', roughness: 0.8, side: THREE.DoubleSide });
+    const fernAt: [number, number][] = []; for (let i = 0; i < 40 && fernAt.length < 16; i++) { const x = QUARRY.x0 - 1.2 + rnd() * (QW + 2.4), z = POOL.z - 3.5 + rnd() * 4.2; if (Math.hypot(x - POOL.x, z - POOL.z) < POOL.r + 0.2 || lineDist(STREAM, x, z) < 1.2 || lineDist(TRACK, x, z) < 1.3) continue; fernAt.push([x, z]); }
+    for (let k = 0; k < BENCH; k++) for (const sd2 of [-1, 1]) fernAt.push([QX + sd2 * (1.0 + rnd() * 0.5), benchFront[k] + 0.25]);
+    fernAt.forEach(([x, z], i) => { const top = z > benchFront[0] ? benchTop[benchFront.findIndex((f, k) => z < (benchFront[k + 1] ?? 99) && z >= f)] - 0.06 : heightAt(x, z); const g = fern.clone().scale(0.8 + (i % 3) * 0.2, 0.8 + (i % 4) * 0.15, 0.8 + (i % 3) * 0.2); b.add(fernMat, g, x, top, z, i); });
+    for (let i = 0; i < 22; i++) { const x = QUARRY.x0 - 1 + rnd() * (QW + 2), z = POOL.z - 1 - rnd() * 5.5; if (Math.hypot(x - POOL.x, z - POOL.z) < POOL.r + 0.3 || lineDist(TRACK, x, z) < 1.1) continue; const s2 = 0.12 + rnd() * 0.22; b.add(qstone, new THREE.DodecahedronGeometry(s2, 0).scale(1.3, 0.6, 1), x, heightAt(x, z) + s2 * 0.2, z, rnd() * 3); } }
   // the runnel on the ridge top that feeds the falls
   { const zt = benchFront[BENCH - 1] + 0.3; for (let k = 0; k < 7; k++) { const z = zt + k * 1.4, x = QX + Math.sin(k * 0.9) * 0.6; b.add(hewn, new THREE.DodecahedronGeometry(0.35, 0).scale(1.2, 0.5, 1), x - 0.9, heightAt(x - 0.9, z) + 0.05, z, k); b.add(hewn, new THREE.DodecahedronGeometry(0.35, 0).scale(1.2, 0.5, 1), x + 0.9, heightAt(x + 0.9, z) + 0.05, z, k + 1); } }
   update.push((time) => { fallMat.uniforms.uTime.value = time; });

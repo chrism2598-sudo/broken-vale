@@ -37,7 +37,7 @@ import { DAY_LEN, MORNING, skyAt, clockText, makeNightSky } from './daynight';
 import { makeRoam, FIRES } from './roam';
 import { GameAudio, type Region, type Surface } from './audio';
 import { ENNA_LINES, ENNA_NAME, LAMP_XP, LAMP_TOAST, FINAL_TITLE, FINAL_KICKER, FINAL_LINES, FINAL_REWARD, finalStats, CREDITS, sefaLines, dovLines, ressLines, nextUncharted } from './finale';
-import { trackMask, openingBusy, STREAM, POOL, ORCHARD, HAZEL } from './world';
+import { trackMask, openingBusy, STREAM, POOL, ORCHARD, HAZEL, RSTAIR } from './world';
 import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, trailMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep, OUTPOSTS, outpostPad, onTrail, trailAt } from './world';
 import { makeOutposts, STANDS, standY, standPush, inStand, O as OP, type Loc } from './outposts';
 import { makeBarrow, BAR_O, type Barrow } from './barrow';
@@ -205,7 +205,22 @@ async function main() {
   const sefa = makeCharacter(npcFG, 1.62 / 1.877, { Skin: '#c98d64', LightBrown: '#c9a24a', DarkBrown: '#2a2230', Black: '#3a2f2a', Brown: '#4b3b66', White: '#d9d4cc', Gold: '#d9b35c', Metal: '#c5d0d4' }, ['Sword']);
   const dov = makeCharacter(wayG, 1.70 / 1.903, { Metal: '#4a4540', Metal_Dark: '#2a2622', Blue: '#6a3b22', Beige: '#8f7a5a', Hair_White: '#8c8580', DarkBrown: '#2a1f18' }, ['mat:Gold']);
   const ennaV = makeCharacter(npcFG, 1.68 / 1.877, ENNA_COL, ['Sword']); dressEnna(ennaV.root);
-  const valeNpcs = [sefa, dov, ennaV].map((c, i) => { const p = [SEFA, DOV, ENNA_V][i]; c.root.position.set(p.x, heightAt(p.x, p.z), p.z); c.root.rotation.y = Math.atan2(SPAWN.x - p.x, SPAWN.z - p.z); scene.add(c.root); const solid = { x: p.x, z: p.z, r: 0.7 }; SOLIDS.push(solid); return { c, p, solid }; });
+  // M27 · Ress at the head of the broken ridge stair (opening, Author canon): the coast Ress's model, her crowbar, red purse and barrow. She stays put.
+  const RESS_S = { x: RSTAIR.x + RSTAIR.half + 0.95, z: RSTAIR.z1 - 0.2 };
+  const ressV = makeCharacter(npcMG, 1.78 / 1.866, { Skin: '#b07a55', Purple: '#2f4a44', LightBlue: '#c7a25a', 'Casual_Legs/Skin': '#3a2c22', White: '#5a4634', Hair: '#1e1610', Eyebrows: '#1a120c' }, []);
+  { const g = new THREE.Group(), wd = new THREE.MeshStandardMaterial({ color: '#6a5139', roughness: 0.9 }), ir = new THREE.MeshStandardMaterial({ color: '#3b3a38', roughness: 0.55, metalness: 0.6 }), red = new THREE.MeshStandardMaterial({ color: '#9b2a22', roughness: 0.7 });
+    const bx = RESS_S.x + 1.2, bz = RESS_S.z + 1.3, by = heightAt(bx, bz);
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.32, 1.0), wd); tray.position.set(0, 0.55, 0); tray.rotation.x = -0.08;
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.08, 14).rotateZ(Math.PI / 2), ir); wheel.position.set(0, 0.24, -0.62);
+    const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.5), wd), h2 = h1.clone(); h1.position.set(-0.3, 0.55, 0.35); h2.position.set(0.3, 0.55, 0.35); h1.rotation.x = h2.rotation.x = 0.18;
+    const legs = [-0.28, 0.28].map((x) => { const l = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.05), wd); l.position.set(x, 0.2, 0.35); return l; });
+    const purse = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8).scale(1, 0.8, 0.7), red); purse.position.set(0.12, 0.8, 0.15);
+    const loose = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 0.32), new THREE.MeshStandardMaterial({ color: '#a89f8e', roughness: 0.95 })); loose.position.set(-0.12, 0.8, -0.2); loose.rotation.y = 0.4;
+    const barrow = new THREE.Group(); barrow.add(tray, wheel, h1, h2, ...legs, purse, loose); barrow.position.set(bx, by, bz); barrow.rotation.y = 2.3; g.add(barrow);
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.3, 6), ir); bar.position.set(RESS_S.x - 0.55, heightAt(RESS_S.x - 0.55, RESS_S.z) + 0.6, RESS_S.z - 0.2); bar.rotation.z = 0.35; g.add(bar);
+    g.traverse((o) => { (o as THREE.Mesh).castShadow = true; }); scene.add(g); SOLIDS.push({ x: bx, z: bz, r: 0.75 }); }
+  const valeNpcs = [sefa, dov, ennaV, ressV].map((c, i) => { const p = [SEFA, DOV, ENNA_V, RESS_S][i]; c.root.position.set(p.x, heightAt(p.x, p.z), p.z); c.root.rotation.y = Math.atan2(SPAWN.x - p.x, SPAWN.z - p.z); scene.add(c.root); const solid = { x: p.x, z: p.z, r: 0.7 }; SOLIDS.push(solid); return { c, p, solid }; });
+  let ressKnock = 1;
   const setEnnaVale = (on: boolean) => { ennaV.root.visible = on; valeNpcs[2].solid.r = on ? 0.7 : 0; };
   setEnnaVale(save.lamp >= 2);
   // M19 · found weapons: glinting pickups placed at landmarks (the Tide-blade waits in the sea cave, added when it is built).
@@ -387,6 +402,7 @@ ${GRADE_GLSL}
     if (inCoast) return coastInteract();
     if (Math.hypot(state.px - stair.mouth.x, state.pz - stair.mouth.z) < 3.4) return { label: save.cave >= 1 ? 'Descend the collapsed stair ↓' : 'Collapsed stair · rubble and dark', act: useStair, x: STAIR.x, z: STAIR.z };
     if (ennaV.root.visible && Math.hypot(state.px - ENNA_V.x, state.pz - ENNA_V.z) < 2.0) return { label: 'Talk · Enna', act: () => { ennaV.play('Wave'); openDialog(ENNA_NAME, fillLines(ENNA_LINES.vale, profile)); }, x: ENNA_V.x, z: ENNA_V.z };
+    if (Math.hypot(state.px - RESS_S.x, state.pz - RESS_S.z) < 2.6) return { label: 'Talk · Ress', act: talkRessStair, x: RESS_S.x, z: RESS_S.z };
     if (Math.hypot(state.px - SEFA.x, state.pz - SEFA.z) < 2.8) return { label: 'Talk · Sefa Lune (mapmaker)', act: () => { sefa.play('Wave'); talkSefa(); }, x: SEFA.x, z: SEFA.z };
     if (Math.hypot(state.px - DOV.x, state.pz - DOV.z) < 2.8) return { label: 'Talk · Dov Hask (old smith)', act: () => { dov.play('Wave'); talkDov(); }, x: DOV.x, z: DOV.z };
     { const e = edgeInteract(); if (e) return e; }
@@ -471,6 +487,12 @@ ${GRADE_GLSL}
   // ---------- M20b-2 · side tales (Sefa, Dov, Ress) and the edge places ----------
   function gainXp(n: number, why: string) { const lv = levelOf(save.xp); save.xp += n; persist(); hudT = 0; toast(`${why} · +${n} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3.5); }
   const campClear = () => (save.gone?.ashen ?? -99) + 3 > (save.day ?? 0);
+  // M27 · one-time opening talk (save.ressStair), then her idle line. Never touches the coast Ress or sq.ress.
+  function talkRessStair() {
+    ressV.play('Wave');
+    if (save.ressStair) return openDialog('Ress', fillLines([LINES.ressStair.idle], profile));
+    openDialog('Ress', fillLines([...LINES.ressStair.meet], profile), () => { save.ressStair = 1; const k = new Set(save.kit ?? []); k.add('rope-12yd'); k.add('fish-weight'); save.kit = [...k]; persist(); toast('Received · a 12-yard rope and an iron fish weight', 3.5); });
+  }
   function talkSefa() {
     const st = stage(save, 'sefa'), old = fillLines(sefaLines(save, nextUncharted(save, state.px, state.pz)), profile);
     if (!save.started) return openDialog('Sefa Lune', old);
@@ -1654,6 +1676,7 @@ ${GRADE_GLSL}
   const turnHome = (o: THREE.Object3D, dt: number) => { const h = o.userData.home as number | undefined; if (h === undefined) { o.userData.home = o.rotation.y; return; } let d = h - o.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); o.rotation.y += d * Math.min(1, dt * 0.8); };
   function tickNpcs(dt: number) {
     const inVale = !inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow && !onIsland;
+    if (inVale && save.ressStair) { ressKnock -= dt; if (ressKnock <= 0) { ressKnock = 2.2 + Math.random() * 1.8; const d = Math.hypot(state.px - RESS_S.x, state.pz - RESS_S.z); if (d < 28) audio.knock(1 - d / 28); } } // M27 · her crowbar on the loose steps
     if (inVale) for (const n of valeNpcs) { if (!n.c.root.visible) continue; const dx = state.px - n.p.x, dz = state.pz - n.p.z, d = Math.hypot(dx, dz); if (d > 45) continue; if (d < 8) turnTo(n.c.root, dx, dz, dt); else turnHome(n.c.root, dt); n.c.setSpeed(0, dt); }
     if (inCoast) for (const c of [ennaC, ressC]) { if (!c.root.visible) continue; const dx = state.px - c.root.position.x, dz = state.pz - c.root.position.z, d = Math.hypot(dx, dz); if (d > 60) continue; if (d < 9) turnTo(c.root, dx, dz, dt); else turnHome(c.root, dt); c.setSpeed(0, dt); }
   }
@@ -2095,7 +2118,7 @@ ${GRADE_GLSL}
     setTime(t: number, run = false) { tod = ((t % 1) + 1) % 1; save.tod = tod; timeFrozen = !run; lightKey = ''; hudT = 0; },
     title() { return { open: !titleEl.hidden, confirm: !document.getElementById('tconfirm')!.hidden, settings: !setEl.hidden, save: document.getElementById('tsave')!.textContent, paused }; },
     lamp() { const c = coast; return { stage: save.lamp, onTop: !!c?.onTop, cine: !!lampCine, ending: !endEl.hidden, endMode, endingText: endEl.innerText, credits: !credEl.hidden, rift: rift.visible, ennaVale: ennaV.root.visible, ennaCoast: ennaC.root.visible, low: c?.isLow() ?? null, phase: c?.tidePhase ?? null, revealed: !!c?.revealed, ennaFoot: c?.ennaFoot, towerDoor: c?.towerDoor, topHatch: c?.topHatch, lanternW: c?.lanternW, ress: save.lamp >= 2 ? c?.ressEnd : c?.ress, sefa: SEFA, dov: DOV, ennaV: ENNA_V, xp: save.xp }; },
-    quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z } }; },
+    quest() { return { save: JSON.parse(JSON.stringify(save)), talking, cine: !!cine, dlg: talking ? dtxt.textContent : '', chapter: !chapterEl.hidden, near: nearestInteract()?.label ?? null, seals: seals.map((o) => ({ id: o.def.id, x: o.def.x, z: o.def.z, claimed: o.claimed })), wayfinder: { x: WAYFINDER.x, z: WAYFINDER.z }, ress: { x: RESS_S.x, z: RESS_S.z } }; },
     // Head height above the hips (world Y); stays > 0 in every state now that pose overlays never accumulate.
     pose: () => { if (cb.rolling) return null; /* the dodge-roll tucks the head on purpose */ const r = player.root, v = new THREE.Vector3(), h = r.getObjectByName('Head'), hp = r.getObjectByName('Hips'); if (!h || !hp) return null; h.getWorldPosition(v); const hy = v.y; hp.getWorldPosition(v); return hy - v.y; },
     debug: { get grass() { return [grassField, grassFar]; }, treeField, scene, camera, renderer, get composer() { return composer; }, get aq() { return { level: aqLevel, low: aqLow, warm: aqWarm, on: aqOn, fps, paused, fading, talking }; }, get player() { return player.root; }, wayfinder: wayfinder.root },

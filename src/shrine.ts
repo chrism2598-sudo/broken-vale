@@ -152,10 +152,10 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
     //       the glyph is cut into a smoothed panel on its face rather than stuck on as a dark square plaque.
     const geo = standingStone(1.25, 2.75, 0.95, 3.1 + i * 2.7, { lean: 0.05 * (i - 1), flatY: 1.65, flatR: 0.6 });
     const st = new THREE.Mesh(geo, moss); st.position.y = -0.1; st.castShadow = true;
-    const plateMat = new THREE.MeshStandardMaterial({ color: '#1c1812', emissive: '#ffe082', emissiveMap: texes[state.runes[i] | 0], alphaMap: texes[state.runes[i] | 0], transparent: true, depthWrite: false, emissiveIntensity: 0.9, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 });
+    const plateMat = new THREE.MeshStandardMaterial({ color: '#2a2721', emissive: '#cfdcd4', /* M31: a pale, cold glint in the cut glyph (was gold) */ emissiveMap: texes[state.runes[i] | 0], alphaMap: texes[state.runes[i] | 0], transparent: true, depthWrite: false, emissiveIntensity: 0.9, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 });
     let front = 0; { const pp = geo.attributes.position as THREE.BufferAttribute; for (let k = 0; k < pp.count; k++) if (Math.abs(pp.getY(k) - 1.65) < 0.25 && Math.abs(pp.getX(k)) < 0.25) front = Math.max(front, pp.getZ(k)); }
     const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), plateMat); plate.position.set(0, 1.55, front + 0.012);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.06, 6, 32).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffe082', transparent: true, opacity: 0.0, toneMapped: false })); ring.position.y = 0.08;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.06, 6, 32).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#d6e2dc', transparent: true, opacity: 0.0, toneMapped: false })); ring.position.y = 0.08;
     o.add(st, plate, ring);
     o.position.set(r.x, heightAt(r.x, r.z) - 0.1, r.z);
     // Plates face south, toward the path the player arrives on.
@@ -180,7 +180,7 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
     for (const r of runeObjs) {
       r.shake = Math.max(0, r.shake - dt); r.pulse = Math.max(0, r.pulse - dt * 1.5);
       r.o.children[0].position.x = Math.sin(t * 60) * 0.05 * r.shake * 2;
-      r.plateMat.emissiveIntensity = 0.8 + r.pulse * 1.2 + fade * 1.2;
+      r.plateMat.emissiveIntensity = 0.55 + r.pulse * 1.0 + fade * 1.0;
       (r.ring.material as THREE.MeshBasicMaterial).opacity = Math.max(r.pulse * 0.8, fade * (0.55 + 0.25 * Math.sin(t * 3)));
     }
   }

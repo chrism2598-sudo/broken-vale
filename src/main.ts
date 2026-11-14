@@ -2272,6 +2272,15 @@ function makeCreek(normals: THREE.Texture) {
     // Dawn: the reflection and body colour lean toward the sunrise sky (the mirror pass can't see the far sky shell).
     u.uDawn = { value: 0 };
     wm.fragmentShader = 'uniform float uDawn;\n' + wm.fragmentShader.replace(/vec3 albedo = mix\([^;]*;/, 'vec3 albedo = mix( mix( waterColor, vec3( 0.22, 0.13, 0.14 ), uDawn * 0.6 ) * ( 0.55 + 0.35 * diffuseLight.r ) + scatter * 0.5, reflectionSample * mix( vec3( 0.72, 0.86, 0.88 ), vec3( 1.18, 0.76, 0.62 ), uDawn ) + specularLight, clamp( reflectance * 1.4 + 0.12 + uDawn * 0.12, 0.0, 0.78 ) );');
+    // M31 · High gets the Lite shallows too: thinning toward the banks over a silty green-brown bed, soft flow streaks (uv.x across, uv.y along)
+    wm.vertexShader = wm.vertexShader.replace('void main() {', 'varying vec2 vWU;\nvoid main() {\nvWU = uv;');
+    wm.fragmentShader = wm.fragmentShader.replace('void main() {', `varying vec2 vWU;
+float wH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float wN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(wH(i), wH(i + vec2(1, 0)), f.x), mix(wH(i + vec2(0, 1)), wH(i + vec2(1, 1)), f.x), f.y); }
+void main() {`).replace('vec3 outgoingLight = albedo;', `float wE = min(vWU.x, 1. - vWU.x) * 2.; float shal = 1. - smoothstep(.22, .62, wE + (wN(vWU * vec2(3., 6.)) - .5) * .15);
+					float fl = smoothstep(.62, .9, wN(vec2(vWU.x * 7., vWU.y * 2.2 + time * .6))) * (1. - shal * .6);
+					vec3 outgoingLight = mix(albedo, vec3(.27, .31, .22) * (.55 + .45 * diffuseLight.r) + specularLight * .5, shal * .7) + fl * .06;`).replace('gl_FragColor = vec4( outgoingLight, alpha );', 'gl_FragColor = vec4( outgoingLight, alpha * mix(1., .6, shal) );');
+    wm.transparent = true;
     return { mesh: w as THREE.Object3D, update: (t: number) => { u.time.value = t * 0.6; }, setDawn: (k: number) => { u.uDawn.value = k; } };
   }
   normals.repeat.set(1, 1);

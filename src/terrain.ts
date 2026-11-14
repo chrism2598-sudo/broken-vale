@@ -41,12 +41,18 @@ float pathM(vec2 p){if(p.y>22.)return 0.;float d=abs(p.x-pathX(p.y));float w=1.2
  w*=.85+.35*vn(p*.35); return (1.-smoothstep(w*.3,w*1.6,d))*smoothstep(26.,16.,p.y)*(p.y< -92.?smoothstep(-100.,-92.,p.y):1.);}
 float trailM(vec2 p){ float d=1e4; ${TRAIL.slice(1).map((b, i) => { const a = TRAIL[i]; return `{ vec2 a=vec2(${a.x.toFixed(1)},${a.z.toFixed(1)}), b=vec2(${b.x.toFixed(1)},${b.z.toFixed(1)}); vec2 ab=b-a; float u=clamp(dot(p-a,ab)/dot(ab,ab),0.,1.); d=min(d,length(p-a-ab*u)); }`; }).join(' ')}
   return 1.-smoothstep(1.55+.2*vn(p*.5),2.55+.15*vn(p*.8),d); }
-vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
+vec4 W4; float SNOW; float RUT; float RCROWN; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
 `)
       .replace('#include <map_fragment>', `
 { vec2 p=vWP.xz; float slope=1.-clamp(vWN.y,0.,1.);
   float dc=abs(p.x-creekX(p.y)); float bed=1.-smoothstep(creekHalf(p.y)*.9,creekHalf(p.y)+1.6,dc); bed=max(bed,max(1.-smoothstep(1.1,2.6,streamD(p)),1.-smoothstep(${f3(POOL.r - 0.3)},${f3(POOL.r + 1.6)},length(p-vec2(${f3(POOL.x)},${f3(POOL.z)})))));
   float tm=trailM(p); float pm=max(max(pathM(p),tm),max((1.-smoothstep(.75+.25*vn(p*.7),1.8,trackD(p)))*.9,(1.-smoothstep(.4+.2*vn(p*1.3),1.1,wornD(p)))*.75)); // M26: the quarry track // M22b: a hard packed cut, not a soft dirt tint
+  RUT=0.; RCROWN=0.;
+  { float zr=smoothstep(-48.,-56.,p.y)*(1.-smoothstep(-96.,-100.,p.y));
+    if (zr>0.) { float sl=pathX(p.y+.5)-pathX(p.y-.5); float dx=(p.x-pathX(p.y))/sqrt(1.+sl*sl); float wob=.08*sin(p.y*.9)+.05*vn(p*1.7);
+      RUT=(1.-smoothstep(.1,.28,abs(abs(dx+wob)-.62)))*zr; RCROWN=(1.-smoothstep(.0,.3,abs(dx+wob)))*zr;
+      // M31 · grass creeps in from the verges and tufts up the crown
+      pm*=1.-zr*smoothstep(.62,1.05,abs(dx)+.25*(vn(p*2.3)-.5))*.9; pm*=1.-RCROWN*smoothstep(.5,.72,vn(p*3.1))*.65; } }
   float alt=vWP.y; float macro=vn(p*.011), macro2=vn(p*.043+3.1);
   float rock=smoothstep(.2,.42,slope+.14*(macro2-.5)+smoothstep(18.,45.,alt)*.22*(.6+.8*macro));
   float n=vn(p*.08);
@@ -71,10 +77,9 @@ vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
   vec3 cr=mix(texture2D(tRd,UVr).rgb,texture2D(tRd,rp).rgb,smoothstep(.3,.7,vn(p*.07)))*mix(.75,1.15,macro2);
   cr=mix(cr,vec3(dot(cr,vec3(.33)))*vec3(.95,.97,1.02),.35);
   vec3 cp=texture2D(tPd,UVp).rgb;
-  { // M30 · the Pale road (bridge → Wing Gate): two worn cart ruts, darker and damp, with a paler crown between
-    float zr=smoothstep(-48.,-56.,p.y)*(1.-smoothstep(-96.,-100.,p.y)); float sl=pathX(p.y+.5)-pathX(p.y-.5); float dx=(p.x-pathX(p.y))/sqrt(1.+sl*sl); float wob=.08*sin(p.y*.9)+.05*vn(p*1.7);
-    float rut=(1.-smoothstep(.1,.26,abs(abs(dx+wob)-.62)))*zr; float crown=(1.-smoothstep(.0,.3,abs(dx+wob)))*zr;
-    cp*=1.-.32*rut; cp=mix(cp,cp*vec3(1.08,1.1,1.02)+.02,crown*.5); }
+  { // M30/M31 · the Pale road (bridge → Wing Gate): two worn cart ruts, darker and damp with standing puddles, a paler crown between
+    cp*=1.-.5*RUT; cp=mix(cp,cp*vec3(1.08,1.1,1.02)+.02,RCROWN*.5);
+    float pud=RUT*smoothstep(.62,.74,vn(p*.85+vec2(3.,7.))); cp=mix(cp,vec3(.15,.14,.12),pud*.65); }
   vec3 cb=texture2D(tBd,UVb).rgb*mix(1.,.55,smoothstep(1.,0.,dc-creekHalf(p.y)*.4));
   // Snow caps: above ~44 m on gentler faces, ragged by noise.
   SNOW=smoothstep(44.,56.,alt+10.*(macro2-.5)+6.*(vn(p*.2)-.5))*smoothstep(.45,.75,vWN.y);
@@ -88,7 +93,7 @@ vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
 }`)
       .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness;
 { vec3 a=texture2D(tGa,UVg).rgb*W4.x+texture2D(tPa,UVp).rgb*W4.y+texture2D(tRa,UVr).rgb*W4.z+texture2D(tBa,UVb).rgb*W4.w;
-  roughnessFactor*=a.g; float wet=W4.w; roughnessFactor=mix(roughnessFactor,.25,wet*.7); roughnessFactor=mix(roughnessFactor,.6,SNOW); diffuseColor.rgb*=mix(1.,a.r,.75*(1.-SNOW)); }`)
+  roughnessFactor*=a.g; float wet=W4.w; roughnessFactor=mix(roughnessFactor,.25,wet*.7); roughnessFactor=mix(roughnessFactor,.6,SNOW); roughnessFactor=mix(roughnessFactor,.5,RUT*W4.y*.5); diffuseColor.rgb*=mix(1.,a.r,.75*(1.-SNOW)); }`)
       .replace('#include <normal_fragment_maps>', `
 { vec3 tn=(texture2D(tGn,UVg).xyz*W4.x+texture2D(tPn,UVp).xyz*W4.y+texture2D(tRn,UVr).xyz*W4.z+texture2D(tBn,UVb).xyz*W4.w)*2.-1.;
   tn.xy*=1.15*(1.-.8*SNOW); vec3 N=normalize(vWN); vec3 T=normalize(vec3(1.,0.,0.)-N*N.x); vec3 B=normalize(cross(T,N));

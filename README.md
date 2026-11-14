@@ -277,3 +277,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Bridge: weathered rock and voussoirs (moss, lichen, streaks, damp at the waterline) and worn deck flags in two tones with a slight uneven set. Cutwaters as before.
 - Hub: denser, varied wildflower and clover drifts around the Wayfinder (own seed, inside the existing flora triangle budget).
 - Pale road (bridge → Wing Gate): two worn cart ruts and a paler crown in the terrain shader, plus edge stones along both verges (some sunk, some missing).
+
+### M31 · Readable road ruts, High-water shallows, the West Rune glyph
+- Pale road ruts (terrain shader): deeper, damp tone with a slight sheen and scattered dark standing puddles. Grass creeps in from the verges and tufts up the crown. The rut values are shader globals (RUT/RCROWN) so roughness can use them.
+- High-quality water now has the Lite shallows too: it thins toward the banks over a silty bed, with soft flow streaks. Injected into three's Water shader; GRADE_GLSL is untouched.
+- The "mossy standing stone with a gold ring" near the bridge is the Wind Shrine's West Rune (shrine.ts RUNES), part of the rune puzzle. The ring was the glowing ○ glyph state on its plate. Its function is kept, and the glyph and ground pulse ring now glow pale and cold, not gold.

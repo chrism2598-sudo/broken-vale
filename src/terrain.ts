@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { heightAt, creekX, creekHalf, pathX, TRAIL } from './world';
+import { heightAt, creekX, creekHalf, pathX, TRAIL, PATH_BEND, TRACK, STREAM, POOL, type P2 } from './world';
+
+const B = PATH_BEND, f3 = (v: number) => v.toFixed(3);
+/** M26 · GLSL distance to a polyline (track / stream). */
+const polyD = (name: string, pts: P2[]) => `float ${name}(vec2 p){ float d=1e4; ${pts.slice(1).map((b, i) => { const a = pts[i]; return `{ vec2 a=vec2(${a.x.toFixed(2)},${a.z.toFixed(2)}), b=vec2(${b.x.toFixed(2)},${b.z.toFixed(2)}); vec2 ab=b-a; float u=clamp(dot(p-a,ab)/dot(ab,ab),0.,1.); d=min(d,length(p-a-ab*u)); }`; }).join(' ')} return d; }`;
 
 export type GroundTex = { diff: THREE.Texture; nor: THREE.Texture; arm: THREE.Texture };
 
@@ -28,17 +32,20 @@ float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float vn(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1,0)),u.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),u.x),u.y);}
 float creekX(float z){return -50.+7.*sin(z/21.)+4.*sin(z/8.5+1.3)+2.*sin(z/4.1+.4);}
 float creekHalf(float z){return 2.6+.9*sin(z/13.+2.1)+.5*sin(z/5.3);}
-float pathX(float z){float t=max(0.,-z);return 1.2*sin(z/9.)*smoothstep(0.,10.,t)-.0105*t*t-.25*t;}
+float pathX0(float z){float t=max(0.,-z);return 1.2*sin(z/9.)*smoothstep(0.,10.,t)-.0105*t*t-.25*t;}
+float pathX(float z){float t=max(0.,-z);if(t<=${f3(B.t0)})return pathX0(z);float u=min(1.,(t-${f3(B.t0)})/${f3(B.L)}),u2=u*u,u3=u2*u;return (2.*u3-3.*u2+1.)*${f3(B.x0)}+(u3-2.*u2+u)*${f3(B.L * B.m0)}+(-2.*u3+3.*u2)*${f3(B.x1)}+(u3-u2)*${f3(B.L * B.m1)}+max(0.,t-${f3(B.t0 + B.L)})*${f3(B.m1)};}
+${polyD('trackD', TRACK)}
+${polyD('streamD', STREAM)}
 float pathM(vec2 p){if(p.y>22.)return 0.;float d=abs(p.x-pathX(p.y));float w=1.25+.35*sin(p.y*.37)+(p.y< -40.?.4:0.);w*=.85+.3*vn(p*.6);
- w*=.85+.35*vn(p*.35); return (1.-smoothstep(w*.3,w*1.6,d))*smoothstep(26.,16.,p.y)*(p.y< -70.?smoothstep(-90.,-70.,p.y):1.);}
+ w*=.85+.35*vn(p*.35); return (1.-smoothstep(w*.3,w*1.6,d))*smoothstep(26.,16.,p.y)*(p.y< -92.?smoothstep(-100.,-92.,p.y):1.);}
 float trailM(vec2 p){ float d=1e4; ${TRAIL.slice(1).map((b, i) => { const a = TRAIL[i]; return `{ vec2 a=vec2(${a.x.toFixed(1)},${a.z.toFixed(1)}), b=vec2(${b.x.toFixed(1)},${b.z.toFixed(1)}); vec2 ab=b-a; float u=clamp(dot(p-a,ab)/dot(ab,ab),0.,1.); d=min(d,length(p-a-ab*u)); }`; }).join(' ')}
   return 1.-smoothstep(1.55+.2*vn(p*.5),2.55+.15*vn(p*.8),d); }
 vec4 W4; float SNOW; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
 `)
       .replace('#include <map_fragment>', `
 { vec2 p=vWP.xz; float slope=1.-clamp(vWN.y,0.,1.);
-  float dc=abs(p.x-creekX(p.y)); float bed=1.-smoothstep(creekHalf(p.y)*.9,creekHalf(p.y)+1.6,dc);
-  float tm=trailM(p); float pm=max(pathM(p),tm); // M22b: a hard packed cut, not a soft dirt tint
+  float dc=abs(p.x-creekX(p.y)); float bed=1.-smoothstep(creekHalf(p.y)*.9,creekHalf(p.y)+1.6,dc); bed=max(bed,max(1.-smoothstep(1.1,2.6,streamD(p)),1.-smoothstep(${f3(POOL.r - 0.3)},${f3(POOL.r + 1.6)},length(p-vec2(${f3(POOL.x)},${f3(POOL.z)})))));
+  float tm=trailM(p); float pm=max(max(pathM(p),tm),(1.-smoothstep(.75+.25*vn(p*.7),1.8,trackD(p)))*.9); // M26: the quarry track // M22b: a hard packed cut, not a soft dirt tint
   float alt=vWP.y; float macro=vn(p*.011), macro2=vn(p*.043+3.1);
   float rock=smoothstep(.2,.42,slope+.14*(macro2-.5)+smoothstep(18.,45.,alt)*.22*(.6+.8*macro));
   float n=vn(p*.08);

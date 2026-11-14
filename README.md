@@ -249,3 +249,10 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Walk: WALK boxes, and the camera floor follows the stair (`cam` flag). Thick solids on the stair sides and a solid ring at the cliff foot, tighter beside Enna's collapsed stair.
 - The heart-crystal and crown were lowered to just over the keep door and enlarged so they read from the courtyard.
 - The n-pale night shades moved out past the gate; qa-world warps to their new spot. New tools: qa-stair, m25-shots, perf-m25.
+
+### M26 · The opening path (canon order)
+- Ridge stair (world.ts RIDGE/RSTAIR, x -34, z 51.6–63.2): a 6 m ridge north of the meadow, climbed by hewn treads with cheek stones and waymark posts. It uses WALK boxes with `cam`. This is not Enna's collapsed cave stair.
+- Quarry water-cut falls: three sawn benches with a 1.4 m notch. A thin sheet of water falls from each lip into a small pool, with a timber hoist and loose blocks. The stream (STREAM) runs south-west, and you cross it on stepping stones where the quarry track meets it. Solids keep feet out of the benches.
+- Quarry track (TRACK) runs from the ridge foot to the hub, as a gravel trail mask. Hazel thickets (HAZEL, sunk broadleaf crowns) line its upper part, and a wandering orchard (ORCHARD, 4 drifting rows with gaps) has windfalls, baskets and a ladder. No new named landmarks. Orchard and hazel trees go full-mesh only within 16–20 m (TreeInst.near).
+- Road to Pale Keep: pathX bends (PATH_BEND) to reach the Wing Gate. It crosses the creek on a narrow (~2.3 m) three-pier segmental bridge (z ≈ -59.2) with cutwaters, parapets and a deck walk.
+- New tools: qa-opening (ridge stair, stepping stones, bridge deck) and m26-shots.

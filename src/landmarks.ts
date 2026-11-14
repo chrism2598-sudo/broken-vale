@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LANDMARKS, SPAWN, heightAt, fbm, PALE_ROCK, type Landmark } from './world';
+import { ORCHARD } from './world';
+import { LANDMARKS, SPAWN, heightAt, fbm, PALE_ROCK, WATER_Y, RSTAIR, QUARRY, POOL, STREAM, TRACK, lineDist, pathX, creekX, creekHalf, type Landmark, type P2 } from './world';
 import { addRimFill } from './shading';
 import type { GroundTex } from './terrain';
 
@@ -68,7 +69,7 @@ export function walkY(x: number, z: number, camOnly = false): number {
   return y;
 }
 class Builder {
-  parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  parts = new Map<THREE.Material, THREE.BufferGeometry[]>(); extra: THREE.Object3D[] = [];
   add(mat: THREE.Material, g: THREE.BufferGeometry, x = 0, y = 0, z = 0, ry = 0) {
     g = g.index ? g.toNonIndexed() : g; // uniform attributes for merging
     for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
@@ -633,6 +634,7 @@ export function makeLandmarks(t: BuildTex, solids: Solid[], opts: LOpts = { ligh
   const flames: THREE.Object3D[] = []; sun.traverse((o) => { if (o.userData.flicker !== undefined) flames.push(o); });
   updates.push((time) => { for (const f of flames) f.scale.set(1, 0.85 + 0.25 * Math.sin(time * 9 + f.userData.flicker) * Math.sin(time * 5.3 + f.userData.flicker * 2), 1); });
   const vf = makeVeilfall(by('veilfall'), t, solids, opts); grp.add(vf.group); updates.push(vf.update);
+  const op = makeOpening(t, solids); grp.add(op.group); updates.push(op.update); // M26 · the opening path: ridge stair, water-cut falls, quarry track, the three-pier bridge
   const flags: THREE.Mesh[] = []; grp.traverse((o) => { if (o.userData.flag) flags.push(o as THREE.Mesh); });
   for (const f of flags) { const p = f.geometry.attributes.position; f.userData.base = Float32Array.from(p.array as Float32Array); }
   updates.push((time) => {
@@ -655,4 +657,107 @@ function brokenFoamTex(): THREE.Texture {
     x.fillStyle = gr; x.beginPath(); x.ellipse(px, py, sz * (1.3 + r()), sz, a + Math.PI / 2, 0, Math.PI * 2); x.fill();
   }
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+
+/** M26 · the opening path, per the Author's map. South of the meadow: the ridge stair (rough-hewn treads in a shallow trench
+ *  with cheek stones), the quarry cut into the ridge's north face as three stepped benches of sawn stone with the water-cut
+ *  falls stepping down them into a pool, stepping stones where the quarry track crosses the stream, hazel along the track
+ *  and a small wandering orchard. On the road north-west: a narrow three-pier stone bridge over the creek. */
+function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update: (time: number) => void } {
+  const b = new Builder(); let sd = 77; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const hewn = triplanar(t.rock, 2.2, '#b5ab9a', { sat: 0.35, gain: 1.7, rough: 0.92 });
+  const sawn = triplanar(t.sand, 2.6, '#d2c7b0', { sat: 0.3, gain: 1.7, rough: 0.9, emissive: '#1d1a15' }); // north-facing: lifted a little so the cut reads in shade
+  const bark = new THREE.MeshStandardMaterial({ color: '#5b4a3a', roughness: 0.95 });
+  const fruitR = new THREE.MeshStandardMaterial({ color: '#b8352a', roughness: 0.5 }), fruitY = new THREE.MeshStandardMaterial({ color: '#d4b23c', roughness: 0.5 });
+  const wood = new THREE.MeshStandardMaterial({ color: '#6a5139', roughness: 0.9 });
+  const update: ((time: number) => void)[] = [];
+  // ---- the ridge stair: up the north face of the ridge (south out of the meadow) ----
+  { const x = RSTAIR.x, yb = heightAt(x, RSTAIR.z0 - 0.3), yt = heightAt(x, RSTAIR.z1 + 0.3), N = Math.max(8, Math.round((yt - yb) / 0.27)), T = (RSTAIR.z1 - RSTAIR.z0) / N, foot = yb - 0.6;
+    for (let k = 0; k < N; k++) { const z0 = RSTAIR.z0 + k * T, z1 = z0 + T, ground = Math.max(heightAt(x, z1), heightAt(x - 1.1, z1), heightAt(x + 1.1, z1));
+      const top = Math.max(yb + (k + 1) * (yt - yb) / N, ground + 0.04), w = RSTAIR.half * 2 - 0.1 + (rnd() - 0.5) * 0.25;
+      b.add(hewn, box(w, top - foot, T + 0.06), x + (rnd() - 0.5) * 0.12, foot, (z0 + z1) / 2, (rnd() - 0.5) * 0.04);
+      WALK.push({ x, z: (z0 + z1) / 2, y: top, hw: RSTAIR.half, hd: T / 2 + 0.01, ry: 0, cam: true });
+      if (k % 2 === 0) for (const s of [-1, 1]) { const gx = x + s * (RSTAIR.half + 0.35); b.add(hewn, new THREE.DodecahedronGeometry(0.42 + rnd() * 0.18, 0).scale(1, 0.75, 1.2), gx, heightAt(gx, z0) + 0.12, z0 + rnd() * T, rnd() * 3); } }
+    // a waymark post at the foot and the top
+    for (const [zz, yy] of [[RSTAIR.z0 - 1.0, yb], [RSTAIR.z1 + 0.9, yt]]) { b.add(wood, box(0.22, 1.5, 0.22), x + RSTAIR.half + 0.5, yy - 0.1, zz); b.add(wood, box(0.7, 0.18, 0.08), x + RSTAIR.half + 0.62, yy + 1.15, zz, 0.15); } }
+  // ---- the quarry: three benches of sawn stone stepping back into the ridge face, the water-cut falls down a notch ----
+  const yf = heightAt(POOL.x, POOL.z + POOL.r + 0.6), QX = (QUARRY.x0 + QUARRY.x1) / 2, QW = QUARRY.x1 - QUARRY.x0, BENCH = 3;
+  const benchTop: number[] = [], benchFront: number[] = [];
+  for (let k = 0; k < BENCH; k++) { const zf = POOL.z + POOL.r + 0.5 + k * 2.1, yTop = yf + 0.6 + (k + 1) * 1.75; benchTop.push(yTop); benchFront.push(zf);
+    const notch = 1.4; // the water-cut: a notch down the middle of each bench
+    for (const side of [-1, 1]) { const w = QW / 2 - notch / 2 - k * 0.6, cx = QX + side * (notch / 2 + w / 2);
+      b.add(sawn, box(w, yTop - (yf - 1.2), 64 - zf), cx, yf - 1.2, (zf + 64) / 2);
+      for (let r = 0; r < 3; r++) b.add(sawn, box(w + 0.02, 0.05, 0.04), cx, yTop - 0.55 - r * 0.58, zf - 0.01); // sawn courses on the face
+      for (let c = 1; c < Math.floor(w / 1.6); c++) b.add(sawn, box(0.05, yTop - yf - 0.6, 0.04), cx - w / 2 + c * w / Math.floor(w / 1.6), yf + 0.6, zf - 0.01); }
+    b.add(hewn, box(notch + 0.1, yTop - 0.35 - (yf - 1.2), 64 - zf), QX, yf - 1.2, (zf + 64) / 2); // the notch floor, worn lower
+    for (let i = 0; i < 4; i++) b.add(sawn, box(0.9 + rnd() * 0.6, 0.6 + rnd() * 0.4, 0.8 + rnd() * 0.4), QUARRY.x0 + 0.8 + rnd() * (QW - 1.6), yTop - 0.1, zf + 0.6 + rnd() * 1.0, rnd()); }
+  // loose cut blocks and a timber hoist on the quarry floor
+  for (let i = 0; i < 6; i++) { const bx = QUARRY.x0 - 1.5 + rnd() * (QW + 3), bz = POOL.z - 3 - rnd() * 3; if (Math.hypot(bx - POOL.x, bz - POOL.z) < POOL.r + 1.8) continue; b.add(sawn, box(1.0 + rnd() * 0.7, 0.55 + rnd() * 0.5, 0.8 + rnd() * 0.5), bx, heightAt(bx, bz) - 0.1, bz, rnd() * 3); solids.push({ x: bx, z: bz, r: 0.75 }); }
+  { const hx = QUARRY.x1 - 1.2, hz = POOL.z + 1.8, hy = heightAt(hx, hz); for (const dx of [-0.9, 0.9]) b.add(wood, box(0.22, 4.2, 0.22), hx + dx, hy - 0.2, hz); b.add(wood, box(2.4, 0.22, 0.22), hx, hy + 3.9, hz); b.add(wood, box(0.22, 0.22, 2.6), hx, hy + 3.7, hz - 1.0);
+    b.add(KEEP_IRON, cyl(0.02, 0.02, 2.2, 4), hx, hy + 1.5, hz - 2.2); solids.push({ x: hx - 0.9, z: hz, r: 0.35 }, { x: hx + 0.9, z: hz, r: 0.35 }); }
+  { const topAt = (z: number, notch: boolean) => { let y = -9; for (let k = 0; k < BENCH; k++) if (z >= benchFront[k]) y = Math.max(y, benchTop[k] - (notch ? 0.35 : 0)); return y; };
+    for (let x = QUARRY.x0 - 0.2; x <= QUARRY.x1 + 0.2; x += 0.8) for (let z = benchFront[0] + 0.4; z < 64; z += 0.8) { if (topAt(z, Math.abs(x - QX) < 0.75) - heightAt(x, z) > 0.3) solids.push({ x, z, r: 0.6 }); } } // the sawn benches stand proud of the ridge: keep feet out of them
+  for (let k = 0; k < 18; k++) { const x = QUARRY.x0 - 0.4 + k * (QW + 0.8) / 17; solids.push({ x, z: POOL.z + POOL.r + 0.9, r: 0.8 }); } // the bench face
+  // the falls: a short sheet off each bench lip into the notch below, the last into the pool; foam at every landing
+  const fallMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: { uTime: { value: 0 } },
+    vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader: `uniform float uTime;varying vec2 vUv;
+      float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+      void main(){float s=n(vec2(vUv.x*9.,vUv.y*3.+uTime*3.2))*.55+n(vec2(vUv.x*21.,vUv.y*7.+uTime*4.1))*.45;
+        float edge=smoothstep(0.,.25,vUv.x)*smoothstep(1.,.75,vUv.x);float thin=.55+.45*n(vec2(vUv.x*5.,uTime*.7));
+        gl_FragColor=vec4(mix(vec3(.55,.72,.76),vec3(.97,.99,1.),s),edge*thin*(.45+.5*s));}` });
+  const foamMat = new THREE.MeshBasicMaterial({ color: '#f4fbff', map: brokenFoamTex(), transparent: true, opacity: 0.75, depthWrite: false });
+  const lips = benchTop.map((y, k) => ({ y: y - 0.35, z: benchFront[k] })).reverse(); // from the top bench down
+  for (let i = 0; i < lips.length; i++) { const top = lips[i], botY = i + 1 < lips.length ? lips[i + 1].y : WATER_Y + 0.02, h = top.y - botY + 0.15;
+    const g = new THREE.PlaneGeometry(1.5, h, 1, 4); const fp = g.attributes.position; for (let j = 0; j < fp.count; j++) { const yy = fp.getY(j); fp.setZ(j, -Math.pow((h / 2 - yy) / h, 2) * 0.55); }
+    const m = new THREE.Mesh(g, fallMat); m.position.set(QX, botY + h / 2, top.z - 0.08); m.rotation.y = Math.PI; m.renderOrder = 2; b.extra.push(m);
+    const f = new THREE.Mesh(new THREE.CircleGeometry(i + 1 < lips.length ? 0.75 : 1.6, 16).rotateX(-Math.PI / 2), foamMat); f.position.set(QX, botY + 0.03, top.z - (i + 1 < lips.length ? 0.6 : 0.9)); b.extra.push(f); }
+  // the runnel on the ridge top that feeds the falls
+  { const zt = benchFront[BENCH - 1] + 0.3; for (let k = 0; k < 7; k++) { const z = zt + k * 1.4, x = QX + Math.sin(k * 0.9) * 0.6; b.add(hewn, new THREE.DodecahedronGeometry(0.35, 0).scale(1.2, 0.5, 1), x - 0.9, heightAt(x - 0.9, z) + 0.05, z, k); b.add(hewn, new THREE.DodecahedronGeometry(0.35, 0).scale(1.2, 0.5, 1), x + 0.9, heightAt(x + 0.9, z) + 0.05, z, k + 1); } }
+  update.push((time) => { fallMat.uniforms.uTime.value = time; });
+  // ---- stepping stones where the track crosses the stream ----
+  { let best = { x: 0, z: 0, d: 1e9 }; for (let i = 1; i < TRACK.length; i++) for (let k = 0; k <= 40; k++) { const u = k / 40, x = TRACK[i - 1].x + (TRACK[i].x - TRACK[i - 1].x) * u, z = TRACK[i - 1].z + (TRACK[i].z - TRACK[i - 1].z) * u, d = lineDist(STREAM, x, z); if (d < best.d) best = { x, z, d }; }
+    const e = 0.08; const dz = lineDist(TRACK, best.x, best.z + e); void dz;
+    // along the track direction near the crossing
+    let ti = 1; for (let i = 1; i < TRACK.length; i++) if (lineDist([TRACK[i - 1], TRACK[i]], best.x, best.z) < 0.05) ti = i;
+    const a = TRACK[ti - 1], c = TRACK[ti], L = Math.hypot(c.x - a.x, c.z - a.z), ux = (c.x - a.x) / L, uz = (c.z - a.z) / L;
+    for (let k = -3; k <= 3; k++) { const x = best.x + ux * k * 0.72 + (rnd() - 0.5) * 0.15, z = best.z + uz * k * 0.72 + (rnd() - 0.5) * 0.15, y = Math.max(WATER_Y + 0.22, heightAt(x, z) + 0.08);
+      b.add(hewn, new THREE.CylinderGeometry(0.42, 0.5, y - (WATER_Y - 1.2), 7).translate(0, (y - (WATER_Y - 1.2)) / 2, 0), x, WATER_Y - 1.2, z, rnd() * 3);
+      WALK.push({ x, z, y, r: 0.55 }); } }
+  // ---- under the orchard trees (planted in main.ts): windfall apples in the grass, a basket or two, a ladder against one trunk ----
+  ORCHARD.forEach((o, i) => { const y = heightAt(o.x, o.z); for (let k = 0; k < 4; k++) { const a = rnd() * 6.28, r = 0.6 + rnd() * 1.6, fx = o.x + Math.sin(a) * r, fz = o.z + Math.cos(a) * r; b.add(rnd() < 0.75 ? fruitR : fruitY, new THREE.SphereGeometry(0.075, 6, 4), fx, heightAt(fx, fz) + 0.05, fz); }
+    if (i % 5 === 1) { const bx = o.x + 1.3, bz = o.z - 0.6, by = heightAt(bx, bz); b.add(wood, cyl(0.26, 0.3, 0.36, 10), bx, by - 0.02, bz); for (let k = 0; k < 5; k++) b.add(rnd() < 0.6 ? fruitR : fruitY, new THREE.SphereGeometry(0.08, 6, 4), bx + (rnd() - 0.5) * 0.3, by + 0.36, bz + (rnd() - 0.5) * 0.3); }
+    if (i === 4) { for (const dx of [-0.25, 0.25]) b.add(wood, new THREE.BoxGeometry(0.06, 3.0, 0.06).translate(0, 1.5, 0).rotateX(-0.32), o.x + dx, y - 0.05, o.z + 1.1); for (let k = 0; k < 7; k++) b.add(wood, box(0.5, 0.04, 0.04), o.x, y + 0.3 + k * 0.4, o.z + 1.1 - (0.3 + k * 0.4) * Math.tan(0.32)); } });
+  // ---- the bridge: narrow, three piers in the creek, four segmental arches, low parapets, on the road north-west ----
+  { let zc = -59.6; for (let i = 0; i < 40; i++) { const f = pathX(zc) - creekX(zc), df = (pathX(zc + 0.01) - creekX(zc + 0.01) - f) / 0.01; zc -= f / df; }
+    const xc = pathX(zc), dx = pathX(zc - 0.5) - pathX(zc + 0.5), dz = -1, L0 = Math.hypot(dx, dz), ax = dx / L0, az = dz / L0, th = Math.atan2(-az, ax);
+    const span = 3.9, HL = span * 2 + 0.9, W = 2.3, P = (s: number, c: number) => [xc + ax * s - az * c, zc + az * s + ax * c] as const; // c across (left of travel)
+    const yA = heightAt(...P(-HL, 0)) + 0.05, yB = heightAt(...P(HL, 0)) + 0.05, crown = Math.max(yA, yB) + 1.15;
+    const deckY = (s: number) => { const u = Math.max(-1, Math.min(1, s / HL)); const base = yA + (yB - yA) * (u + 1) / 2; return base + (crown - Math.max(yA, yB)) * (1 - u * u) + (Math.max(yA, yB) - base) * (1 - u * u); };
+    const bed = WATER_Y - 1.1, stone = triplanar(t.sand, 2.2, '#b9b09e', { sat: 0.35, gain: 1.5, rough: 0.9 }), arch = triplanar(t.brick, 1.6, '#c8bfae', { sat: 0.3, gain: 1.5 });
+    const g = new THREE.Group(); g.position.set(xc, 0, zc); g.rotation.y = th; const lb = new Builder();
+    // spandrels per span: shape from pier to pier under the deck line, intrados a segmental arch; extruded across the deck
+    for (let k = 0; k < 4; k++) { const s0 = -2 * span + k * span, s1 = s0 + span, spring = Math.min(deckY(s0), deckY(s1)) - 1.15, rise = 0.95, sh = new THREE.Shape();
+      sh.moveTo(s0, spring); for (let i = 1; i <= 10; i++) { const u = i / 10, s = s0 + (s1 - s0) * u; sh.lineTo(s, spring + rise * Math.sin(Math.PI * u)); }
+      for (let i = 10; i >= 0; i--) { const s = s0 + (s1 - s0) * i / 10; sh.lineTo(s, deckY(s) - 0.12); }
+      lb.add(stone, new THREE.ExtrudeGeometry(sh, { depth: W, bevelEnabled: false, curveSegments: 4 }).translate(0, 0, -W / 2));
+      for (let i = 0; i <= 8; i++) { const u = i / 8, s = s0 + (s1 - s0) * u, y = spring + rise * Math.sin(Math.PI * u), a = Math.atan2(rise * Math.PI * Math.cos(Math.PI * u) / span, 1); for (const c of [-W / 2 - 0.02, W / 2 + 0.02]) { const vg = new THREE.BoxGeometry(0.34, 0.42, 0.06); vg.rotateZ(a); vg.translate(s, y + 0.2, c); lb.add(arch, vg); } } }
+    // piers with pointed cutwaters (upstream and down) and abutments into the banks
+    for (const s of [-span, 0, span]) { const top = Math.min(deckY(s - span), deckY(s + span), deckY(s)) - 1.1; lb.add(stone, box(0.9, top - bed, W).translate(s, bed, 0) as THREE.BufferGeometry);
+      for (const c of [-1, 1]) { const cw = new THREE.CylinderGeometry(0.64, 0.64, top - bed - 0.4, 4).rotateY(Math.PI / 4).scale(0.7, 1, 1).translate(s, bed + (top - bed - 0.4) / 2, c * W / 2); lb.add(stone, cw); lb.add(stone, new THREE.ConeGeometry(0.46, 0.5, 4).rotateY(Math.PI / 4).scale(0.7, 1, 1).translate(s, top - 0.15, c * W / 2)); }
+      solids.push({ x: P(s, 0)[0], z: P(s, 0)[1], r: 0.1 }); }
+    for (const s of [-2 * span - 0.45, 2 * span + 0.45]) lb.add(stone, box(1.2, deckY(s) - bed, W + 0.6).translate(s, bed, 0) as THREE.BufferGeometry);
+    // deck: flags following the hump; low parapets with a coping; walk boxes and side solids
+    const n = 34; for (let i = 0; i < n; i++) { const sa = -HL + i * 2 * HL / n, sb = sa + 2 * HL / n, sm = (sa + sb) / 2, y = deckY(sm), a = Math.atan2(deckY(sb) - deckY(sa), sb - sa);
+      const dg = new THREE.BoxGeometry(sb - sa + 0.03, 0.14, W); dg.rotateZ(a); dg.translate(sm, y - 0.07, 0); lb.add(arch, dg);
+      for (const c of [-1, 1]) { const pg = new THREE.BoxGeometry(sb - sa + 0.03, 0.62, 0.32); pg.rotateZ(a); pg.translate(sm, y + 0.31, c * (W / 2 - 0.16)); lb.add(stone, pg); const cg = new THREE.BoxGeometry(sb - sa + 0.04, 0.1, 0.42); cg.rotateZ(a); cg.translate(sm, y + 0.67, c * (W / 2 - 0.16)); lb.add(arch, cg);
+        if (i % 2 === 0) { const [wx, wz] = P(sm, c * (W / 2 + 0.25)); solids.push({ x: wx, z: wz, r: 0.55 }); } }
+      const [wx, wz] = P(sm, 0); WALK.push({ x: wx, z: wz, y, hw: (sb - sa) / 2 + 0.02, hd: W / 2 - 0.3, ry: th, cam: true }); }
+    // end posts at the four corners
+    for (const s of [-HL, HL]) for (const c of [-1, 1]) lb.add(arch, box(0.5, 1.0, 0.5).translate(s, deckY(s) - 0.05, c * (W / 2 - 0.16)) as THREE.BufferGeometry);
+    const bg = lb.build(); g.add(bg); b.extra.push(g); }
+  const grp = b.build(); for (const m of b.extra) grp.add(m); grp.name = 'opening';
+  return { group: grp, update: (time) => { for (const u of update) u(time); } };
 }

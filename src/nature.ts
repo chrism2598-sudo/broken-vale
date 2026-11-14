@@ -189,7 +189,7 @@ function impostorMaterial(tex: THREE.Texture): THREE.MeshBasicMaterial {
   return m;
 }
 
-export type TreeInst = { k: number; autumn: boolean; x: number; y: number; z: number; s: number; ry: number };
+export type TreeInst = { k: number; autumn: boolean; x: number; y: number; z: number; s: number; ry: number; near?: number };
 
 /** All placed trees with distance LOD: full meshes near the player (under a triangle budget), impostor cards beyond. */
 export class TreeField {
@@ -225,7 +225,7 @@ export class TreeField {
     let tris = 0;
     for (const { g, t, d } of all) {
       p.set(t.x, t.y, t.z); q.setFromAxisAngle(up, t.ry); s.setScalar(t.s); m4.compose(p, q, s);
-      if (d < this.opts.nearR && tris + g.tris <= this.opts.triBudget) {
+      if (d < (t.near ?? this.opts.nearR) && tris + g.tris <= this.opts.triBudget) {
         const i = nFull.get(g) ?? 0; for (const im of g.full) im.setMatrixAt(i, m4); nFull.set(g, i + 1); tris += g.tris;
       } else {
         const i = nCard.get(g) ?? 0; g.card.setMatrixAt(i, m4); nCard.set(g, i + 1);

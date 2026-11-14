@@ -37,6 +37,7 @@ import { DAY_LEN, MORNING, skyAt, clockText, makeNightSky } from './daynight';
 import { makeRoam, FIRES } from './roam';
 import { GameAudio, type Region, type Surface } from './audio';
 import { ENNA_LINES, ENNA_NAME, LAMP_XP, LAMP_TOAST, FINAL_TITLE, FINAL_KICKER, FINAL_LINES, FINAL_REWARD, finalStats, CREDITS, sefaLines, dovLines, ressLines, nextUncharted } from './finale';
+import { trackMask, openingBusy, STREAM, POOL, ORCHARD, HAZEL } from './world';
 import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, trailMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep, OUTPOSTS, outpostPad, onTrail, trailAt } from './world';
 import { makeOutposts, STANDS, standY, standPush, inStand, O as OP, type Loc } from './outposts';
 import { makeBarrow, BAR_O, type Barrow } from './barrow';
@@ -1661,7 +1662,7 @@ ${GRADE_GLSL}
     if (inKeep) return 'water'; if (inCave || inSea || inCastle || perch) return 'stone';
     if (inCoast && coast) return coast.onTop || coast.groundY(state.px, state.pz) > coast.landY(state.px, state.pz) + 0.1 ? 'stone' : 'sand';
     if (onIsland) return 'grass'; if (Math.abs(state.px - creekX(state.pz)) < creekHalf(state.pz)) return 'water';
-    return pathMask(state.px, state.pz) > 0.5 || trailMask(state.px, state.pz) > 0.45 ? 'gravel' : 'grass';
+    return pathMask(state.px, state.pz) > 0.5 || trailMask(state.px, state.pz) > 0.45 || trackMask(state.px, state.pz) > 0.5 ? 'gravel' : 'grass';
   }
   function regionNow(): Region {
     if (lampCine || dawnCine || !endEl.hidden) return 'ending';
@@ -2228,6 +2229,12 @@ function makeCreek(normals: THREE.Texture) {
     pos.push(c - w, -z, 0, c + w, -z, 0); uv.push(0, z / 8, 1, z / 8);
     if (i < zs.length - 1) { const o = i * 2; idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); } // CCW seen from above after the -90° X rotation
   });
+  { // M26 · the quarry stream and its pool share the creek's water (same plane, same material, no extra draw)
+    const smp: { x: number; z: number; nx: number; nz: number }[] = [];
+    for (let i = 1; i < STREAM.length; i++) { const a = STREAM[i - 1], b = STREAM[i], L = Math.hypot(b.x - a.x, b.z - a.z), n = Math.max(1, Math.ceil(L)); for (let k = i === 1 ? 0 : 1; k <= n; k++) { const u = k / n; smp.push({ x: a.x + (b.x - a.x) * u, z: a.z + (b.z - a.z) * u, nx: -(b.z - a.z) / L, nz: (b.x - a.x) / L }); } }
+    const o0 = pos.length / 3; smp.forEach((q, i) => { const w = 1.75; pos.push(q.x + q.nx * w, -(q.z + q.nz * w), 0, q.x - q.nx * w, -(q.z - q.nz * w), 0); /* same winding as the creek: left bank first */ uv.push(0, i / 8, 1, i / 8); if (i < smp.length - 1) { const o = o0 + i * 2; idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); } });
+    const c0 = pos.length / 3; pos.push(POOL.x, -POOL.z, 0); uv.push(0.5, 0.5); const SEG = 24;
+    for (let k = 0; k <= SEG; k++) { const a = k / SEG * Math.PI * 2; pos.push(POOL.x + Math.cos(a) * (POOL.r + 1.3), -(POOL.z + Math.sin(a) * (POOL.r + 1.3)), 0); uv.push(0.5 + Math.cos(a) * 0.5, 0.5 + Math.sin(a) * 0.5); if (k) idx.push(c0, c0 + k + 1, c0 + k); } }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
   if (HIGH) {
     const w = new Water(geo, { textureWidth: 512, textureHeight: 512, waterNormals: normals, sunDirection: SUN_DIR.clone(), sunColor: 0xfff1d6, waterColor: 0x1f4a4c, distortionScale: 1.2, fog: true, alpha: 0.92 });
@@ -2252,6 +2259,7 @@ function prep(g: GLTF, cast = true): THREE.Object3D {
 }
 function okSpot(x: number, z: number, clearPath = 2.2, clearCreek = 2): boolean {
   if (pathMask(x, z) > 0.05 || Math.abs(x - creekX(z)) < creekHalf(z) + clearCreek) return false;
+  if (openingBusy(x, z)) return false; // M26: the opening path stays clear
   if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < 6 || Math.hypot(x - SPAWN.x, z - SPAWN.z - 6) < 6 || Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 3 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 20) return false;
   for (const l of LANDMARKS) if (Math.hypot(x - l.x, z - l.z) < l.r * (l.id === 'veilfall' ? 1.7 : 1.25)) return false;
   { const l = LANDMARKS[0], f = Math.atan2(SPAWN.x - l.x, SPAWN.z - l.z); if (Math.hypot(x - l.x - Math.sin(f) * 38.5, z - l.z - Math.cos(f) * 38.5) < 10) return false; } // M25: the Wing Gate forecourt
@@ -2302,6 +2310,9 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
     if (heightAt(x, z) > 40 || normalAt(x, z)[1] < 0.72 || !okSpot(x, z) || trailAt(x, z).d < 5) continue; // M22: keep the Greycrown trail clear
     addTree(pick(pines), x, z, 1.0 + r() * 0.7, r() < 0.06);
   }
+  // M26 · the wandering orchard on the quarry track: low, spreading broadleaf trees (own seed, so the vale's scatter is not reshuffled)
+  HAZEL.forEach((o, i) => { const k = [1, 4, 2][i % 3], sc = o.s * 4.2 / trees[k].height; treeList.push({ k, autumn: false, x: o.x, y: heightAt(o.x, o.z) - 1.25 * o.s, z: o.z, s: sc, ry: o.ry, near: 16 }); SOLIDS.push({ x: o.x, z: o.z, r: 0.7 }); }); // hazel: crowns sunk to the ground read as thickets
+  ORCHARD.forEach((o, i) => { const k = [0, 2, 3][i % 3], sc = o.s * 4.6 / trees[k].height; treeList.push({ k, autumn: false, x: o.x, y: heightAt(o.x, o.z) - 0.12, z: o.z, s: sc, ry: o.ry, near: 20 }); SOLIDS.push({ x: o.x, z: o.z, r: 0.45 }); });
   // Distance LOD: full meshes near the player under a triangle budget (~400k High / 120k Lite), impostor cards beyond.
   const field = new TreeField(renderer, trees, treeList, SUN_DIR, { nearR: HIGH ? 52 : 38, triBudget: HIGH ? 300000 : 120000, shadowR: 0 });
   scene.add(field.group); field.update(SPAWN.x, SPAWN.z, true);
@@ -2314,7 +2325,7 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
     const kindRoll = r(); const k = kindRoll < 0.45 ? (r() < 0.5 ? 0 : 1) : kindRoll < 0.8 ? (r() < 0.5 ? 2 : 3) : kindRoll < 0.95 ? 4 : 5;
     for (let j = 0; j < 3; j++) {
       const x = px + (r() - 0.5) * 2.5, z = pz + (r() - 0.5) * 2.5;
-      if (pathMask(x, z) > 0.15 || Math.abs(x - creekX(z)) < creekHalf(z) + 0.8 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 18) continue;
+      if (pathMask(x, z) > 0.15 || openingBusy(x, z) || Math.abs(x - creekX(z)) < creekHalf(z) + 0.8 || Math.hypot(x - SHRINE.x, z - SHRINE.z) < 18) continue;
       const s = k <= 1 ? 0.16 + r() * 0.1 : k === 5 ? 0.35 + r() * 0.2 : 0.14 + r() * 0.08;
       flora[k].push([x, heightAt(x, z) - 0.02, z, s, r() * 6.28]);
     }

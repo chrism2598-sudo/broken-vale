@@ -287,3 +287,9 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Ridge stair: inside the stair corridor the ridge face now climbs at an even (linear) grade between the same ends, so qa-opening's largest step is 0.62 m (was 0.91, limit 0.9). Stair ends and Ress unchanged.
 - Castle rock (paleRock): per-pixel bedding strata with dark partings, moss and damp in cracks/partings, lichen blots, darker damp foot; ~260 low scree stones and fallen blocks round the foot (open at the stair and Enna's stair) with grass thinned on that band; ivy spilling over the cut retaining-wall tops and down their inner faces, moss pads where wall meets tread. Keep, gate and stair not moved.
 - Hub: ragged trampled-earth patch where the paths meet by the Wayfinder (terrain shader) and grass thinned there; he stays put.
+
+### M33 · keep-view draw calls, castle rock relief, night on the opening path
+- Lite keep view 207 → 195 draw calls: each campfire's nine ring stones are one mesh and its logs + seat one more (roam.ts); tree LOD instanced meshes with no instances are hidden (nature.ts). No visual change.
+- Castle rock: finer lathe profile with faceted normals, bedded ledges that jut then undercut, bulging buttresses, broken faces, ~70 angular slabs half-sunk in the face as cracked-off edges; lighter weathered grey-tan ('#d6ccb6', softer partings) to sit with the cream keep. Foot radius unchanged (walk/solids untouched).
+- Night: moon key 0.6 → 0.68 (QA's night check needs < 0.7), sky fill 0.95 → 1.18, exposure lift 0.16 → 0.22, foliage less crushed; tint stays cool, campfire/lantern/Wayfinder warm lights unchanged.
+- tools/m26-shots.cjs: TOD=<t> env overrides the time of day for night shots.

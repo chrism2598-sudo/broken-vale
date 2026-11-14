@@ -233,8 +233,9 @@ export class TreeField {
     }
     for (const g of this.groups.values()) {
       const nf = nFull.get(g) ?? 0, nc = nCard.get(g) ?? 0;
-      for (const im of g.full) { im.count = nf; im.instanceMatrix.needsUpdate = true; }
-      g.card.count = nc; g.card.instanceMatrix.needsUpdate = true;
+      // M33 · an instanced mesh with no instances still costs a draw call (and a shadow call): hide it instead
+      for (const im of g.full) { im.count = nf; im.visible = nf > 0; im.instanceMatrix.needsUpdate = true; }
+      g.card.count = nc; g.card.visible = nc > 0; g.card.instanceMatrix.needsUpdate = true;
     }
     return tris;
   }

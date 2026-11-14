@@ -1,3 +1,4 @@
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as THREE from 'three';
 import { STANDS, inStand } from './outposts';
 /** M20b-2: foes walk round walls, tents, rocks (anything standable that rises above a shin). */
@@ -47,13 +48,17 @@ export const inSafe = (x: number, z: number, pad = 0) => Math.hypot(x - VILLAGE.
 
 function fireMesh(ft: THREE.Texture, high: boolean) {
   const g = new THREE.Group(); const stone = new THREE.MeshStandardMaterial({ color: '#77736c', roughness: 0.9 }), wood = new THREE.MeshStandardMaterial({ color: '#4a3424', roughness: 0.85 }), ash = new THREE.MeshStandardMaterial({ color: '#2a2522', roughness: 1, emissive: '#ff5a1a', emissiveIntensity: 0.6 });
-  const sg = new THREE.DodecahedronGeometry(0.22, 0); for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2, m = new THREE.Mesh(sg, stone); m.position.set(Math.cos(a) * 0.75, 0.1, Math.sin(a) * 0.75); m.rotation.set(i, i * 2, 0); m.scale.set(1, 0.7, 1); m.castShadow = high; g.add(m); }
-  const lg = new THREE.CylinderGeometry(0.07, 0.08, 0.95, 6); for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(lg, wood); m.rotation.z = Math.PI / 2 - 0.35; m.rotation.y = (i / 4) * Math.PI * 2; m.position.y = 0.2; g.add(m); }
+  // M33 · the ring stones are one mesh and the logs + seat one more (was 9 + 5 draw calls per camp)
+  const o3 = new THREE.Object3D(), put = (geo: THREE.BufferGeometry, f: (o: THREE.Object3D) => void) => { o3.position.set(0, 0, 0); o3.rotation.set(0, 0, 0); o3.scale.set(1, 1, 1); f(o3); o3.updateMatrix(); return geo.clone().applyMatrix4(o3.matrix); };
+  const sg = new THREE.DodecahedronGeometry(0.22, 0); const ring: THREE.BufferGeometry[] = []; for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2; ring.push(put(sg, (m) => { m.position.set(Math.cos(a) * 0.75, 0.1, Math.sin(a) * 0.75); m.rotation.set(i, i * 2, 0); m.scale.set(1, 0.7, 1); })); }
+  const stones = new THREE.Mesh(mergeGeometries(ring)!, stone); stones.castShadow = high; g.add(stones);
+  const lg = new THREE.CylinderGeometry(0.07, 0.08, 0.95, 6), logs: THREE.BufferGeometry[] = []; for (let i = 0; i < 4; i++) logs.push(put(lg, (m) => { m.rotation.z = Math.PI / 2 - 0.35; m.rotation.y = (i / 4) * Math.PI * 2; m.position.y = 0.2; }));
   const bed = new THREE.Mesh(new THREE.CircleGeometry(0.5, 12).rotateX(-Math.PI / 2), ash); bed.position.y = 0.04; g.add(bed);
   const fl = makeFlame(ft, 1.15); fl.position.y = 0.75; g.add(fl); const fl2 = makeFlame(ft, 1.0); fl2.position.set(0.12, 0.6, -0.1); g.add(fl2);
   // bedrolls / log seats so it reads as a camp from afar
   const roll = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.2, 4, 8), new THREE.MeshStandardMaterial({ color: '#6b4b3a', roughness: 0.9 })); roll.rotation.z = Math.PI / 2; roll.position.set(0, 0.22, 1.8); roll.castShadow = high; g.add(roll);
-  const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.27, 1.6, 8), wood); seat.rotation.z = Math.PI / 2; seat.rotation.y = 1.2; seat.position.set(-1.6, 0.25, -0.6); seat.castShadow = high; g.add(seat);
+  logs.push(put(new THREE.CylinderGeometry(0.25, 0.27, 1.6, 8), (m) => { m.rotation.z = Math.PI / 2; m.rotation.y = 1.2; m.position.set(-1.6, 0.25, -0.6); }));
+  const woods = new THREE.Mesh(mergeGeometries(logs)!, wood); woods.castShadow = high; g.add(woods); // logs: no shadow (as before) → seat's shadow carries the merged mesh
   return { g, flames: [fl, fl2], ash };
 }
 

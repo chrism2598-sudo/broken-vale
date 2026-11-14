@@ -1133,6 +1133,7 @@ ${GRADE_GLSL}
   // ---------- Dawn: sun colour/angle, sky shell, IBL/exposure and fog blend ----------
   const DC = { sun0: new THREE.Color('#fff1d6'), sun1: new THREE.Color('#ffb07a'), fog0: new THREE.Color('#a8bfd2'), fog1: new THREE.Color('#e2b29c'), hs0: new THREE.Color('#cfe0ff'), hs1: new THREE.Color('#ffc6a6'), hg0: new THREE.Color('#4b5a2e'), hg1: new THREE.Color('#5e4634') };
   const fogD0 = (scene.fog as THREE.FogExp2).density; let dawnK = -1;
+  // M33 · night: brighter, cooler moonlight and a lifted sky fill so the opening path reads on a phone (warm lamps unchanged)
   const NC = { sun: new THREE.Color('#9db4ff'), hs: new THREE.Color('#566ca8'), hg: new THREE.Color('#1c2232'), fog: new THREE.Color('#141d33') };
   let lightKey = '', skyGlow = 0; const moonV = new THREE.Vector3(), skyV = new THREE.Vector3();
   function applyDawn(k: number) {
@@ -1148,12 +1149,12 @@ ${GRADE_GLSL}
       const sky = skyAt(tod, SUN_DIR), n = sky.night; nightK = n; moonV.copy(sky.moonDir); skyV.copy(sky.sunDir);
       const kp = Math.max(dawnCine ? k : 0, save.beacon ? (save.lamp >= 2 ? 0.08 : 0.3) : 0, sky.golden * 0.9); // M20b: once the vale is mended the day sky goes clear (no lingering brown dawn haze) skyGlow = Math.max(dawnCine ? k : 0, kp * (1 - n));
       sun.color.copy(DC.sun0).lerp(DC.sun1, kp);
-      if (n > 0.5) { sun.color.copy(NC.sun); sun.intensity = 0.6 * THREE.MathUtils.smoothstep(n, 0.5, 0.95); sunDir.copy(sky.moonDir); }
+      if (n > 0.5) { sun.color.copy(NC.sun); sun.intensity = 0.68 * THREE.MathUtils.smoothstep(n, 0.5, 0.95); sunDir.copy(sky.moonDir); }
       else { sun.intensity = (2.6 + 0.35 * kp) * sky.sunFade; sunDir.copy(sky.sunDir); if (dawnCine) sunDir.lerp(DAWN_DIR, k).normalize(); }
-      hemi.color.copy(DC.hs0).lerp(DC.hs1, kp).lerp(NC.hs, n); hemi.groundColor.copy(DC.hg0).lerp(DC.hg1, kp).lerp(NC.hg, n); hemi.intensity = THREE.MathUtils.lerp(0.25 + 0.3 * kp, 0.95, n);
+      hemi.color.copy(DC.hs0).lerp(DC.hs1, kp).lerp(NC.hs, n); hemi.groundColor.copy(DC.hg0).lerp(DC.hg1, kp).lerp(NC.hg, n); hemi.intensity = THREE.MathUtils.lerp(0.25 + 0.3 * kp, 1.18, n);
       const fog = scene.fog as THREE.FogExp2; fog.color.copy(DC.fog0).lerp(DC.fog1, kp).lerp(NC.fog, n); fog.density = fogD0 * (1 + 0.18 * kp) * (1 + 0.3 * n);
-      renderer.toneMappingExposure = AGX_K * (0.92 + 0.1 * kp + 0.16 * n); scene.environmentIntensity = (0.85 - 0.3 * kp) * (1 - 0.8 * n); scene.backgroundIntensity = (0.95 - 0.4 * kp) * (1 - 0.97 * n);
-      water.setDawn(kp * (1 - n)); lantern.intensity = 5 * THREE.MathUtils.smoothstep(n, 0.3, 0.8); foliageUniforms.uGlow.value = 1 - 0.85 * n; foliageUniforms.uLit.value.setRGB(1, 1, 1).lerp(NC.hs, n * 0.25).multiplyScalar(1 - 0.8 * n);
+      renderer.toneMappingExposure = AGX_K * (0.92 + 0.1 * kp + 0.22 * n); scene.environmentIntensity = (0.85 - 0.3 * kp) * (1 - 0.8 * n); scene.backgroundIntensity = (0.95 - 0.4 * kp) * (1 - 0.97 * n);
+      water.setDawn(kp * (1 - n)); lantern.intensity = 5 * THREE.MathUtils.smoothstep(n, 0.3, 0.8); foliageUniforms.uGlow.value = 1 - 0.85 * n; foliageUniforms.uLit.value.setRGB(1, 1, 1).lerp(NC.hs, n * 0.25).multiplyScalar(1 - 0.72 * n);
       dawnSky.sun.copy(dawnCine || save.beacon && save.lamp < 2 && kp <= 0.3 ? DAWN_DIR : sky.sunDir);
     }
     (rift.material as THREE.ShaderMaterial).uniforms.uFade.value = 1 - 0.9 * k; island.setDawn(k);

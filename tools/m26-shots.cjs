@@ -32,6 +32,8 @@ const S={
   'plaza-rock-r':{q:'q=lite&shot=spawn&tod=0.62',js:v(-73.5,-103.5,H(-73.5,-103.5,-71.1,-114.4),-0.15,4.5)},
   'cut-up':{q:'q=lite&shot=spawn&tod=0.62',js:v(-79.0,-108.2,H(-79.0,-108.2,-91.8,-128.5),-0.12,4)},
   'cut-side':{q:'q=lite&shot=spawn&tod=0.62',js:v(-80.6,-109.6,H(-80.6,-109.6,-71.6,-115.2),-0.05,2.6)},
+  'rock-meadow':{q:'q=lite&shot=spawn&tod=0.45',js:v(-50,-96,H(-50,-96,-91.8,-128.5),-0.02,8)},
+  'rock-far':{q:'q=lite&shot=spawn&tod=0.45',js:v(-38,-78,H(-38,-78,-91.8,-128.5),0.0,8)},
   'stair-up':{q:'q=lite&shot=spawn&tod=0.62',js:v(-75.0,-101.9,H(-75.0,-101.9,-91.8,-128.5),0.05,5)},
   'rock-side':{q:'q=lite&shot=spawn&tod=0.62',js:v(-64,-111,H(-64,-111,-91.8,-128.5),0.18,4.5)},
   'stair-mid':{q:'q=lite&shot=spawn&tod=0.62',js:v(-79.2,-107.6,H(-79.2,-107.6,-75.0,-110.3),0.3,3.0)},
@@ -49,7 +51,7 @@ const P={};for(const k in S)P['m26-'+T+'-'+k]=Object.assign({sex:'female',name:'
     const p=await b.newPage(); const logs=[]; p.on('pageerror',e=>logs.push('PE '+e.message)); p.on('console',m=>{if(m.type()==='error')logs.push('CE '+m.text().slice(0,220));});
     await p.setViewport({width:412,height:915,deviceScaleFactor:1,isMobile:true,hasTouch:true});
     await p.evaluateOnNewDocument((sex,nm)=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:nm,sex}));},pr.sex,pr.name);
-    await p.goto(`http://localhost:${PORT}/?${pr.q}`,{waitUntil:'load',timeout:120000});
+    await p.goto(`http://localhost:${PORT}/?${process.env.TOD?pr.q.replace(/tod=[0-9.]+/,"tod="+process.env.TOD):pr.q}`,{waitUntil:'load',timeout:120000});
     await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000}); await sleep(pr.w||3000);
     if(pr.js){await p.evaluate(pr.js); await p.evaluate(()=>window.__vale.sim(Array(45).fill(1/30),0,0));}
     await p.evaluate(()=>{for(const e of document.querySelectorAll('.toast,#toast,[class*=toast]'))e.style.display='none';}).catch(()=>{}); await sleep(5200); await p.evaluate(()=>{for(const e of document.querySelectorAll('.toast,#toast,[class*=toast]'))e.style.display='none';}).catch(()=>{}); await p.screenshot({path:`/workspace/vale3d/shots/${name}.png`}); console.log(name, JSON.stringify(logs.slice(0,6))); await p.close(); }

@@ -333,7 +333,7 @@ function paleKeepYard(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, 
 function paleRock(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim: THREE.Material, frost: THREE.Material, ivy: THREE.Material, leaf: THREE.Material, face: number, gy: number, solids: Solid[], rnd: () => number) {
   const cs = Math.cos(face), sn = Math.sin(face), G = (u: number, v: number) => [cs * u + sn * v, -sn * u + cs * v] as const;
   const base = l.base!, top = l.pad, RI = PALE_ROCK.in, HALF = 2.5;
-  const rock = triplanar(t.rock, 2.6, '#c4b9a3', { sat: 0.35, gain: 1.95, rough: 0.92, emissive: '#151210' });
+  const rock = triplanar(t.rock, 2.6, '#d6ccb6', { sat: 0.3, gain: 2.25, rough: 0.92, emissive: '#1c1814' });
   // M32 · the castle rock weathers: bedding strata (alternating tone, thin dark partings), moss and damp in the cracks and partings,
   // lichen blots on the faces, and darker, damper stone toward the foot. Per pixel (no extra geometry).
   { const prev = rock.onBeforeCompile; rock.onBeforeCompile = (sh, r) => { prev.call(rock, sh, r); sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
@@ -342,19 +342,30 @@ function paleRock(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim
     float crack = smoothstep(.62, .7, tVn(vec2((vTW.x - vTW.z) * 1.9, yy * .8))) * smoothstep(.45, .6, tVn(vTW.xz * 2.7 + yy));
     float foot = 1. - smoothstep(${(base + 0.1).toFixed(2)}, ${(base + 1.6).toFixed(2)}, vTW.y);
     float lich = side * smoothstep(.78, .84, tVn(vTW.xy * 4.1 + vTW.zy * 3.7));
-    diffuseColor.rgb *= mix(.8, 1.14, band) * (1. - .5 * part * side);
+    diffuseColor.rgb *= mix(.8, 1.14, band) * (1. - .35 * part * side);
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.24, .31, .13), clamp((part * .5 + crack) * side * (.55 + .45 * tVn(vTW.xz * 6.)) + (1. - side) * .25, 0., .8));
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.76, .74, .58), lich * .5);
     diffuseColor.rgb *= (1. - .16 * foot) * 1.1; roughnessFactor = mix(roughnessFactor, .45, foot * .6); }`); }; }
   // ---- the rock skirt: a lathe from the meadow to the rim, pushed outward by two octaves of noise (crags and ledges) ----
-  { const prof: [number, number][] = [[25.45, base - 0.8], [25.3, base + 0.15], [24.95, base + 0.9], [24.55, base + 1.7], [24.15, base + 2.4], [23.65, base + 3.1], [23.15, base + 3.75], [22.8, top - 0.12], [22.5, top + 0.1], [21.9, top + 0.1]];
-    const gap = 0.14, seg = 104, gq = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), seg, face + gap, Math.PI * 2 - gap * 2);
+  { const prof0: [number, number][] = [[25.45, base - 0.8], [25.3, base + 0.15], [24.95, base + 0.9], [24.55, base + 1.7], [24.15, base + 2.4], [23.65, base + 3.1], [23.15, base + 3.75], [22.8, top - 0.12], [22.5, top + 0.1], [21.9, top + 0.1]];
+    // M33 · a finer profile (so ledges and overhang breaks have rows to live in), faceted normals, bigger crag relief:
+    //  bedded ledges (each bed juts, then undercuts to the parting above), bulging buttresses round the arc, broken blocks
+    const prof: [number, number][] = []; for (let k = 0; k < prof0.length - 1; k++) { const [r0, y0] = prof0[k], [r1, y1] = prof0[k + 1], n = k < 7 ? 4 : 1; for (let q = 0; q < n; q++) prof.push([r0 + (r1 - r0) * q / n, y0 + (y1 - y0) * q / n]); } prof.push(prof0[prof0.length - 1]);
+    const gap = 0.14, seg = 120; let gq: THREE.BufferGeometry = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), seg, face + gap, Math.PI * 2 - gap * 2);
     const p = gq.attributes.position;
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), r = Math.hypot(x, z), a = Math.atan2(x, z), arc = a * 24;
       const w = THREE.MathUtils.smoothstep(y, base - 0.4, base + 0.6) * (1 - THREE.MathUtils.smoothstep(y, top - 0.6, top + 0.05) * 0.75);
-      const n = (0.5 + 0.5 * fbm(arc * 0.16, y * 0.32)) * 0.75 + 0.3 * fbm(arc * 0.55 + 5, y * 0.9) + 0.12 * Math.sin(y * 3.1 + fbm(arc * 0.3, 2) * 4); // + strata
-      const rr = Math.min(25.45, r + n * w); p.setX(i, Math.sin(a) * rr); p.setZ(i, Math.cos(a) * rr); }
-    gq.computeVertexNormals(); b.add(rock, gq);
+      const yb = y + 0.35 * fbm(arc * 0.2, 7), bed = ((yb - base) / 1.15) % 1, ledge = (bed < 0 ? bed + 1 : bed);
+      const shelf = (ledge < 0.78 ? ledge / 0.78 : 1 - (ledge - 0.78) / 0.22 * 1.25) * 0.75 * (0.5 + 0.5 * fbm(arc * 0.35 + 3, 1));      // jut, then undercut
+      const butt = Math.max(0, fbm(arc * 0.11 + 11, 3)) * 1.3, chunk = Math.abs(fbm(arc * 0.9 + 2, y * 1.3)) * 0.35;                   // buttresses, broken faces
+      const n = (0.5 + 0.5 * fbm(arc * 0.16, y * 0.32)) * 0.6 + 0.25 * fbm(arc * 0.55 + 5, y * 0.9) + shelf + butt + chunk;
+      const cap = y > base + 1.2 ? 26.0 : 25.45, rr = Math.min(cap, r + n * w); p.setX(i, Math.sin(a) * rr); p.setZ(i, Math.cos(a) * rr); }
+    gq = gq.toNonIndexed(); gq.computeVertexNormals(); b.add(rock, gq);
+    // broken blocks: angular slabs half-sunk into the face, standing proud as cracked-off edges
+    for (let i = 0; i < 70; i++) { const a = face + gap + 0.05 + rnd() * (Math.PI * 2 - gap * 2 - 0.1), u0 = Math.sin(a - face) * 24, v0 = Math.cos(a - face) * 24; if (v0 > 0 && Math.abs(u0) < 4.4) continue;
+      const t = 0.15 + rnd() * 0.75, y = base + 0.3 + t * (top - base - 0.6), rr = 25.1 - t * 2.2 + 0.25, sz = 0.35 + rnd() * 0.55;
+      const g2 = new THREE.DodecahedronGeometry(sz, 0).scale(1.2 + rnd() * 0.8, 0.45 + rnd() * 0.35, 0.6 + rnd() * 0.3).toNonIndexed(); g2.computeVertexNormals();
+      b.add(rock, g2, Math.sin(a) * rr, y, Math.cos(a) * rr, a + Math.PI / 2 + (rnd() - 0.5) * 0.5); }
     // frost/snow lying on the rim, and ivy cascading down the rock in a dozen curtains
     b.add(frost, new THREE.RingGeometry(21.95, 22.95, seg, 1, face + gap, Math.PI * 2 - gap * 2).rotateX(-Math.PI / 2), 0, top + 0.13, 0);
     for (let c = 0; c < 12; c++) { const a0 = face + 0.3 + c / 12 * (Math.PI * 2 - 0.6) + (rnd() - 0.5) * 0.15, hT = 1.6 + rnd() * 2.8;

@@ -664,6 +664,8 @@ function brokenFoamTex(): THREE.Texture {
  *  with cheek stones), the quarry cut into the ridge's north face as three stepped benches of sawn stone with the water-cut
  *  falls stepping down them into a pool, stepping stones where the quarry track crosses the stream, hazel along the track
  *  and a small wandering orchard. On the road north-west: a narrow three-pier stone bridge over the creek. */
+/** M28 · fern spots at the quarry (filled by makeOpening; main.ts plants the fern asset). */
+export const FERN_SPOTS: { x: number; y: number; z: number; s: number; ry: number }[] = [];
 function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update: (time: number) => void } {
   const b = new Builder(); let sd = 77; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
   const hewn = triplanar(t.rock, 2.2, '#b5ab9a', { sat: 0.35, gain: 1.7, rough: 0.92 });
@@ -697,6 +699,7 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
     float streak = side * smoothstep(.45, .85, tVn(vec2((vTW.x + vTW.z) * 5.5, vTW.y * .35)));
     float chis = side * (.5 + .5 * sin((vTW.x + vTW.z) * 31. + vTW.y * 23. + tVn(vTW.xy * 3.) * 4.)) * smoothstep(.35, .7, tVn(vTW.zy * 1.3 + vTW.xy * 1.1));
     float wet = max(1. - smoothstep(.7, 2.6, abs(vTW.x - (${wetX.toFixed(2)}))), 1. - smoothstep(.0, 1.3, vTW.y - (${(WATER_Y).toFixed(2)})));
+    wet = clamp(wet * (.7 + .5 * smoothstep(.35, .75, tVn(vec2(vTW.x * 7., vTW.y * .45)))) + side * (1. - smoothstep(.75, 1.9, abs(vTW.x - (${wetX.toFixed(2)})))) * .35, 0., 1.); // M28: water-stained runs under the lips
     vec3 mc = mix(vec3(.2, .3, .1), vec3(.36, .42, .16), tVn(vTW.xz * 9.));
     diffuseColor.rgb *= 1. - .18 * streak - .1 * chis;
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.74, .73, .52), lich * .55);
@@ -724,23 +727,37 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
   { const topAt = (z: number, notch: boolean) => { let y = -9; for (let k = 0; k < BENCH; k++) if (z >= benchFront[k]) y = Math.max(y, benchTop[k] - (notch ? 0.35 : 0)); return y; };
     for (let x = QUARRY.x0 - 0.2; x <= QUARRY.x1 + 0.2; x += 0.8) for (let z = benchFront[0] + 0.4; z < 64; z += 0.8) { if (topAt(z, Math.abs(x - QX) < 0.75) - heightAt(x, z) > 0.3) solids.push({ x, z, r: 0.6 }); } } // the sawn benches stand proud of the ridge: keep feet out of them
   for (let k = 0; k < 18; k++) { const x = QUARRY.x0 - 0.4 + k * (QW + 0.8) / 17; solids.push({ x, z: POOL.z + POOL.r + 0.9, r: 0.8 }); } // the bench face
-  // the falls: a short sheet off each bench lip into the notch below, the last into the pool; foam at every landing
+  // M28 · the falls as one continuous water-cut: a ribbon that runs down the notch floor of each bench, curls over the lip,
+  // drops down the face onto the next ledge (white water at every landing) and on into the pool. Width wanders a little.
   const fallMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: { uTime: { value: 0 } },
-    vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `uniform float uTime;varying vec2 vUv;
+    vertexShader: 'attribute float aW;attribute float aF;varying vec2 vUv;varying float vW;varying float vF;void main(){vUv=uv;vW=aW;vF=aF;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader: `uniform float uTime;varying vec2 vUv;varying float vW;varying float vF;
       float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
       float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
-      void main(){float s=n(vec2(vUv.x*9.,vUv.y*3.+uTime*3.2))*.55+n(vec2(vUv.x*21.,vUv.y*7.+uTime*4.1))*.45;
-        float edge=smoothstep(0.,.25,vUv.x)*smoothstep(1.,.75,vUv.x);float thin=.55+.45*n(vec2(vUv.x*5.,uTime*.7));
-        float streaks=n(vec2(vUv.x*34.,vUv.y*1.2+uTime*5.));float foot=smoothstep(.22,0.,vUv.y);
-        vec3 c=mix(vec3(.62,.78,.82),vec3(1.),clamp(s*.8+streaks*.45+foot*.6,0.,1.));
-        gl_FragColor=vec4(c,clamp(edge*(.6+.4*thin)*(.62+.38*s+.25*streaks)+foot*.3*edge,0.,.96));}` });
+      void main(){float sp=mix(1.4,3.6,vF),u=vUv.x,v=vUv.y;
+        float s1=n(vec2(u*8.,v*2.5-uTime*sp)),s2=n(vec2(u*19.,v*6.-uTime*sp*1.6)),st=n(vec2(u*30.,v*1.1-uTime*sp*1.3));
+        float rag=.1+.12*n(vec2(v*3.-uTime*sp,1.7));float edge=smoothstep(0.,rag,u)*smoothstep(1.,1.-rag,u);
+        float white=clamp(vW+vF*(.3+.45*st)+(s2-.5)*.35,0.,1.);
+        vec3 base=mix(vec3(.3,.44,.45),vec3(.62,.78,.82),vF);
+        vec3 c=mix(base,vec3(.97,.99,1.),white*(.6+.4*s1));
+        gl_FragColor=vec4(c,clamp(edge*(mix(.5,.78,vF)+.2*s1+.3*white),0.,.95));}` });
   const foamMat = new THREE.MeshBasicMaterial({ color: '#f4fbff', map: brokenFoamTex(), transparent: true, opacity: 0.75, depthWrite: false });
-  const lips = benchTop.map((y, k) => ({ y: y - 0.35, z: benchFront[k] })).reverse(); // from the top bench down
-  for (let i = 0; i < lips.length; i++) { const top = lips[i], botY = i + 1 < lips.length ? lips[i + 1].y : WATER_Y + 0.02, h = top.y - botY + 0.15;
-    const g = new THREE.PlaneGeometry(1.95, h, 1, 6); const fp = g.attributes.position; for (let j = 0; j < fp.count; j++) { const yy = fp.getY(j); fp.setZ(j, -Math.pow((h / 2 - yy) / h, 2) * 0.55); }
-    const m = new THREE.Mesh(g, fallMat); m.position.set(QX, botY + h / 2, top.z - 0.08); m.rotation.y = Math.PI; m.renderOrder = 2; b.extra.push(m);
-    const f = new THREE.Mesh(new THREE.CircleGeometry(i + 1 < lips.length ? 0.75 : 1.6, 16).rotateX(-Math.PI / 2), foamMat); f.position.set(QX, botY + 0.03, top.z - (i + 1 < lips.length ? 0.6 : 0.9)); b.extra.push(f); }
+  { const pts: { z: number; y: number; w: number; f: number }[] = []; const wid = (s2: number, extra = 0) => Math.min(1.32, 1.05 + 0.18 * Math.sin(s2 * 2.1) + 0.08 * Math.sin(s2 * 5.3) + extra);
+    let zs = benchFront[BENCH - 1] + 3.0, acc = 0; const impacts: number[] = [];
+    for (let k = BENCH - 1; k >= 0; k--) { const yk = benchTop[k] - 0.35 + 0.035, zf = benchFront[k];
+      for (let z = zs; z > zf + 0.02; z -= 0.3) pts.push({ z, y: yk, w: wid(acc += 0.3), f: 0 });
+      pts.push({ z: zf - 0.02, y: yk - 0.01, w: wid(acc, 0.05), f: 0.6 });
+      const yb = k > 0 ? benchTop[k - 1] - 0.35 + 0.035 : WATER_Y + 0.03, drop = yk - yb, land = k > 0 ? 0.5 : 0.75;
+      for (let i = 1; i <= 7; i++) { const t = i / 7; pts.push({ z: zf - 0.06 - land * t, y: yk - drop * t * t, w: wid(acc, 0.1 + 0.3 * t) + (k === 0 ? 0.25 * t : 0), f: 1 }); }
+      impacts.push(pts.length - 1); zs = zf - 0.06 - land - 0.3; }
+    const M = pts.length, pos = new Float32Array(M * 6), uv = new Float32Array(M * 4), aW = new Float32Array(M * 2), aF = new Float32Array(M * 2), idx: number[] = []; let v = 0;
+    for (let i = 0; i < M; i++) { const p = pts[i]; if (i) v += Math.hypot(p.z - pts[i - 1].z, p.y - pts[i - 1].y);
+      const near = impacts.reduce((m, j) => Math.min(m, Math.abs(i - j) * (i < j ? 0.5 : 1)), 99), wv = Math.max(0, 1 - near / 3) + (p.f > 0.5 && p.f < 1 ? 0.3 : 0);
+      for (const sd2 of [0, 1]) { const o = (i * 2 + sd2); pos[o * 3] = QX + (sd2 ? 1 : -1) * p.w / 2; pos[o * 3 + 1] = p.y; pos[o * 3 + 2] = p.z; uv[o * 2] = sd2; uv[o * 2 + 1] = v; aW[o] = Math.min(1, wv); aF[o] = p.f; }
+      if (i) { const q = (i - 1) * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setAttribute('aW', new THREE.BufferAttribute(aW, 1)); g.setAttribute('aF', new THREE.BufferAttribute(aF, 1)); g.setIndex(idx);
+    const m = new THREE.Mesh(g, fallMat); m.renderOrder = 2; m.frustumCulled = false; b.extra.push(m);
+    impacts.forEach((j, i) => { const p = pts[j], last = i === impacts.length - 1; const f = new THREE.Mesh(new THREE.CircleGeometry(last ? 1.5 : 0.7, 16).rotateX(-Math.PI / 2), foamMat); f.position.set(QX, p.y + 0.02, p.z - (last ? 0.2 : 0.05)); f.renderOrder = 3; b.extra.push(f); }); }
   // M27 · spray and mist at the pool, wet rocks, ferns in the damp, rubble at the bench feet
   { const mistTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,0.85)'); g.addColorStop(0.45, 'rgba(255,255,255,0.35)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
     const fz = benchFront[0] - 0.9, mists: { s: THREE.Sprite; a: number; r: number; y0: number }[] = [];
@@ -750,15 +767,13 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
     const spray = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#f6fbff', size: 0.09, transparent: true, opacity: 0.8, depthWrite: false })); spray.frustumCulled = false; b.extra.push(spray);
     update.push((time) => { for (let i = 0; i < N; i++) { const ph = (time * 0.9 + seed[i] * 7) % 1, a = seed[i] * 40; sp[i * 3] = QX + Math.sin(a) * (0.3 + ph * 1.1); sp[i * 3 + 1] = WATER_Y + 0.1 + Math.sin(ph * Math.PI) * (0.5 + seed[i] * 0.6); sp[i * 3 + 2] = fz + Math.cos(a) * (0.2 + ph * 0.8); } sg.attributes.position.needsUpdate = true;
       for (const m of mists) { m.s.position.y = m.y0 + Math.sin(time * 0.5 + m.a) * 0.15; m.s.position.x = QX + Math.sin(m.a + time * 0.12) * m.r; (m.s.material as THREE.SpriteMaterial).opacity = 0.22 + 0.12 * Math.sin(time * 0.7 + m.a * 3); } });
-    const wetRock = new THREE.MeshStandardMaterial({ color: '#4e4a42', roughness: 0.28, metalness: 0.05 });
+    const wetRock = new THREE.MeshStandardMaterial({ color: '#77705f', roughness: 0.34, metalness: 0 }); // M28: lighter so they read as wet stone, not black balls
     for (let i = 0; i < 13; i++) { const a = rnd() * 6.28, r = POOL.r - 0.3 + rnd() * 1.1, x = POOL.x + Math.sin(a) * r, z = POOL.z + Math.cos(a) * r; if (z > benchFront[0] - 0.2) continue; const sz = 0.25 + rnd() * 0.45; b.add(wetRock, new THREE.DodecahedronGeometry(sz, 1).scale(1.2, 0.6 + rnd() * 0.3, 1), x, Math.max(heightAt(x, z), WATER_Y - 0.1), z, rnd() * 3); }
     for (let i = 0; i < 4; i++) { const x = QX + (rnd() - 0.5) * 1.2, z = benchFront[0] - 0.4 - rnd() * 0.6; b.add(wetRock, new THREE.DodecahedronGeometry(0.3 + rnd() * 0.25, 1).scale(1.1, 0.55, 1), x, WATER_Y - 0.05, z, rnd() * 3); }
-    // ferns: arched fronds (tapered strips) in a rosette
-    const fern = (() => { const parts: THREE.BufferGeometry[] = []; for (let f = 0; f < 9; f++) { const g = new THREE.PlaneGeometry(0.16, 0.85, 1, 5); const p = g.attributes.position; for (let j = 0; j < p.count; j++) { const v = (p.getY(j) + 0.425) / 0.85; p.setX(j, p.getX(j) * (1 - v * 0.85)); p.setY(j, v * 0.62); p.setZ(j, v * v * 0.5); } g.rotateY(f / 9 * 6.28 + (f % 2) * 0.3); parts.push(g); } return mergeGeometries(parts)!; })();
-    const fernMat = new THREE.MeshStandardMaterial({ color: '#4d7a2e', roughness: 0.8, side: THREE.DoubleSide });
+    // M28 · ferns: spots only; main.ts plants the scanned fern asset there (merged into one mesh per material)
     const fernAt: [number, number][] = []; for (let i = 0; i < 40 && fernAt.length < 16; i++) { const x = QUARRY.x0 - 1.2 + rnd() * (QW + 2.4), z = POOL.z - 3.5 + rnd() * 4.2; if (Math.hypot(x - POOL.x, z - POOL.z) < POOL.r + 0.2 || lineDist(STREAM, x, z) < 1.2 || lineDist(TRACK, x, z) < 1.3) continue; fernAt.push([x, z]); }
-    for (let k = 0; k < BENCH; k++) for (const sd2 of [-1, 1]) fernAt.push([QX + sd2 * (1.0 + rnd() * 0.5), benchFront[k] + 0.25]);
-    fernAt.forEach(([x, z], i) => { const top = z > benchFront[0] ? benchTop[benchFront.findIndex((f, k) => z < (benchFront[k + 1] ?? 99) && z >= f)] - 0.06 : heightAt(x, z); const g = fern.clone().scale(0.8 + (i % 3) * 0.2, 0.8 + (i % 4) * 0.15, 0.8 + (i % 3) * 0.2); b.add(fernMat, g, x, top, z, i); });
+    for (let k = 0; k < BENCH; k++) for (const sd2 of [-1, 1]) fernAt.push([QX + sd2 * (1.1 + rnd() * 0.5), benchFront[k] + 0.3]);
+    fernAt.forEach(([x, z], i) => { const y = z > benchFront[0] ? benchTop[benchFront.findIndex((f, k) => z < (benchFront[k + 1] ?? 99) && z >= f)] - 0.04 : heightAt(x, z) - 0.04; FERN_SPOTS.push({ x, y, z, s: 0.55 + (i % 4) * 0.12, ry: rnd() * 6.28 }); });
     for (let i = 0; i < 22; i++) { const x = QUARRY.x0 - 1 + rnd() * (QW + 2), z = POOL.z - 1 - rnd() * 5.5; if (Math.hypot(x - POOL.x, z - POOL.z) < POOL.r + 0.3 || lineDist(TRACK, x, z) < 1.1) continue; const s2 = 0.12 + rnd() * 0.22; b.add(qstone, new THREE.DodecahedronGeometry(s2, 0).scale(1.3, 0.6, 1), x, heightAt(x, z) + s2 * 0.2, z, rnd() * 3); } }
   // the runnel on the ridge top that feeds the falls
   { const zt = benchFront[BENCH - 1] + 0.3; for (let k = 0; k < 7; k++) { const z = zt + k * 1.4, x = QX + Math.sin(k * 0.9) * 0.6; b.add(hewn, new THREE.DodecahedronGeometry(0.35, 0).scale(1.2, 0.5, 1), x - 0.9, heightAt(x - 0.9, z) + 0.05, z, k); b.add(hewn, new THREE.DodecahedronGeometry(0.35, 0).scale(1.2, 0.5, 1), x + 0.9, heightAt(x + 0.9, z) + 0.05, z, k + 1); } }

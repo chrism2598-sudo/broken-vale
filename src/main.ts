@@ -12,7 +12,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { makeTerrain, type GroundTex } from './terrain';
 import { makeGrass } from './grass';
-import { makeLandmarks, keepFrame, KEEP_D, KEEP_W, KEEP_LOOK_PILLAR, walkY } from './landmarks';
+import { FERN_SPOTS, makeLandmarks, keepFrame, KEEP_D, KEEP_W, KEEP_LOOK_PILLAR, walkY } from './landmarks';
 import { makeWarden, WARDEN, W_WAKE, W_SLEEP, W_MELEE, W_STRIKE_R, W_TELE, W_RECOVER, PLAYER_ATK_CD, HP_MAX, WARDEN_XP, RECOVERY_LINES, recoveryPoint } from './warden';
 import { makeWindShrine, RUNES, TABLET, TABLET_LINES, SOLVED_LINES, RUNE_GLYPHS, RUNE_LABELS, SHRINE_XP, WIND_BLESS, runesMatch } from './shrine';
 import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP, CHAPTER_TEASER } from './quest';
@@ -147,6 +147,11 @@ async function main() {
   scene.add(island.group);
   // Landmarks from the Page map (keeps, Sunspire, Iron Dome, Veilfall) and the four seals.
   const landmarks = makeLandmarks({ brick, roof: roofT, sand: sandT, metal: metalT, rock }, SOLIDS, { lights: HIGH });
+  { // M28 · the quarry ferns: the scanned fern asset at makeOpening's spots, merged into one mesh per material (flat draw calls)
+    const src = fernG.scene; src.updateMatrixWorld(true); const by = new Map<THREE.Material, THREE.BufferGeometry[]>(), m4 = new THREE.Matrix4(), up = new THREE.Vector3(0, 1, 0);
+    for (const f of FERN_SPOTS) { const root = new THREE.Matrix4().compose(new THREE.Vector3(f.x, f.y, f.z), new THREE.Quaternion().setFromAxisAngle(up, f.ry), new THREE.Vector3(f.s, f.s, f.s));
+      src.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh || Array.isArray(m.material)) return; const g = m.geometry.clone().applyMatrix4(m4.multiplyMatrices(root, m.matrixWorld)); const l = by.get(m.material) ?? []; l.push(g); by.set(m.material, l); }); }
+    for (const [mat, gs] of by) { const g = mergeGeometries(gs); if (!g) continue; const mesh = new THREE.Mesh(g, mat); mesh.receiveShadow = true; scene.add(mesh); } }
   scene.add(landmarks.group);
   let save = loadSave();
   const hpMax = () => HP_MAX + (save.hpUp ?? 0); // M20b-2: Sefa's heartstone adds a heart

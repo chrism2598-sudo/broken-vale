@@ -200,7 +200,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     x.lineWidth = 4; for (const yy of [110, 170, 220]) { x.beginPath(); x.moveTo(0, yy); x.lineTo(128, yy); x.stroke(); } }) });
   const lancet = (() => { const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(1, 0); sh.lineTo(1, 0.7); sh.quadraticCurveTo(1, 0.9, 0.5, 1); sh.quadraticCurveTo(0, 0.9, 0, 0.7); sh.lineTo(0, 0); const gq = new THREE.ShapeGeometry(sh, 8); gq.scale(1.0, 2.2, 1); gq.translate(-0.5, -1.1, 0); return gq; })();
   const shaftTex = canvasTex(64, 256, (x) => { const gr = x.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.6, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 256); const h = x.createLinearGradient(0, 0, 64, 0); h.addColorStop(0, 'rgba(0,0,0,1)'); h.addColorStop(0.25, 'rgba(0,0,0,0)'); h.addColorStop(0.75, 'rgba(0,0,0,0)'); h.addColorStop(1, 'rgba(0,0,0,1)'); x.globalCompositeOperation = 'destination-out'; x.fillStyle = h; x.fillRect(0, 0, 64, 256); });
-  const shaftM = new THREE.MeshBasicMaterial({ map: shaftTex, color: az ? '#9fc4ff' : '#ffd9a0', transparent: true, opacity: high ? 0.32 : 0.26, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const shaftM = new THREE.MeshBasicMaterial({ map: shaftTex, color: az ? '#9fc4ff' : '#ffd9a0', transparent: true, opacity: high ? 0.4 : 0.36, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
   shaftM.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vSD;').replace('#include <project_vertex>', '#include <project_vertex>\nvSD = -mvPosition.z;'); sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vSD;').replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.rgb *= smoothstep(1.2, 4.5, vSD);'); }; shaftM.customProgramCacheKey = () => 'shaft22'; // M22: a god-ray seen from inside it was a white smear; fade it near the eye
   const shafts = new THREE.Group(); g.add(shafts);
   for (const [wx, wz, dir] of [[8.98, -4, -1], [8.98, 0.5, -1], [-8.98, -7.5, 1]] as const) {
@@ -443,11 +443,11 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
       fpool(x + nx * 0.9, fy, z + nz * 0.9, 1.9); const p = new THREE.PlaneGeometry(2.4, 2.8); put(glowM, p, x - nx * 0.12, y + 0.2, z - nz * 0.12, Math.atan2(nx, nz)); }
     for (const cz of [-4.9, -0.6]) { fpool(0, 0, cz, 3.0); fpool(0, 0.92, cz, 0.95); } fpool(-13.6, 0, -7, 2.6);
     // dust motes drifting in the three window shafts (one Points draw, animated in the shader)
-    { const P: number[] = [], S: number[] = []; for (const [wx, wz, dir] of [[8.98, -4, -1], [8.98, 0.5, -1], [-8.98, -7.5, 1]] as const) for (let i = 0; i < (high ? 160 : 110); i++) { const t = R(); P.push(wx + dir * (0.3 + t * 6.0) + (R() - 0.5) * 0.6, 7.0 - t * 6.4 + (R() - 0.5) * 0.5, wz + (R() - 0.5) * 1.0); S.push(R() * 100); }
+    { const P: number[] = [], S: number[] = []; for (const [wx, wz, dir] of [[8.98, -4, -1], [8.98, 0.5, -1], [-8.98, -7.5, 1]] as const) for (let i = 0; i < (high ? 220 : 170); i++) { const t = R(); P.push(wx + dir * (0.3 + t * 6.0) + (R() - 0.5) * 0.6, 7.0 - t * 6.4 + (R() - 0.5) * 0.5, wz + (R() - 0.5) * 1.0); S.push(R() * 100); }
       const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); mg.setAttribute('seed', new THREE.Float32BufferAttribute(S, 1));
       motesM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uT: { value: 0 }, uC: { value: new THREE.Color(az ? '#cfe0ff' : '#ffe2b0') } },
-        vertexShader: 'attribute float seed; uniform float uT; varying float vA; void main(){ vec3 p = position + vec3(sin(uT*.21+seed)*.18, sin(uT*.13+seed*1.7)*.22, cos(uT*.17+seed*2.3)*.18); vec4 mv = modelViewMatrix*vec4(p,1.); gl_Position = projectionMatrix*mv; gl_PointSize = clamp(26./-mv.z, 1., 6.); vA = (.55+.45*sin(uT*.9+seed*5.))*smoothstep(.6, 2.5, -mv.z); }',
-        fragmentShader: 'uniform vec3 uC; varying float vA; void main(){ float d = length(gl_PointCoord-.5); if (d > .5) discard; gl_FragColor = vec4(uC*(1.-d*2.)*vA*.55, 1.); }' });
+        vertexShader: 'attribute float seed; uniform float uT; varying float vA; void main(){ vec3 p = position + vec3(sin(uT*.21+seed)*.18, sin(uT*.13+seed*1.7)*.22, cos(uT*.17+seed*2.3)*.18); vec4 mv = modelViewMatrix*vec4(p,1.); gl_Position = projectionMatrix*mv; gl_PointSize = clamp(44./-mv.z, 1.8, 10.); vA = (.55+.45*sin(uT*.9+seed*5.))*smoothstep(.6, 2.5, -mv.z); }',
+        fragmentShader: 'uniform vec3 uC; varying float vA; void main(){ float d = length(gl_PointCoord-.5); if (d > .5) discard; gl_FragColor = vec4(uC*(1.-d*2.)*vA*.95, 1.); }' });
       const pts = new THREE.Points(mg, motesM); pts.frustumCulled = false; g.add(pts); }
   }
 
@@ -573,7 +573,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
       for (const k of flames) { const f = 0.82 + 0.18 * Math.sin(time * 15 + k.ph) * Math.sin(time * 6.1 + k.ph * 2); k.f.scale.set(0.36 * f, 0.68 * (0.92 + 0.16 * f), 1); if (k.l) k.l.intensity = 11 * f; }
       if (secretSlab.mesh) { secretSlab.open += (secretSlab.want - secretSlab.open) * Math.min(1, dt * 1.6); const m = secretSlab.mesh; m.visible = secretSlab.open < 0.98; if (id === 'pale') { m.visible = true; m.position.z = doors.find((d) => d.secret)!.z + secretSlab.open * 1.75; if (plate) plate.position.y = 0.035 - secretSlab.open * 0.03; } else m.scale.y = 1 - secretSlab.open * 0.92, m.position.y = UP + 2.4 * (1 - (1 - secretSlab.open * 0.92) / 2); }
       for (const c of chests) { c.open += (c.want - c.open) * Math.min(1, dt * 4); c.hinge.rotation.x = -c.open * 1.9; c.glow.visible = c.open > 0.05 && c.open < 0.97; c.glow.material.opacity = 1 - c.open; }
-      if (motesM) motesM.uniforms.uT.value = time; shafts.children.forEach((s, i) => { ((s as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = (high ? 0.32 : 0.26) * (0.85 + 0.15 * Math.sin(time * 0.4 + i)); });
+      if (motesM) motesM.uniforms.uT.value = time; shafts.children.forEach((s, i) => { ((s as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = (high ? 0.4 : 0.36) * (0.85 + 0.15 * Math.sin(time * 0.4 + i)); });
     },
   };
 }

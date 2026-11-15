@@ -372,9 +372,22 @@ function paleRock(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim
       for (let k = 0; k < 9; k++) { const y = top - 0.1 - rnd() * hT, f = (top - y) / 4.4, rr = 22.75 + f * 2.3 + 0.55, a = a0 + (rnd() - 0.5) * 0.09 * (1 + f);
         b.add(ivy, new THREE.IcosahedronGeometry(0.42 + rnd() * 0.3, 0).scale(1.4, 0.8 + rnd() * 0.4, 0.4), Math.sin(a) * rr, y, Math.cos(a) * rr, a); } }
     // M32 · scree and fallen blocks round the foot (low, so feet pass over), heaviest by the stair and the gate; ivy and moss where the stair is cut into the rock
+    // M36 · rock shoulders: two crag spurs either side of the Wing Gate (beyond its wing walls, clear of road, plaza and terraces) so the
+    //  castle rock's strata, moss and ivy read from the meadow road; the rock skirt behind the gate is otherwise hidden by the gate's walls
+    for (const sd of [-1, 1]) for (const [u, v, rx, ry, rz] of [[11.6, 25.6, 3.6, 5.6, 3.0], [14.6, 22.4, 3.2, 4.8, 2.8], [10.6, 28.4, 2.2, 3.0, 2.0]] as const) {
+      const [x, z] = G(sd * u, v), y0 = heightAt(l.x + x, l.z + z) - 0.6, gq0 = new THREE.IcosahedronGeometry(1, 3), pp = gq0.attributes.position, sh = rnd() * 9;
+      for (let i = 0; i < pp.count; i++) { let px = pp.getX(i), py = pp.getY(i), pz = pp.getZ(i); const yy = Math.max(py, -0.2);
+        const k = 1 + 0.22 * fbm(px * 2.1 + sh, pz * 2.1 + py * 1.3) + 0.12 * Math.sin(py * 9 + fbm(px * 3, pz * 3) * 3); // ledges + broken faces
+        const taper = 1 - 0.35 * Math.max(0, py); pp.setXYZ(i, px * rx * k * taper, yy * ry + (py < -0.2 ? 0 : 0), pz * rz * k * taper); }
+      const gq = gq0.toNonIndexed(); gq.computeVertexNormals(); b.add(rock, gq, x, y0, z, face + sd * 0.4 + rnd() * 0.5);
+      solids.push({ x: l.x + x, z: l.z + z, r: Math.max(rx, rz) * 0.95 });
+      for (let k = 0; k < 7; k++) { const a = rnd() * Math.PI * 2, h = 0.25 + rnd() * 0.65, rr = (1 - 0.35 * h) * 0.92; // moss/ivy pads on the ledges facing the road
+        b.add(rnd() < 0.55 ? ivy : leaf, new THREE.IcosahedronGeometry(0.35 + rnd() * 0.3, 0).scale(1.3, 0.55, 1.1), x + Math.sin(a) * rx * rr, y0 + h * ry, z + Math.cos(a) * rz * rr, a); }
+      for (let k = 0; k < 10; k++) { const a = rnd() * Math.PI * 2, rr = Math.max(rx, rz) * (1.05 + rnd() * 0.5), sx = x + Math.sin(a) * rr, sz2 = z + Math.cos(a) * rr, sz = 0.18 + rnd() * 0.32; // scree at the spur's foot
+        b.add(rock, new THREE.DodecahedronGeometry(sz, 0).scale(1.3, 0.6, 1.1), sx, heightAt(l.x + sx, l.z + sz2) - sz * 0.1, sz2, rnd() * 6); } }
     for (let i = 0; i < 260; i++) { const a = rnd() * Math.PI * 2, da = Math.atan2(Math.sin(a - face - 0.78), Math.cos(a - face - 0.78)); if (Math.abs(da) < 0.35) continue;
       const rr = 25.2 + rnd() * rnd() * 2.2, x = Math.sin(a) * rr, z = Math.cos(a) * rr, u = x * cs - z * sn, v = x * sn + z * cs; if (v > 0 && Math.abs(u) < 4.2) continue;
-      const near = Math.abs(Math.atan2(Math.sin(a - face), Math.cos(a - face))) < 0.6, sz = (near ? 0.14 : 0.1) + rnd() * (near ? 0.42 : 0.3);
+      const near = Math.abs(Math.atan2(Math.sin(a - face), Math.cos(a - face))) < 0.6, sz = (near ? 0.2 : 0.16) + rnd() * (near ? 0.5 : 0.38); // M36: larger (read at phone size)
       b.add(rock, new THREE.DodecahedronGeometry(sz, 0).scale(1.3, Math.min(0.62, 0.42 / sz), 1.1), l.x * 0 + x, heightAt(l.x + x, l.z + z) - sz * 0.12, z, rnd() * 6); }
     // the cliff stops walkers (a ring of solids round the foot, open where the stair is)
     //  (wider than the rock so feet never meet the coarse terrain mesh over the cliff; tighter by Enna's collapsed stair)

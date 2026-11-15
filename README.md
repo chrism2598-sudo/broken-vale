@@ -304,3 +304,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Armoury: shield wall (round + heater, painted halves, bosses), a mannequin in mail, a whetstone bench, a worn drill floor.
 - Great-hall table: round turned-wood platters and goblets replace the dark square trays and gold cans.
 - High only: a flickering point light on the cook-fire and a warm light over the long table.
+
+### M36 · castle rock shoulders, scree reads, brighter keep light shafts
+- Two crag spurs each side of the Wing Gate (beyond its wing walls; road, plaza, terraces untouched) carry the rock strata, moss and ivy into the road view, with scree at their feet and solids round them.
+- Scree stones larger; grass fully cleared from the scree band round the rock foot.
+- Keep interior: window shafts brighter (Lite 0.26 to 0.36, High 0.32 to 0.40); dust motes more numerous, larger and brighter.

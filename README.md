@@ -298,3 +298,9 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Keep interiors (castle.ts, both keeps): flagstone shader with per-stone tone, polished lanes along the entry→table line and at every doorway, grime away from them; new rugs (hearth, library lectern, chapel aisle); woven millefleur / tree-of-life tapestries on rods (hall west + east, chapel, Pale solar) and swallow-tailed banners from the gallery rail (no text); shallow wall bookshelves under the gallery (lane stays clear for qa-castle's routes); pewter plates, goblets, jugs, bread and two lit candlesticks on the long table; a library reading table with books, a candle and floor stacks; altar candles in the chapel; ceiling joists in every room, stone corbels under beam ends, a ridge beam and purlins in the hall; additive warm glow pools on floor and wall at every torch, under the candle-crowns and the cook-fire; dust motes drifting in the three window shafts (one Points draw, shader-animated). Lite hall 50 → 57 calls.
 - Shrine: base + step merged; rune rings hidden while fully transparent. Keep view 195 → 191 calls.
 - tools/m34-shots.cjs for interior shots.
+
+### M35 · kitchen and armoury dressing, table platters, High interior lights
+- Kitchen: soot stain over the cook-hearth, a second rack with copper pans, herb bundles and garlic strings, a chopping block with a cleaver, sacks (SW) and barrels (N wall) clear of qa-castle routes.
+- Armoury: shield wall (round + heater, painted halves, bosses), a mannequin in mail, a whetstone bench, a worn drill floor.
+- Great-hall table: round turned-wood platters and goblets replace the dark square trays and gold cans.
+- High only: a flickering point light on the cook-fire and a warm light over the long table.

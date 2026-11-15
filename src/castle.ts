@@ -174,7 +174,9 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   for (const px of [-5.6, 5.6]) for (const pz of [-8, -4, 0]) { if (px > 0 && pz > -7) continue; cyl(stoneM, 0.42, UP, px, 0, pz, 12); box(stoneM, 1.0, 0.3, 1.0, px, 0, pz); block(px - 0.6, px + 0.6, pz - 0.6, pz + 0.6, 0); }
   box(darkWoodM, 2.2, 0.12, 8.5, 0, 0.82, -3); for (const lz of [-6.8, 0.8]) for (const lx of [-0.9, 0.9]) box(darkWoodM, 0.14, 0.82, 0.14, lx, 0, lz - 3 + 3);
   for (const s of [-1, 1]) box(woodM, 0.45, 0.45, 8, s * 1.75, 0, -3); block(-2.1, 2.1, -7.4, 1.4, 0);
-  for (let k = 0; k < 5; k++) { cyl(cloth2M, 0.05, 0.16, -0.5 + (k % 2), 0.94, -6 + k * 1.5, 8); box(ironM, 0.3, 0.02, 0.3, 0.5 - (k % 2), 0.94, -5.5 + k * 1.5); }
+  for (let k = 0; k < 5; k++) { // M35: goblets and round turned-wood platters (were stubby gold cans and dark square trays)
+    put(cloth2M, new THREE.LatheGeometry([[0, 0], [0.05, 0], [0.05, 0.012], [0.013, 0.025], [0.011, 0.09], [0.045, 0.11], [0.052, 0.18]].map(([r, y]) => new THREE.Vector2(r, y)), 10), -0.5 + (k % 2), 0.94, -6 + k * 1.5);
+    put(woodM, new THREE.LatheGeometry([[0, 0], [0.15, 0], [0.18, 0.012], [0.2, 0.035], [0.185, 0.04], [0.16, 0.018], [0, 0.018]].map(([r, y]) => new THREE.Vector2(r, y)), 16), 0.5 - (k % 2), 0.94, -5.5 + k * 1.5); }
   const rug = new THREE.PlaneGeometry(3.6, 11); rug.rotateX(-Math.PI / 2); put(rugM, rug, 0, 0.02, -2.5);
   // Hearth on the west wall (the secret door is just south of it in Pale Keep).
   box(stoneM, 0.9, 3.0, 3.0, -8.55, 0, -3); box(stoneM, 1.1, 0.35, 3.4, -8.45, 3.0, -3); box(stoneM, 0.7, 4.0, 2.2, -8.75, 3.35, -3);
@@ -393,6 +395,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
       { vec2 q = vTW.xz - vec2(${O.x.toFixed(2)}, ${O.z.toFixed(2)}); vec2 cell = floor(q / vec2(.9, .7) + vec2(floor(q.y / .7) * .5, 0.));
         float tone = tH(cell) - .5, wear = 0.;
         wear = max(wear, (1. - smoothstep(.9, 2.1, abs(q.x))) * step(-8.5, q.y) * step(q.y, 10.));                    // entry → table lane
+        wear = max(wear, (1. - smoothstep(1.2, 3.4, length((q - vec2(12., -7.)) * vec2(.7, 1.)))) * .9); // M35: the armoury's drill floor
         for (int i = 0; i < 6; i++) { vec2 d = i == 0 ? vec2(0., 4.) : i == 1 ? vec2(4., 7.) : i == 2 ? vec2(-4., 7.) : i == 3 ? vec2(-9., -8.6) : i == 4 ? vec2(9., -8.6) : vec2(-13., -10.); wear = max(wear, 1. - smoothstep(.6, 2.2, length(q - d))); }
         wear *= .65 + .35 * tVn(q * 1.7);
         diffuseColor.rgb *= (1. + tone * .16) * (1. + .14 * wear); roughnessFactor = mix(roughnessFactor, .42, wear * .7);
@@ -446,6 +449,48 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
         vertexShader: 'attribute float seed; uniform float uT; varying float vA; void main(){ vec3 p = position + vec3(sin(uT*.21+seed)*.18, sin(uT*.13+seed*1.7)*.22, cos(uT*.17+seed*2.3)*.18); vec4 mv = modelViewMatrix*vec4(p,1.); gl_Position = projectionMatrix*mv; gl_PointSize = clamp(26./-mv.z, 1., 6.); vA = (.55+.45*sin(uT*.9+seed*5.))*smoothstep(.6, 2.5, -mv.z); }',
         fragmentShader: 'uniform vec3 uC; varying float vA; void main(){ float d = length(gl_PointCoord-.5); if (d > .5) discard; gl_FragColor = vec4(uC*(1.-d*2.)*vA*.55, 1.); }' });
       const pts = new THREE.Points(mg, motesM); pts.frustumCulled = false; g.add(pts); }
+  }
+
+  // ---- M35 · kitchen and armoury dressing; High-only warm lights for the cook-fire and the long table ----
+  let kitchenL: THREE.PointLight | null = null;
+  { let sd = 19; const R = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    const C = mat('#2a2622', 0.55, 0.55), copper = mat('#a8623a', 0.38, 0.8), sackM = mat('#a89068', 1), herbM = mat('#5f7a3a', 0.95), dryM = mat('#8a7a4a', 0.95), garlicM = mat('#e8e0cc', 0.8), steel = mat('#a3a8ad', 0.3, 0.9);
+    const lathe = (pts: number[][], seg = 12) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+    // -- kitchen: soot over the cook-hearth (transparent stain on the hood, lintel and wall above)
+    const sootM = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, alphaMap: canvasTex(64, 128, (x) => { const gr = x.createLinearGradient(0, 128, 0, 0); gr.addColorStop(0, '#000'); gr.addColorStop(0.1, '#9a9a9a'); gr.addColorStop(0.55, '#d8d8d8'); gr.addColorStop(1, '#5a5a5a'); x.fillStyle = gr; x.fillRect(0, 0, 64, 128); const h = x.createLinearGradient(0, 0, 64, 0); h.addColorStop(0, 'rgba(0,0,0,1)'); h.addColorStop(0.2, 'rgba(0,0,0,0)'); h.addColorStop(0.8, 'rgba(0,0,0,0)'); h.addColorStop(1, 'rgba(0,0,0,1)'); x.globalCompositeOperation = 'source-over'; x.fillStyle = h; x.fillRect(0, 0, 64, 128); for (let i = 0; i < 90; i++) { x.fillStyle = `rgba(0,0,0,${0.15 + R() * 0.3})`; x.fillRect(R() * 64, R() * 128, 2 + R() * 6, 4 + R() * 14); } }, false), opacity: 0.82 });
+    for (const [px, y0, y1, w] of [[-14.105, 1.98, 2.62, 2.3], [-13.835, 2.58, 3.02, 3.6], [-14.97, 3.0, 4.0, 3.2]] as const) { const p = new THREE.PlaneGeometry(w, y1 - y0); put(sootM, p, px, (y0 + y1) / 2, -7, Math.PI / 2); }
+    // -- kitchen: a second hanging rack over the south wall: copper pans, herb bundles and garlic strings
+    box(darkWoodM, 4.4, 0.08, 0.08, -12.6, 3.25, -4.55); for (const x of [-14.7, -10.5]) box(ironM, 0.03, 0.75, 0.03, x, 3.25, -4.55);
+    for (let k = 0; k < 4; k++) { const x = -14.3 + k * 0.62; box(ironM, 0.02, 0.32, 0.02, x, 2.93, -4.55); put(k % 2 ? copper : C, lathe([[0.01, 0], [0.16, 0.01], [0.19, 0.08], [0.2, 0.16]]), x, 2.62, -4.55); const hd = new THREE.CylinderGeometry(0.02, 0.02, 0.28, 6); hd.rotateZ(Math.PI / 2); put(k % 2 ? copper : C, hd, x + 0.3, 2.76, -4.55); }
+    for (let k = 0; k < 6; k++) { const x = -11.9 + k * 0.26, m = k % 3 === 2 ? dryM : herbM; box(ironM, 0.01, 0.22, 0.01, x, 3.03, -4.55); put(m, new THREE.ConeGeometry(0.09, 0.42, 7).rotateX(Math.PI), x, 2.62 + 0.21, -4.55); }
+    for (const x of [-10.85, -10.65]) { box(dryM, 0.015, 0.9, 0.015, x, 2.35, -4.55); for (let i = 0; i < 7; i++) put(garlicM, new THREE.SphereGeometry(0.06, 7, 5).scale(1, 0.85, 1), x + (i % 2 ? 0.05 : -0.05), 2.42 + i * 0.12, -4.55 + (i % 2 ? 0.03 : -0.03)); }
+    // -- kitchen: a chopping block with a cleaver, sacks along the south-west wall, barrels on the north wall (routes stay clear)
+    cyl(woodM, 0.36, 0.78, -9.75, 0, -6.55, 12); cyl(darkWoodM, 0.37, 0.04, -9.75, 0.76, -6.55, 12); block(-10.15, -9.35, -6.95, -6.15, 0);
+    { const bl = new THREE.BoxGeometry(0.26, 0.14, 0.012); bl.rotateZ(-0.35); put(steel, bl, -9.72, 0.88, -6.5); const hd = new THREE.CylinderGeometry(0.018, 0.022, 0.16, 6); hd.rotateZ(Math.PI / 2 - 0.35); put(darkWoodM, hd, -9.55, 0.93, -6.5); }
+    for (const [x, z, s] of [[-14.6, -4.45, 1], [-14.0, -4.4, 0.9], [-13.35, -4.45, 1.05], [-14.3, -4.95, 0.85], [-14.65, -5.0, 0.8]] as const) put(sackM, new THREE.SphereGeometry(0.34 * s, 10, 8).scale(1, 1.25, 0.85).translate(0, 0.36 * s, 0), x, 0, z, R());
+    block(-15, -12.9, -5.35, -4, 0);
+    for (const x of [-11.2, -10.35]) { cyl(woodM, 0.3, 0.8, x, 0, -9.62, 12); for (const y of [0.12, 0.62]) cyl(ironM, 0.31, 0.05, x, y, -9.62, 12); } block(-11.55, -10.0, -9.95, -9.3, 0);
+    // -- armoury: a shield wall (round and heater shields, painted halves, iron bosses) on the west wall south of the door
+    const heater = (() => { const s = new THREE.Shape(); s.moveTo(-0.32, 0.36); s.lineTo(0.32, 0.36); s.lineTo(0.32, 0.0); s.quadraticCurveTo(0.3, -0.32, 0, -0.5); s.quadraticCurveTo(-0.3, -0.32, -0.32, 0.0); s.lineTo(-0.32, 0.36); return new THREE.ExtrudeGeometry(s, { depth: 0.04, bevelEnabled: false, curveSegments: 6 }); })();
+    [[-7.2, 2.3, 0], [-6.4, 2.6, 1], [-5.6, 2.3, 2], [-4.8, 2.6, 3], [-6.8, 1.5, 4], [-5.2, 1.5, 5]].forEach(([z, y, k]) => { const m = k % 2 ? cloth2M : clothM;
+      if (k % 3 === 1) { const d = new THREE.CylinderGeometry(0.36, 0.36, 0.05, 18); d.rotateZ(Math.PI / 2); put(m, d, 9.06, y, z); const b2 = new THREE.SphereGeometry(0.08, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2); b2.rotateZ(-Math.PI / 2); put(steel, b2, 9.09, y, z); }
+      else { const h = heater.clone(); h.rotateY(Math.PI / 2); put(m, h, 9.03, y, z); const st = new THREE.BoxGeometry(0.02, 0.86, 0.12); put(k % 2 ? clothM : cloth2M, st, 9.075, y - 0.07, z); } });
+    // -- armoury: a mannequin in mail (padded torso, mail shirt with a ring-texture, coif) on a post
+    const mailM = mat('#b4b8bd', 0.5, 0.45, { map: canvasTex(64, 64, (x) => { x.fillStyle = '#8a8e94'; x.fillRect(0, 0, 64, 64); x.strokeStyle = '#c4c8cc'; x.lineWidth = 1.4; for (let yy = 0; yy < 68; yy += 6) for (let xx = (yy / 6) % 2 ? 3 : 0; xx < 68; xx += 6) { x.beginPath(); x.arc(xx, yy, 2.6, 0, 7); x.stroke(); } }) });
+    (mailM.map as THREE.Texture).wrapS = (mailM.map as THREE.Texture).wrapT = THREE.RepeatWrapping; (mailM.map as THREE.Texture).repeat.set(6, 6);
+    { const X = 11.6, Z = -6.6; cyl(darkWoodM, 0.25, 0.06, X, 0, Z, 10); cyl(darkWoodM, 0.04, 1.0, X, 0.06, Z, 6);
+      put(mailM, lathe([[0.3, 0], [0.31, 0.2], [0.27, 0.45], [0.3, 0.62], [0.33, 0.7], [0.12, 0.78], [0.08, 0.8]], 14), X, 1.0, Z);
+      for (const s of [-1, 1]) { const a = new THREE.CylinderGeometry(0.08, 0.1, 0.36, 8); a.rotateZ(s * 0.35); put(mailM, a, X + s * 0.38, 1.52, Z); }
+      put(mailM, new THREE.SphereGeometry(0.13, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), X, 1.92, Z); put(clothM, new THREE.CylinderGeometry(0.26, 0.31, 0.06, 12), X, 1.25, Z); block(X - 0.4, X + 0.4, Z - 0.35, Z + 0.35, 0); }
+    // -- armoury: a whetstone bench (trestle, treadle wheel, a water trough) against the west wall
+    { const X = 9.75, Z = -5.9; box(darkWoodM, 1.1, 0.08, 0.5, X, 0.55, Z); for (const [dx, dz] of [[-0.45, -0.18], [0.45, -0.18], [-0.45, 0.18], [0.45, 0.18]]) box(darkWoodM, 0.07, 0.55, 0.07, X + dx, 0, Z + dz);
+      const wh = new THREE.CylinderGeometry(0.28, 0.28, 0.1, 18); wh.rotateX(Math.PI / 2); put(mat('#9a9286', 0.95), wh, X + 0.2, 0.9, Z); const ax = new THREE.CylinderGeometry(0.025, 0.025, 0.5, 6); ax.rotateX(Math.PI / 2); put(ironM, ax, X + 0.2, 0.9, Z);
+      box(woodM, 0.4, 0.14, 0.3, X - 0.3, 0.63, Z); const cr = new THREE.BoxGeometry(0.03, 0.18, 0.03); put(ironM, cr, X + 0.2, 0.9, Z + 0.27); block(9, 10.45, -6.3, -5.5, 0); }
+    // -- great-hall table: the dark square trays become round turned-wood platters with a rim, and the stubby gold cans become goblets
+    // (done at the table build; see M35 note there)
+    // -- High: the cook-fire and the long table get a warm real light each (Lite keeps its glow pools only)
+    if (high) { kitchenL = new THREE.PointLight('#ff8a3c', 9, 9, 1.5); kitchenL.position.set(-13.4, 1.0, -7); g.add(kitchenL);
+      const tl = new THREE.PointLight('#ffc27a', 4, 6, 1.6); tl.position.set(0, 1.9, -3); g.add(tl); }
   }
 
   // ---- enemies ----
@@ -524,7 +569,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     openSecret(instant = false) { secretOpen = true; secretSlab.want = 1; if (instant) secretSlab.open = 1; },
     openChest(cid: string, instant = false) { const c = chests.find((k) => k.def.id === cid); if (c) { c.want = 1; if (instant) c.open = 1; } },
     update(dt: number, time: number) {
-      for (const fr of fires) fr.update(time); for (const c of candles) { const f = 0.85 + 0.15 * Math.sin(time * 17 + c.ph) * Math.sin(time * 7.3 + c.ph); c.f.scale.set(0.11 * f, 0.22 * (0.9 + 0.2 * f), 1); }
+      for (const fr of fires) fr.update(time); if (kitchenL) kitchenL.intensity = 9 * (0.85 + 0.15 * Math.sin(time * 11) * Math.sin(time * 4.7)); for (const c of candles) { const f = 0.85 + 0.15 * Math.sin(time * 17 + c.ph) * Math.sin(time * 7.3 + c.ph); c.f.scale.set(0.11 * f, 0.22 * (0.9 + 0.2 * f), 1); }
       for (const k of flames) { const f = 0.82 + 0.18 * Math.sin(time * 15 + k.ph) * Math.sin(time * 6.1 + k.ph * 2); k.f.scale.set(0.36 * f, 0.68 * (0.92 + 0.16 * f), 1); if (k.l) k.l.intensity = 11 * f; }
       if (secretSlab.mesh) { secretSlab.open += (secretSlab.want - secretSlab.open) * Math.min(1, dt * 1.6); const m = secretSlab.mesh; m.visible = secretSlab.open < 0.98; if (id === 'pale') { m.visible = true; m.position.z = doors.find((d) => d.secret)!.z + secretSlab.open * 1.75; if (plate) plate.position.y = 0.035 - secretSlab.open * 0.03; } else m.scale.y = 1 - secretSlab.open * 0.92, m.position.y = UP + 2.4 * (1 - (1 - secretSlab.open * 0.92) / 2); }
       for (const c of chests) { c.open += (c.want - c.open) * Math.min(1, dt * 4); c.hinge.rotation.x = -c.open * 1.9; c.glow.visible = c.open > 0.05 && c.open < 0.97; c.glow.material.opacity = 1 - c.open; }

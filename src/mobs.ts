@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /** M20 · Hollow Sentinel: an empty suit of armour that guards keep interiors. Reusable melee mob:
  *  idle → notice → approach → telegraphed swing (raised arm + glowing ring) → recover; heavy/staggering hits interrupt the wind-up. */
@@ -44,12 +45,19 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
   if (look === 'king') { const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.17, 0.12, 8, 1, true), new THREE.MeshStandardMaterial({ color: '#b08a3a', metalness: 0.85, roughness: 0.4, side: THREE.DoubleSide })); crown.position.y = 2.05; body.add(crown); }
   if (look === 'cultist' || look === 'zealot') { const sash = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.05, 6, 16), new THREE.MeshStandardMaterial({ color: '#8a2a14', roughness: 0.8 })); sash.rotation.x = Math.PI / 2; sash.position.y = 1.05; body.add(sash); }
   if (drowned) { const kelp = new THREE.MeshStandardMaterial({ color: '#2c3a22', roughness: 0.85 }); const sash = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.06, 6, 14), kelp); sash.rotation.x = Math.PI / 2; sash.position.y = 1.15; body.add(sash); for (const [sx, sy, sz] of [[0.12, 1.92, 0.1], [-0.14, 1.55, 0.16], [0.22, 1.35, -0.05]] as const) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), new THREE.MeshStandardMaterial({ color: '#c9bba8', roughness: 0.7 })); b.position.set(sx, sy, sz); body.add(b); } }
+  { // M38 · the body's rigid parts merged per material (one draw + one shadow call per material instead of per part); eyes cast no shadow
+    const by = new Map<THREE.Material, THREE.BufferGeometry[]>(), parts: THREE.Mesh[] = [];
+    for (const o of body.children) { const me = o as THREE.Mesh; if (!me.isMesh || Array.isArray(me.material)) continue; me.updateMatrix(); const gq = me.geometry.index ? me.geometry.toNonIndexed() : me.geometry.clone(); gq.applyMatrix4(me.matrix); const l = by.get(me.material) ?? []; l.push(gq); by.set(me.material, l); parts.push(me); }
+    const ok = [...by.values()].every((gs) => !!mergeGeometries(gs));
+    if (ok) { for (const me of parts) { body.remove(me); me.geometry.dispose(); }
+      for (const [mat, gs] of by) { const me = new THREE.Mesh(mergeGeometries(gs)!, mat); me.castShadow = mat !== eyeM; body.add(me); } } }
   const armL = new THREE.Group(); armL.position.set(-0.42, 1.55, 0); body.add(armL); add(new THREE.CylinderGeometry(0.08, 0.07, 0.7, 8), plate, 0, -0.35, 0, armL);
   const shield = add(new THREE.BoxGeometry(0.08, 0.7, 0.5), dark, -0.12, -0.55, 0.12, armL); shield.rotation.y = 0.3;
   const armR = new THREE.Group(); armR.position.set(0.42, 1.55, 0); body.add(armR); add(new THREE.CylinderGeometry(0.08, 0.07, 0.7, 8), plate, 0, -0.35, 0, armR);
   const sword = add(new THREE.BoxGeometry(0.06, 1.1, 0.02), new THREE.MeshStandardMaterial({ color: '#c8ccd0', metalness: 0.9, roughness: 0.3 }), 0, -1.15, 0.08, armR);
+  if (shade) for (const o of [armL, armR]) o.traverse((q) => { (q as THREE.Mesh).castShadow = false; }); // M38 · the translucent night wraith's thin arms, shield and blade skip the shadow pass (body shadow stays)
   const ringM = new THREE.MeshBasicMaterial({ color: '#ff6a3a', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-  const RR = look === 'king' ? 3.0 : big ? 2.6 : 2.1; const ring = new THREE.Mesh(new THREE.RingGeometry(RR - 0.15, RR, 32, 1, -0.9, 1.8), ringM); ring.rotation.x = -Math.PI / 2; ring.rotation.z = -Math.PI / 2; ring.position.y = 0.05; g.add(ring);
+  const RR = look === 'king' ? 3.0 : big ? 2.6 : 2.1; const ring = new THREE.Mesh(new THREE.RingGeometry(RR - 0.15, RR, 32, 1, -0.9, 1.8), ringM); ring.rotation.x = -Math.PI / 2; ring.rotation.z = -Math.PI / 2; ring.position.y = 0.05; ring.visible = false; g.add(ring); // M38: hidden while transparent (no draw call)
   const REACH = RR, RECOVER = look === 'shade' ? 0.8 : 1.1;
   let bob = 0, hp = HPM, state: 'idle' | 'chase' | 'windup' | 'recover' | 'stagger' | 'dead' = 'idle', t = 0, flash = 0, deadT = 0; void sword;
   const m = {
@@ -90,7 +98,7 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
       armR.rotation.x = state === 'windup' ? -2.4 * Math.min(1, k * 1.6) : state === 'recover' ? THREE.MathUtils.lerp(0.9, 0, 1 - Math.max(0, t) / RECOVER) : 0;
       body.rotation.z = state === 'stagger' ? Math.sin(t * 30) * 0.08 : 0; body.rotation.x = state === 'stagger' ? -0.15 : 0;
       armL.rotation.x = state === 'chase' || state === 'windup' ? -0.6 : 0;
-      ringM.opacity = state === 'windup' ? 0.25 + 0.55 * k : 0; eyeM.color.set(state === 'windup' ? '#ff7a4a' : EYE);
+      ringM.opacity = state === 'windup' ? 0.25 + 0.55 * k : 0; ring.visible = ringM.opacity > 0; eyeM.color.set(state === 'windup' ? '#ff7a4a' : EYE);
       if (ground) g.position.y = ground(g.position.x, g.position.z) + (shade ? 0.14 + 0.07 * Math.sin((bob += dt) * 2.6) : 0); return out;
     },
   };

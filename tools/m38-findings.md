@@ -1,0 +1,14 @@
+# M38 findings (append-only)
+- BEFORE (Lite, per-frame from tools/m38-tri.cjs): track 175 calls / 821k tris (grass 213k, quarry ferns 122k = 22 scan ferns x 5.5k, trees + their shadows ~177k shadow tris); hub day 178 calls; night hub 215 calls (+37 = night shade/sentinel parts, each part its own draw + shadow call, plus 4 invisible windup rings drawn at opacity 0).
+- Before shots: shots/m37-track.png, shots/m37-night-hub.png (same views).
+- CHANGES: src/mobs.ts merge body's rigid parts per material, eyes no shadow, windup ring hidden when opacity 0. src/main.ts Lite: every other quarry fern (x1.15 scale), TreeField Lite triBudget 120k -> 95k.
+- Shade arms/shield/blade no shadow (shade only). AFTER (audit, halved): track 162 calls / 710k; night-hub 193 / 633k; hub day 187 / 660k.
+- Shots: before shots/m38-track-before.png, shots/m38-night-hub-before.png (built from a6506f3); after shots/m38-track.png, shots/m38-night-hub.png. Track: one mid-distance tree now an impostor card, otherwise the same; night hub identical.
+- perf-m25 (Lite): meadow 657k/178, keep 675k/191, paleWing 462k/114, paleStair 480k/114, hall 51k/58, kitchen 52k/64 (unchanged; tree budget not binding there).
+- Ridge stair dips LEFT: they are step-up smoothing in the M11 motion code (off-limits); qa-opening/qa-stair pass.
+- Suites started (build index of current src).
+- Suites PASS so far: post High+Lite (0 shader errs), opening, world, ground, quests, castle, stair, cave, combat, finale, outlook, plate.
+- qa-run attempt 1: ERR Target closed (browser died) during the Keeper fight after 'lose -> safe recovery'; box RAM was 12.5/16 GB used by other processes. Re-running once.
+- 18:50 PST: qa-run attempt 2 (pid 461008, logs/m38/qa-run2.log) still alive and progressing; RAM avail 6.4 GB; letting it finish rather than restarting.
+- qa-run attempt 2: everything passed (Keeper, beacon/dawn ending, cave, coast) up to sea cave line 137; ERR 'Waiting failed: 180000ms exceeded' waiting for the next real-time low tide (frame-rate-bound tide under swiftshader load; same step passed in M37; untouched by M38). Attempt 3 started.
+- qa-run attempt 3: PASS (RUNEXIT 0, errors []).

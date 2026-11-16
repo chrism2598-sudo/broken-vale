@@ -314,3 +314,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Wind Shrine: the plinth and its step are now standable surfaces (feet sank ~0.5 m into the base when walking its edge between the 5.2 m solid and the 6.6 m rim).
 - Silenced the "toNonIndexed: already non-indexed" console warnings (broken-block slabs and rock shoulders).
 - New tools: `tools/m37-audit.cjs [view…]` (Lite 412x915 shots of every area + console + draw calls/tris + HUD overlap; bench deltas are 2x, halve them) and `tools/m37-walk.cjs [route]` (stick-walk collision probe: stuck / sink / pop) and `tools/m37-glitch.cjs` (touch buttons, jump, night roamers in geometry, old save, reload at night). Run qa-run with a 1800 s timeout (its real-time tide waits overran 700 s). Findings log: `tools/m37-findings.md`.
+
+### M38 · phone perf under the caps
+- Mobs: each mob's rigid body parts are merged per material (one draw and one shadow call per material); eyes cast no shadow; the wind-up ring is hidden while transparent; the night wraith's thin arms, shield and blade skip the shadow pass. Night hub (Lite): 221 → 193 calls.
+- Lite only: the quarry plants every other scan fern (each ~5.5k tris), 15% fuller; full-tree budget 120k → 95k tris (trees beyond it use their impostor cards). Track view (Lite): 821k → 710k tris, 174 → 162 calls. High unchanged.
+- `tools/m38-tri.cjs`: per-object triangle/draw-call breakdown for one view (env Q, JS). Findings: `tools/m38-findings.md`.

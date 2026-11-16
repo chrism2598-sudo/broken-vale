@@ -149,7 +149,8 @@ async function main() {
   const landmarks = makeLandmarks({ brick, roof: roofT, sand: sandT, metal: metalT, rock }, SOLIDS, { lights: HIGH });
   { // M28 · the quarry ferns: the scanned fern asset at makeOpening's spots, merged into one mesh per material (flat draw calls)
     const src = fernG.scene; src.updateMatrixWorld(true); const by = new Map<THREE.Material, THREE.BufferGeometry[]>(), m4 = new THREE.Matrix4(), up = new THREE.Vector3(0, 1, 0);
-    for (const f of FERN_SPOTS) { const root = new THREE.Matrix4().compose(new THREE.Vector3(f.x, f.y, f.z), new THREE.Quaternion().setFromAxisAngle(up, f.ry), new THREE.Vector3(f.s, f.s, f.s));
+    // M38 · Lite plants every other fern, a little fuller (each scan fern is ~5.5k tris; the quarry view was over the phone cap)
+    for (const f of HIGH ? FERN_SPOTS : FERN_SPOTS.filter((_, i) => i % 2 === 0)) { const fs = HIGH ? f.s : f.s * 1.15; const root = new THREE.Matrix4().compose(new THREE.Vector3(f.x, f.y, f.z), new THREE.Quaternion().setFromAxisAngle(up, f.ry), new THREE.Vector3(fs, fs, fs));
       src.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh || Array.isArray(m.material)) return; const g = m.geometry.clone().applyMatrix4(m4.multiplyMatrices(root, m.matrixWorld)); const l = by.get(m.material) ?? []; l.push(g); by.set(m.material, l); }); }
     for (const [mat, gs] of by) { const g = mergeGeometries(gs); if (!g) continue; const mesh = new THREE.Mesh(g, mat); mesh.receiveShadow = true; scene.add(mesh); } }
   scene.add(landmarks.group);
@@ -2366,7 +2367,7 @@ function scatter(trees: Kind[], plants: Kind[], rocksG: GLTF, boulderG: GLTF, sh
   HAZEL.forEach((o, i) => { const k = [1, 4, 2][i % 3], sc = o.s * 4.2 / trees[k].height; treeList.push({ k, autumn: false, x: o.x, y: heightAt(o.x, o.z) - 1.25 * o.s, z: o.z, s: sc, ry: o.ry, near: 16 }); SOLIDS.push({ x: o.x, z: o.z, r: 0.7 }); }); // hazel: crowns sunk to the ground read as thickets
   ORCHARD.forEach((o, i) => { const k = [0, 2, 3][i % 3], sc = o.s * 4.6 / trees[k].height; treeList.push({ k, autumn: false, x: o.x, y: heightAt(o.x, o.z) - 0.12, z: o.z, s: sc, ry: o.ry, near: 20 }); SOLIDS.push({ x: o.x, z: o.z, r: 0.45 }); });
   // Distance LOD: full meshes near the player under a triangle budget (~400k High / 120k Lite), impostor cards beyond.
-  const field = new TreeField(renderer, trees, treeList, SUN_DIR, { nearR: HIGH ? 52 : 38, triBudget: HIGH ? 300000 : 120000, shadowR: 0 });
+  const field = new TreeField(renderer, trees, treeList, SUN_DIR, { nearR: HIGH ? 52 : 38, triBudget: HIGH ? 300000 : 95000, /* M38: Lite 120k → 95k (full trees also cast shadows) */ shadowR: 0 });
   scene.add(field.group); field.update(SPAWN.x, SPAWN.z, true);
 
   // ---- M30 · creek banks by the hub and the bridge: reed clumps (swaying) and wet stones at the waterline, merged (2 draws). ----

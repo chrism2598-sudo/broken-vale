@@ -1,0 +1,14 @@
+# M40 findings (append-only)
+- PRIORITY (C S): castle camera zooms in too close in tight spots; reproduce + fix camera clamp (no M11 motion changes).
+- Before shots: shots/m39-m40b-lite-{stair,track,bridge,castle-road,hall,kitchen,armoury}.png, shots/m39-m40b-high-{stair,bridge}.png (High run stopped early for time; rock-far timed out).
+- Camera repro (tools/m40-camprobe.cjs, Pale keep ground floor, 1.5 m grid x 8 headings, Lite portrait; boom length from head, normal 5.24 m): BEFORE med/p10/min -> Kitchen 2.37/1.40/0.63, Chapel 2.92/0.63/0.63, Library 2.92/0.63/0.63, Entry 3.80/1.40/0.63, Armoury 2.92/1.40/0.63, Cellar 4.47/2.07/0.70, Great hall 5.24/2.08/0.63 (98 of 933 under 2.6 m). 0.63 m = camera in the hair (12% floor of the clamp).
+- Camera fix (src/castle.ts clampCam + 1-line call in main.ts passing dt/snap; M11 rigid touch camera untouched): boom may leave a room through its OUTER single-sided walls into empty space (dollhouse, as the tower already did); small rooms crane earlier (TH 3.2 -> 4.2); against an inner wall it looks down from under the ceiling instead of the 0.63 m collapse; boom length eased back out (pull-in immediate, ease-out ~0.4 s, snap on teleports).
+- AFTER: Kitchen 2.92/2.55/1.84, Chapel 5.24/3.39/3.39, Library 5.24/3.21/2.79, Entry 5.24/3.19/1.84, Armoury 5.24/2.55/2.55, Cellar 5.24/2.07/1.80, Great hall 5.24/4.48/0.63 (23 under 2.6).
+- Camera shots before/after (Lite): shots/m40-{before,after}-cam-{chapel,kitchen,entry}.png. Before kitchen/entry = camera inside the hero's hair; after = look-down view with the hero and room visible.
+- Spot: three-pier bridge end posts were plain dark-brick cubes (read as untextured blocks at the bridge mouth) -> parapet stone piers with a dressed cap and low pyramid weathering (landmarks.ts). Shots: shots/m39-m40b-lite-bridge.png -> shots/m39-m40a-lite-bridge.png.
+- Spot: Wing Gate white stone (WHITE_STONE: plinths, voussoirs, drum bases) was flat untextured white -> faint veined/mottled marble map + emissiveMap (stays white per canon). Subtle at phone scale. Shots: shots/m39-m40b-lite-castle-road.png -> shots/m39-m40a2-lite-castle-road.png.
+- Glitches seen in shots: none new besides the camera collapse (no floating props/z-fighting spotted in stair, track, bridge, castle-road, hall, kitchen, armoury).
+- Perf Lite: meadow 657k/178, keep 675k/191, paleWing 462k/114, paleStair 480k/114, hall 51k/58, kitchen 52k/61; audit (halved) track 710k/162, night-hub 633k/193. Under caps.
+- QA PASS so far: post High+Lite (0 shader errors), opening, world, ground, quests.
+- QA PASS: castle, stair, cave, combat, finale, outlook, plate, title. qa-run (1800 s) running.
+- qa-run PASS (errors []) after interruption; re-checked by parent.

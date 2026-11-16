@@ -207,7 +207,16 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
 const ICE = new THREE.MeshStandardMaterial({ color: '#d4e6ef', roughness: 0.12, metalness: 0.05, emissive: '#1a2a33', emissiveIntensity: 0.25 });
 const YARD_WOOD = new THREE.MeshStandardMaterial({ color: '#5e4430', roughness: 0.85 });
 const GOLD = new THREE.MeshStandardMaterial({ color: '#c9a043', roughness: 0.34, metalness: 0.9 }), BRONZE = new THREE.MeshStandardMaterial({ color: '#8f5f30', roughness: 0.4, metalness: 0.85 });
-const WHITE_STONE = new THREE.MeshStandardMaterial({ color: '#f8f5ef', roughness: 0.34, emissive: '#57524a', emissiveIntensity: 1 }); // pale marble: lifted so it stays white in shade
+/** M40 · faint marble: cloudy tone, thin grey veins and a little grime, so the Wing Gate's white stone reads as stone, not a flat white box. */
+function marbleTex(): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d')!; let sd = 7; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  x.fillStyle = '#f2eee6'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 160; i++) { const px = r() * 256, py = r() * 256, rr = 10 + r() * 46; const g = x.createRadialGradient(px, py, 0, px, py, rr); const d = r() < 0.5; g.addColorStop(0, d ? 'rgba(170,160,145,0.10)' : 'rgba(255,255,252,0.14)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(px - rr, py - rr, rr * 2, rr * 2); }
+  x.lineCap = 'round'; for (let i = 0; i < 9; i++) { let px = r() * 256, py = r() * 256; x.strokeStyle = `rgba(120,112,104,${0.18 + r() * 0.22})`; x.lineWidth = 0.6 + r() * 1.3; x.beginPath(); x.moveTo(px, py); for (let k = 0; k < 7; k++) { px += (r() - 0.3) * 50; py += (r() - 0.5) * 40; x.lineTo(px, py); } x.stroke(); }
+  for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(90,84,74,${r() * 0.07})`; x.fillRect(r() * 256, r() * 256, 1 + r() * 2, 1 + r() * 2); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+}
+const MARBLE = marbleTex(); const WHITE_STONE = new THREE.MeshStandardMaterial({ color: '#ffffff', map: MARBLE, emissiveMap: MARBLE, roughness: 0.38, emissive: '#57524a', emissiveIntensity: 0.85 }); // pale marble: lifted so it stays white in shade (M40: veined, a touch less glow)
 const FROST_CAP = new THREE.MeshStandardMaterial({ color: '#eef4f7', roughness: 0.55 }), HEART = new THREE.MeshStandardMaterial({ color: '#b3122a', roughness: 0.12, metalness: 0.1, emissive: '#7a0614', emissiveIntensity: 0.55 });
 function paleKeepYard(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim: THREE.Material, roof: THREE.Material, face: number, kx: number, kz: number, y0: number, R: number, solids: Solid[]): THREE.Object3D[] {
   const cs = Math.cos(face), sn = Math.sin(face), K = (u: number, v: number) => [kx + cs * u + sn * v, kz - sn * u + cs * v] as const;
@@ -867,7 +876,10 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
         if (i % 2 === 0) { const [wx, wz] = P(sm, c * (W / 2 + 0.25)); solids.push({ x: wx, z: wz, r: 0.55 }); } }
       const [wx, wz] = P(sm, 0); WALK.push({ x: wx, z: wz, y, hw: (sb - sa) / 2 + 0.02, hd: W / 2 - 0.3, ry: th, cam: true }); }
     // end posts at the four corners
-    for (const s of [-HL, HL]) for (const c of [-1, 1]) lb.add(arch, box(0.5, 1.0, 0.5).translate(s, deckY(s) - 0.05, c * (W / 2 - 0.16)) as THREE.BufferGeometry);
+    // M40 · end piers in the parapet's own weathered stone with a dressed cap and a low pyramidal weathering (were plain dark-brick cubes)
+    for (const s of [-HL, HL]) for (const c of [-1, 1]) { const y0 = deckY(s) - 0.05, cc = c * (W / 2 - 0.16);
+      lb.add(stone, box(0.58, 0.92, 0.58).translate(s, y0, cc) as THREE.BufferGeometry); lb.add(arch, box(0.68, 0.11, 0.68).translate(s, y0 + 0.92, cc) as THREE.BufferGeometry);
+      lb.add(stone, new THREE.ConeGeometry(0.42, 0.26, 4).rotateY(Math.PI / 4).translate(s, y0 + 1.16, cc)); }
     const bg = lb.build(); g.add(bg); b.extra.push(g); }
   const grp = b.build(); for (const m of b.extra) grp.add(m); grp.name = 'opening';
   return { group: grp, update: (time) => { for (const u of update) u(time); } };

@@ -325,3 +325,9 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Keep portals (Pale and Azure): the flat near-black slab is now a gate passage in depth (shadowed walls and vault, worn flags, a dim far arch), one canvas texture shared by both keeps.
 - Keep hall light shafts: wider (1.1 → 1.5 m) and brighter (High 0.40 → 0.55, Lite 0.36 → 0.48), so they read in a phone shot; same draws.
 - Tools: `tools/m39-audit.cjs` (m37 audit with `QQ=q=high` and `TAG=` for before/after names), `tools/m39-cam.cjs` (one shot from a preset + JS). Findings: `tools/m39-findings.md`.
+
+### M40 · castle camera no longer zooms into the hero; bridge piers, Wing Gate marble
+- Keep interiors camera (castle.ts `clampCam`): the boom may leave a room through its outer single-sided walls into empty space (dollhouse framing, as the tower already did), small rooms crane up sooner, and when backed against an inner wall the camera looks down from just under the ceiling instead of collapsing into the hero's hair. Boom length pulls in at once and eases back out (~0.4 s), snapping on teleports. The M11 rigid touch camera is untouched (main.ts only passes dt to the clamp).
+  Probe (`tools/m40-camprobe.cjs`, Pale ground floor, boom from the head, 5.24 m normal), median/min before → after: Kitchen 2.37/0.63 → 2.92/1.84, Chapel 2.92/0.63 → 5.24/3.39, Library 2.92/0.63 → 5.24/2.79, Entry 3.80/0.63 → 5.24/1.84, Armoury 2.92/0.63 → 5.24/2.55, Great hall views under 2.6 m 98 → 23 of 933.
+- Three-pier bridge: end posts are weathered parapet-stone piers with a dressed cap and a low pyramid weathering instead of dark-brick cubes.
+- Wing Gate white stone: a faint veined, mottled marble texture (still white per canon) instead of flat untextured white.

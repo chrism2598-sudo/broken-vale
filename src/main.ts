@@ -1637,7 +1637,7 @@ ${GRADE_GLSL}
     if (inCave && cave) cave.clampCam(camTarget, camPos);
     if (inSea && sea) sea.clampCam(camTarget, camPos);
     if (inKeep && keep) keep.clampCam(camTarget, camPos);
-    if (inCastle && castle) castle.clampCam(camTarget, camPos); else if (inBarrow && barrow) barrow.clampCam(camPos, camTarget); else if (perch) perchCam(camTarget, camPos);
+    if (inCastle && castle) castle.clampCam(camTarget, camPos, dt, snapCam); else if (inBarrow && barrow) barrow.clampCam(camPos, camTarget); else if (perch) perchCam(camTarget, camPos);
     const floor = inCoast && coast ? coast.camFloor(camPos.x, camPos.z) + 0.25 : inCave || inSea || inKeep || inCastle || inBarrow ? -1e9 : perch ? perch.y + 0.4 : (onIsland || lift ? (islandY(camPos.x, camPos.z) ?? -1e9) : Math.max(heightAt(camPos.x, camPos.z), walkY(camPos.x, camPos.z, true))) + 0.6; // M25: the camera rides above Pale's grand stair
     // Rigid horizontal follow (no positional lag): a lagged lerp toward a moving target leaves a dt-dependent gap, so on a phone with
     // uneven frame times the camera→player distance pumped every frame while running ("view goes back and forth").

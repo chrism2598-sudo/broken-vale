@@ -364,7 +364,7 @@ function paleRock(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim
     // broken blocks: angular slabs half-sunk into the face, standing proud as cracked-off edges
     for (let i = 0; i < 70; i++) { const a = face + gap + 0.05 + rnd() * (Math.PI * 2 - gap * 2 - 0.1), u0 = Math.sin(a - face) * 24, v0 = Math.cos(a - face) * 24; if (v0 > 0 && Math.abs(u0) < 4.4) continue;
       const t = 0.15 + rnd() * 0.75, y = base + 0.3 + t * (top - base - 0.6), rr = 25.1 - t * 2.2 + 0.25, sz = 0.35 + rnd() * 0.55;
-      const g2 = new THREE.DodecahedronGeometry(sz, 0).scale(1.2 + rnd() * 0.8, 0.45 + rnd() * 0.35, 0.6 + rnd() * 0.3).toNonIndexed(); g2.computeVertexNormals();
+      const g2 = new THREE.DodecahedronGeometry(sz, 0).scale(1.2 + rnd() * 0.8, 0.45 + rnd() * 0.35, 0.6 + rnd() * 0.3); // (polyhedra are already non-indexed) g2.computeVertexNormals();
       b.add(rock, g2, Math.sin(a) * rr, y, Math.cos(a) * rr, a + Math.PI / 2 + (rnd() - 0.5) * 0.5); }
     // frost/snow lying on the rim, and ivy cascading down the rock in a dozen curtains
     b.add(frost, new THREE.RingGeometry(21.95, 22.95, seg, 1, face + gap, Math.PI * 2 - gap * 2).rotateX(-Math.PI / 2), 0, top + 0.13, 0);
@@ -379,7 +379,7 @@ function paleRock(b: Builder, l: Landmark, t: BuildTex, st: THREE.Material, trim
       for (let i = 0; i < pp.count; i++) { let px = pp.getX(i), py = pp.getY(i), pz = pp.getZ(i); const yy = Math.max(py, -0.2);
         const k = 1 + 0.22 * fbm(px * 2.1 + sh, pz * 2.1 + py * 1.3) + 0.12 * Math.sin(py * 9 + fbm(px * 3, pz * 3) * 3); // ledges + broken faces
         const taper = 1 - 0.35 * Math.max(0, py); pp.setXYZ(i, px * rx * k * taper, yy * ry + (py < -0.2 ? 0 : 0), pz * rz * k * taper); }
-      const gq = gq0.toNonIndexed(); gq.computeVertexNormals(); b.add(rock, gq, x, y0, z, face + sd * 0.4 + rnd() * 0.5);
+      const gq = gq0.index ? gq0.toNonIndexed() : gq0; gq.computeVertexNormals(); b.add(rock, gq, x, y0, z, face + sd * 0.4 + rnd() * 0.5);
       solids.push({ x: l.x + x, z: l.z + z, r: Math.max(rx, rz) * 0.95 });
       for (let k = 0; k < 7; k++) { const a = rnd() * Math.PI * 2, h = 0.25 + rnd() * 0.65, rr = (1 - 0.35 * h) * 0.92; // moss/ivy pads on the ledges facing the road
         b.add(rnd() < 0.55 ? ivy : leaf, new THREE.IcosahedronGeometry(0.35 + rnd() * 0.3, 0).scale(1.3, 0.55, 1.1), x + Math.sin(a) * rx * rr, y0 + h * ry, z + Math.cos(a) * rz * rr, a); }

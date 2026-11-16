@@ -309,3 +309,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Two crag spurs each side of the Wing Gate (beyond its wing walls; road, plaza, terraces untouched) carry the rock strata, moss and ivy into the road view, with scree at their feet and solids round them.
 - Scree stones larger; grass fully cleared from the scree band round the rock foot.
 - Keep interior: window shafts brighter (Lite 0.26 to 0.36, High 0.32 to 0.40); dust motes more numerous, larger and brighter.
+
+### M37 · full-game audit and glitch hunt
+- Wind Shrine: the plinth and its step are now standable surfaces (feet sank ~0.5 m into the base when walking its edge between the 5.2 m solid and the 6.6 m rim).
+- Silenced the "toNonIndexed: already non-indexed" console warnings (broken-block slabs and rock shoulders).
+- New tools: `tools/m37-audit.cjs [view…]` (Lite 412x915 shots of every area + console + draw calls/tris + HUD overlap; bench deltas are 2x, halve them) and `tools/m37-walk.cjs [route]` (stick-walk collision probe: stuck / sink / pop) and `tools/m37-glitch.cjs` (touch buttons, jump, night roamers in geometry, old save, reload at night). Run qa-run with a 1800 s timeout (its real-time tide waits overran 700 s). Findings log: `tools/m37-findings.md`.

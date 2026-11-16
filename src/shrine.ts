@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SHRINE, heightAt } from './world';
+import { STANDS } from './outposts';
 import { addRimFill } from './shading';
 import { triplanar } from './landmarks';
 import { standingStone } from './stonework';
@@ -126,6 +127,8 @@ export function makeWindShrine(rock: GroundTex, state: { runes: number[]; solved
   const light = new THREE.PointLight('#ffd27a', 0, 26, 2); light.position.y = 4; g.add(light);
   g.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !(m.material instanceof THREE.ShaderMaterial) && !(m.material instanceof THREE.MeshBasicMaterial)) { m.castShadow = m.receiveShadow = true; } });
   g.position.set(SHRINE.x, y0, SHRINE.z);
+  // M37 · the plinth and its step are standable (feet sank 0.5 m into the base walking round its edge between the old 5.2 m solid and the 6.6 m rim)
+  STANDS.push({ x: SHRINE.x, z: SHRINE.z, r: 7.5, top: y0 + 0.27, tag: 'shrine-step' }, { x: SHRINE.x, z: SHRINE.z, r: 6.5, top: y0 + 0.8, tag: 'shrine-base' });
 
   // Clue tablet: a tilted carved slab on a plinth.
   const tablet = new THREE.Group();

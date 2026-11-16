@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { trackMask, inStream, RSTAIR, WAYFINDER } from './world';
+import { trackMask, inStream, RSTAIR, WAYFINDER, QUARRY, POOL } from './world';
 import { heightAt, normalAt, pathMask, trailMask, creekX, creekHalf, rng, SHRINE, fbm, LANDMARKS, SPAWN } from './world';
 const PALE_YARD = LANDMARKS.find((l) => l.id === 'pale')!; // M24: no grass through Pale Keep's frosted courtyard flags or the Wing Gate plaza
 /** M25 · no grass through the grand stair's treads or its foot terraces. */
@@ -78,6 +78,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
           const tm = trailMask(x, z); if (tm > 0.55) continue; // M22b: clear the Greycrown trail and outlook pad
           const dcr = Math.abs(x - creekX(z)); if (dcr < creekHalf(z) + 0.6) continue;
           if (Math.hypot(x - SHRINE.x, z - SHRINE.z) < 7) continue;
+          if (x > QUARRY.x0 - 0.6 && x < QUARRY.x1 + 0.6 && z > POOL.z + POOL.r && z < 63.8) continue; // M39: no lawn on the quarry cut
           if (Math.hypot(x - PALE_YARD.x, z - PALE_YARD.z) < 21.8 || Math.abs(Math.hypot(x - PALE_YARD.x, z - PALE_YARD.z) - 23.8) < 2.0 || paleStair(x, z) || Math.hypot(x - PALE_PLAZA.x, z - PALE_PLAZA.z) < 7.4) continue;
           const nrm = normalAt(x, z); if (nrm[1] < 0.86) continue;
           p.set(x, heightAt(x, z) - 0.02, z);

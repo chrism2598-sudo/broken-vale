@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WAYFINDER, heightAt, creekX, creekHalf, pathX, TRAIL, PATH_BEND, TRACK, WORN, STREAM, POOL, type P2 } from './world';
+import { WAYFINDER, heightAt, creekX, creekHalf, pathX, TRAIL, PATH_BEND, TRACK, WORN, STREAM, POOL, QUARRY, type P2 } from './world';
 
 const B = PATH_BEND, f3 = (v: number) => v.toFixed(3);
 /** M26 · GLSL distance to a polyline (track / stream). */
@@ -57,6 +57,9 @@ vec4 W4; float SNOW; float RUT; float RCROWN; vec2 UVg; vec2 UVp; vec2 UVr; vec2
       pm*=1.-zr*smoothstep(.62,1.05,abs(dx)+.25*(vn(p*2.3)-.5))*.9; pm*=1.-RCROWN*smoothstep(.5,.72,vn(p*3.1))*.65; } }
   float alt=vWP.y; float macro=vn(p*.011), macro2=vn(p*.043+3.1);
   float rock=smoothstep(.2,.42,slope+.14*(macro2-.5)+smoothstep(18.,45.,alt)*.22*(.6+.8*macro));
+  { // M39 · the quarry cut: the hill the sawn benches step into is bare worked rock and spoil, not lawn (ragged edge, a grassy lip at the top)
+    float qe=.9*(vn(p*.7)-.5)+.5*(vn(p*2.1)-.5); float qx=max((${f3(QUARRY.x0 - 0.5)})-p.x,p.x-(${f3(QUARRY.x1 + 0.5)})), qz=max((${f3(POOL.z + POOL.r + 0.1)})-p.y,p.y-63.5);
+    rock=max(rock,(1.-smoothstep(-.6,.9,qx+qe))*(1.-smoothstep(-.8,.8,qz+qe))*.97); }
   float n=vn(p*.08);
   W4=vec4(1.,pm,rock,bed); W4.x=max(0.,1.-pm-rock-bed);
   W4=pow(W4+vec4(.0001),vec4(2.)); W4.y=max(W4.y,tm*tm); W4/=dot(W4,vec4(1.));

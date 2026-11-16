@@ -189,7 +189,7 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
   solids.push({ x: l.x + kx, z: l.z + kz, r: 8.5 });
   const g = b.build();
   // Portal darkness + pennant on the crown spire.
-  const portal = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 5.4), new THREE.MeshBasicMaterial({ color: '#120e0c' }));
+  const portal = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 5.4), new THREE.MeshBasicMaterial({ color: '#ffffff', map: portalTex() })); // M39: a deep gate passage (walls, flags, the far arch dimly lit), not a flat black slab
   portal.position.set(Math.sin(face) * (R * 0.866 + 1.45), y0 + 2.7, Math.cos(face) * (R * 0.866 + 1.45)); portal.rotation.y = face; g.add(portal);
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 1.6, 8, 1), new THREE.MeshStandardMaterial({ color: pennant, side: THREE.DoubleSide, roughness: 0.8, emissive: pennant, emissiveIntensity: 0.15 }));
   flag.position.set(kx + 2.3, y0 + 30 + 1.2 + KEEP_LOOK_PILLAR + 0.5 + spireH - 1.2, kz); flag.userData.flag = true; g.add(flag);
@@ -871,4 +871,23 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
     const bg = lb.build(); g.add(bg); b.extra.push(g); }
   const grp = b.build(); for (const m of b.extra) grp.add(m); grp.name = 'opening';
   return { group: grp, update: (time) => { for (const u of update) u(time); } };
+}
+
+/** M39 · the keep portal: a gate passage seen in depth (shadowed walls and vault, worn flags, a dim far arch), shared by both keeps. */
+let _portal: THREE.CanvasTexture | null = null;
+function portalTex(): THREE.CanvasTexture {
+  if (_portal) return _portal;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 164; const x = c.getContext('2d')!;
+  x.fillStyle = '#0d0a08'; x.fillRect(0, 0, 128, 164);
+  const fx0 = 44, fx1 = 84, fy0 = 62, fy1 = 128; // the far arch
+  const side = (x0: number, x1: number) => { const g = x.createLinearGradient(x0, 0, x1, 0); g.addColorStop(0, '#15110d'); g.addColorStop(1, '#2a221a'); return g; };
+  x.fillStyle = side(0, fx0); x.beginPath(); x.moveTo(0, 0); x.lineTo(fx0, fy0 - 8); x.lineTo(fx0, fy1); x.lineTo(0, 164); x.closePath(); x.fill();
+  x.fillStyle = side(128, fx1); x.beginPath(); x.moveTo(128, 0); x.lineTo(fx1, fy0 - 8); x.lineTo(fx1, fy1); x.lineTo(128, 164); x.closePath(); x.fill();
+  const fl = x.createLinearGradient(0, fy1, 0, 164); fl.addColorStop(0, '#3a3024'); fl.addColorStop(1, '#1d1712'); x.fillStyle = fl; x.beginPath(); x.moveTo(0, 164); x.lineTo(fx0, fy1); x.lineTo(fx1, fy1); x.lineTo(128, 164); x.closePath(); x.fill();
+  x.strokeStyle = 'rgba(0,0,0,0.45)'; x.lineWidth = 1; for (const t of [0.12, 0.3, 0.52, 0.78]) { const yy = fy1 + (164 - fy1) * t; const k = (yy - fy1) / (164 - fy1); x.beginPath(); x.moveTo(fx0 - fx0 * k, yy); x.lineTo(fx1 + (128 - fx1) * k, yy); x.stroke(); } // flag joints
+  for (const [x0, x1] of [[0, fx0], [128, fx1]] as const) for (const t of [0.25, 0.5, 0.75]) { const yy0 = (fy0 - 8) * t, xx = x0 + (x1 - x0) * t; x.beginPath(); x.moveTo(xx, yy0); x.lineTo(xx, 164 - (164 - fy1) * t); x.stroke(); } // ashlar joints on the walls
+  const far = x.createLinearGradient(0, fy0, 0, fy1); far.addColorStop(0, '#4a4034'); far.addColorStop(1, '#6e5f4a'); x.fillStyle = far;
+  x.beginPath(); x.moveTo(fx0, fy1); x.lineTo(fx0, fy0 + 6); x.quadraticCurveTo(fx0, fy0 - 8, (fx0 + fx1) / 2, fy0 - 10); x.quadraticCurveTo(fx1, fy0 - 8, fx1, fy0 + 6); x.lineTo(fx1, fy1); x.closePath(); x.fill();
+  const v = x.createRadialGradient(64, 100, 20, 64, 90, 110); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)'); x.fillStyle = v; x.fillRect(0, 0, 128, 164);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; _portal = t; return t;
 }

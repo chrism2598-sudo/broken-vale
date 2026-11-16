@@ -1,0 +1,14 @@
+# M39 findings (append-only)
+- Before shots (fresh, M38 build index-4SQAjxjN): shots/m39-before-lite-*.png, shots/m39-before-high-*.png (stair falls track bridge castle-road rock-far plaza hall). Tool: tools/m39-audit.cjs (QQ=q=high TAG=...).
+- Weak spot 1: quarry falls (falls view): sawn benches read as boxes pasted on a grass slope; bench ends meet lawn with hard seams.
+- Weak spot 2: Pale (and Azure) keep portal = flat #120e0c plane, reads as a pure black hole at the top of the plaza stair (plaza view).
+- Shafts: visible but faint in High and Lite (shots/m39-before-high-shafts.png, m39-before-lite-shafts.png; hall from the west looking east).
+- Changes: terrain.ts quarry-cut rock mask + grass.ts no lawn on the cut; landmarks.ts portalTex (gate passage in depth); castle.ts shafts 1.1->1.5 m wide, opacity High 0.40->0.55, Lite 0.36->0.48.
+- Bug caught: first build had a GLSL '--12.3' (negative literal after minus) -> terrain shader failed; fixed with parentheses; qa-post 0 shader errors.
+- falls after (shots/m39-after2-lite-falls.png): quarry hill now bare rock/spoil with a ragged grassy lip; benches read as cut into rock. Note: Read tool caches images by path; use fresh filenames.
+- After shots: shots/m39-after2-lite-falls.png, m39-after2-high-falls.png, m39-after2-lite-plaza.png, m39-after2-high-plaza.png, m39-after2-lite-shafts.png, m39-after2-high-shafts.png (before: m39-before-*). Shafts now clearly read as beams from both east lancets.
+- Perf Lite after: meadow 657k/178, keep 675k/191, paleWing 462k/114, paleStair 480k/114, hall 51k/58, kitchen 52k/64; audit (halved) track 710k/162, night-hub 633k/193, falls 658k/138 (before 660k/138), plaza 480k/114. All under caps; no new draws.
+- QA chain (pid 512119, /tmp/m39-qa.sh, ends with qa-run 1800 s) running. post PASS High+Lite 0 shader errors.
+- PASS: opening, world, ground.
+- PASS: quests, castle, stair, cave, combat, finale, outlook, plate. title: ERR 'Session closed' (page/browser died) after 'Erase -> creator' step; box RAM 12.7/16 GB used. Will re-run title once after qa-run (running now, pid 524632).
+- Re-runs: title PASS, qa-run PASS (errors []).

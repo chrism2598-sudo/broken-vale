@@ -319,3 +319,9 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Mobs: each mob's rigid body parts are merged per material (one draw and one shadow call per material); eyes cast no shadow; the wind-up ring is hidden while transparent; the night wraith's thin arms, shield and blade skip the shadow pass. Night hub (Lite): 221 → 193 calls.
 - Lite only: the quarry plants every other scan fern (each ~5.5k tris), 15% fuller; full-tree budget 120k → 95k tris (trees beyond it use their impostor cards). Track view (Lite): 821k → 710k tris, 174 → 162 calls. High unchanged.
 - `tools/m38-tri.cjs`: per-object triangle/draw-call breakdown for one view (env Q, JS). Findings: `tools/m38-findings.md`.
+
+### M39 · realism pass on the opening route
+- Quarry falls: the hill the sawn benches step into is now bare worked rock and spoil in the terrain shader (ragged edge, a grassy lip at the top) and the lawn is cleared from the cut, so the benches read as cut into stone instead of boxes on a grass slope. No geometry, collision or draw-call change; fewer grass blades.
+- Keep portals (Pale and Azure): the flat near-black slab is now a gate passage in depth (shadowed walls and vault, worn flags, a dim far arch), one canvas texture shared by both keeps.
+- Keep hall light shafts: wider (1.1 → 1.5 m) and brighter (High 0.40 → 0.55, Lite 0.36 → 0.48), so they read in a phone shot; same draws.
+- Tools: `tools/m39-audit.cjs` (m37 audit with `QQ=q=high` and `TAG=` for before/after names), `tools/m39-cam.cjs` (one shot from a preset + JS). Findings: `tools/m39-findings.md`.

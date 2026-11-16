@@ -516,7 +516,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   const camBoxes = rooms.map((r) => ({ ...r, y1: r.y0 + r.h }));
   const roomOf = (lx: number, lz: number, ly: number) => camBoxes.find((r) => inR(r, lx, lz) && ly >= r.y0 - 0.3 && ly <= r.y1);
   const inside = (lx: number, ly: number, lz: number, r: (typeof camBoxes)[number]) => lx > r.x0 + 0.25 && lx < r.x1 - 0.25 && lz > r.z0 + 0.25 && lz < r.z1 - 0.25 && ly > r.y0 + 0.2 && ly < r.y1 - 0.25;
-  const tv = new THREE.Vector3(), cv = new THREE.Vector3(), cv2 = new THREE.Vector3(); let camSm = -1; const camLast = new THREE.Vector3();
+  const tv = new THREE.Vector3(), cv = new THREE.Vector3(), cv2 = new THREE.Vector3(); let camSm = -1; const camLast = new THREE.Vector3(), piv = new THREE.Vector3(), raw0 = new THREE.Vector3(), corrW = new THREE.Vector3(), corrS = new THREE.Vector3();
 
   return {
     id, scene, O, rooms, interact: inter, mobs, chests,
@@ -544,10 +544,15 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     /** Can a mob stand at (world x,z) on height y? */
     walkable(wx: number, wz: number, wy: number) { const lx = wx - O.x, lz = wz - O.z; for (const r of regions) { if (r.door === 'secret' && !secretOpen) continue; if (r.ramp || !inR(r, lx, lz) || Math.abs(r.y - wy) > 0.2) continue; return !blocked(lx, lz, r.y); } return false; },
     clampCam(target: THREE.Vector3, cam: THREE.Vector3, dt = 0, snap = true) {
-      this.clampRaw(target, cam);
+      // M41 · the clamp's correction (swing off a wall, crane, look-down) is eased, not applied in one frame: the free boom still follows the
+      // player's own camera turns instantly; the eased point is re-clamped so it never ends up inside a wall
+      raw0.copy(cam); this.clampRaw(target, cam); corrW.copy(cam).sub(raw0);
+      const jump = snap || dt <= 0 || camSm < 0 || camLast.distanceTo(target) > 2;
+      if (jump) corrS.copy(corrW); else corrS.lerp(corrW, 1 - Math.exp(-10 * dt));
+      cam.copy(raw0).add(corrS); this.clampRaw(target, cam);
       // M40 · smooth the boom length: pull in fast (no wall poke-through), ease back out slowly, so tight spots don't snap the view in and out
       const want = cam.distanceTo(target), dir = cv.copy(cam).sub(target);
-      if (snap || dt <= 0 || camSm < 0 || camLast.distanceTo(target) > 2) camSm = want; else camSm += (want - camSm) * (1 - Math.exp(-(want < camSm ? 16 : 2.5) * dt));
+      if (jump) camSm = want; else camSm += (want - camSm) * (1 - Math.exp(-(want < camSm ? 16 : 2.5) * dt));
       camLast.copy(target); if (want > 1e-4) cam.copy(target).addScaledVector(dir, Math.min(camSm, want) / want);
     },
     clampRaw(target: THREE.Vector3, cam: THREE.Vector3) {
@@ -556,15 +561,18 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
       const [tx, ty, tz] = lx(target), [cx, cy, cz] = lx(cam); if (inside(cx, cy, cz, r)) return;
       // A boom that leaves through a doorway may sit in the next room (you look through the door frame).
       let other: (typeof camBoxes)[number] | undefined;
-      for (const d of doors) { if (d.secret && !secretOpen) continue; const isX = d.ax === 'x', c = isX ? d.z : d.x, a0 = isX ? tz : tx, a1 = isX ? cz : cx; if ((a0 - c) * (a1 - c) >= 0) continue;
-        const k = (c - a0) / (a1 - a0), u = isX ? tx + (cx - tx) * k : tz + (cz - tz) * k, yy = ty + (cy - ty) * k; if (Math.abs(u - (isX ? d.x : d.z)) > d.w / 2 - 0.25 || yy < d.y + 0.2 || yy > d.y + d.h - 0.25) continue;
+      const qx = Math.min(r.x1 - 0.3, Math.max(r.x0 + 0.3, tx)), qz = Math.min(r.z1 - 0.3, Math.max(r.z0 + 0.3, tz)); // M41: door test from inside the room (a head standing in the door plane found no door)
+      for (const d of doors) { if (d.secret && !secretOpen) continue; const isX = d.ax === 'x', c = isX ? d.z : d.x, a0 = isX ? qz : qx, a1 = isX ? cz : cx; if ((a0 - c) * (a1 - c) >= 0) continue;
+        const k = (c - a0) / (a1 - a0), u = isX ? qx + (cx - qx) * k : qz + (cz - qz) * k, yy = ty + (cy - ty) * k; if (Math.abs(u - (isX ? d.x : d.z)) > d.w / 2 - 0.25 || yy < d.y + 0.2 || yy > d.y + d.h - 0.25) continue;
         const px = isX ? u : c + Math.sign(a1 - c) * 0.6, pz = isX ? c + Math.sign(a1 - c) * 0.6 : u; other = camBoxes.find((b) => b !== r && inR(b, px, pz) && yy >= b.y0 && yy <= b.y1); if (other) break; }
       const noRoom = (a: number, b: number, c: number) => !camBoxes.some((q) => a > q.x0 - 0.15 && a < q.x1 + 0.15 && c > q.z0 - 0.15 && c < q.z1 + 0.15 && b > q.y0 - 0.4 && b < q.y1 + 0.4);
       // the narrow tower shaft is framed dollhouse-style: the boom may leave through a wall into the empty dark outside (single-sided walls vanish)
       // M40 · every room is framed dollhouse-style through its OUTER walls (single-sided, they vanish from behind): the boom may leave into empty space at room height, never into another room or through floor/ceiling
       const ok = (a: number, b: number, c: number) => inside(a, b, c, r) || (!!other && inside(a, b, c, other)) || (b > r.y0 + 0.3 && b < r.y1 - 0.3 && noRoom(a, b, c));
       if (ok(cx, cy, cz)) return;
-      const fit = (c: THREE.Vector3) => { let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; tv.lerpVectors(target, c, m); const [a, b, cc] = lx(tv); if (ok(a, b, cc)) lo = m; else hi = m; } return lo; };
+      // M41 · in a doorway (or hugging a wall) the head itself sits in the wall margin, so every boom 'failed' and the camera collapsed to 12 %: fit from a pivot nudged into the room instead
+      const P = ok(tx, ty, tz) ? target : piv.set(O.x + Math.min(r.x1 - 0.3, Math.max(r.x0 + 0.3, tx)), Math.min(r.y1 - 0.3, Math.max(r.y0 + 0.25, ty)), O.z + Math.min(r.z1 - 0.3, Math.max(r.z0 + 0.3, tz)));
+      const fit = (c: THREE.Vector3) => { let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; tv.lerpVectors(P, c, m); const [a, b, cc] = lx(tv); if (ok(a, b, cc)) lo = m; else hi = m; } return lo; };
       // Tight rooms: rather than shoving the camera into the hero's back, crane the boom up (look down from higher) until it fits.
       let best = fit(cam), bestC = cv.copy(cam); const L = cam.distanceTo(target);
       // M21b · tall rooms (great hall + its stair) crane earlier and higher so the stair never ends in a tight over-the-back view.
@@ -573,9 +581,14 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
         const k = (tall ? 1.1 : 1.05) * Math.min(1, (TH - best * L) / 2.4), a = Math.min(tall ? 1.3 : 1.15, a0 + k); // continuous in the clamp depth → no camera pops
         cv2.set(target.x + vx / h * L * Math.cos(a), target.y + L * Math.sin(a), target.z + vz / h * L * Math.cos(a)); best = fit(cv2); bestC = cv.copy(cv2); }
       // M40 · backed against an inner wall the boom can't leave the room at all: look down from just under the ceiling over the hero instead of sitting in her hair
-      if (best * L < 1.8) { const vx = cam.x - target.x, vz = cam.z - target.z, h = Math.hypot(vx, vz) || 1e-6, top = r.y1 - 0.4;
-        for (const off of [0.7, 0.45, 0.25]) { cv2.set(target.x + vx / h * off, Math.max(target.y + 1.2, top), target.z + vz / h * off); const f = fit(cv2); if (f > 0.98 && cv2.distanceTo(target) > best * L) { best = 1; bestC = cv.copy(cv2); break; } } }
-      cam.lerpVectors(target, bestC, Math.max(0.12, best));
+      // M41 · along a wall or in a doorway: swing the boom off the wall (smallest turn that gives a usable length) before giving up on distance
+      if (best * L < 2.6) { const vx = bestC.x - P.x, vy = bestC.y - P.y, vz = bestC.z - P.z;
+        for (const da of [0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4]) { const c = Math.cos(da), sn = Math.sin(da); cv2.set(P.x + vx * c + vz * sn, P.y + vy, P.z - vx * sn + vz * c); const f = fit(cv2); if (f * L >= 2.6) { best = f; bestC = cv.copy(cv2); break; } } }
+      if (best * L < 1.8) { const vx = cam.x - P.x, vz = cam.z - P.z, h = Math.hypot(vx, vz) || 1e-6, top = r.y1 - 0.4;
+        for (const off of [0.7, 0.45, 0.25]) { cv2.set(P.x + vx / h * off, Math.max(P.y + 1.2, top), P.z + vz / h * off); const f = fit(cv2); if (f > 0.98 && cv2.distanceTo(target) > best * L) { best = 1; bestC = cv.copy(cv2); break; } } }
+      // M41 · last resort (a doorway corner): look down from under the ceiling, leaning toward the room's middle
+      if (best * L < 1.6) { const mx = O.x + (r.x0 + r.x1) / 2 - P.x, mz = O.z + (r.z0 + r.z1) / 2 - P.z, mh = Math.hypot(mx, mz) || 1e-6; cv2.set(P.x + mx / mh * 0.6, Math.max(P.y + 1.2, r.y1 - 0.4), P.z + mz / mh * 0.6); const f = fit(cv2); if (f * cv2.distanceTo(P) > best * L) { best = f; bestC = cv.copy(cv2); } }
+      cam.lerpVectors(P, bestC, Math.max(0.12, best));
     },
     openSecret(instant = false) { secretOpen = true; secretSlab.want = 1; if (instant) secretSlab.open = 1; },
     openChest(cid: string, instant = false) { const c = chests.find((k) => k.def.id === cid); if (c) { c.want = 1; if (instant) c.open = 1; } },

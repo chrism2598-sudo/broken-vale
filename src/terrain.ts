@@ -45,8 +45,8 @@ vec4 W4; float SNOW; float RUT; float RCROWN; vec2 UVg; vec2 UVp; vec2 UVr; vec2
 `)
       .replace('#include <map_fragment>', `
 { vec2 p=vWP.xz; float slope=1.-clamp(vWN.y,0.,1.);
-  float dc=abs(p.x-creekX(p.y)); float bed=1.-smoothstep(creekHalf(p.y)*.9,creekHalf(p.y)+1.6,dc); bed=max(bed,max(1.-smoothstep(1.1,2.6,streamD(p)),1.-smoothstep(${f3(POOL.r - 0.3)},${f3(POOL.r + 1.6)},length(p-vec2(${f3(POOL.x)},${f3(POOL.z)})))));
-  float tm=trailM(p); float pm=max(max(pathM(p),tm),max((1.-smoothstep(.75+.25*vn(p*.7),1.8,trackD(p)))*.9,(1.-smoothstep(.4+.2*vn(p*1.3),1.1,wornD(p)))*.75)); // M26: the quarry track // M22b: a hard packed cut, not a soft dirt tint
+  float dc=abs(p.x-creekX(p.y)); float bed=1.-smoothstep(creekHalf(p.y)*.9,creekHalf(p.y)+1.6,dc+.9*(vn(p*.9)-.5)); // M41: ragged bank line bed=max(bed,max(1.-smoothstep(1.1,2.6,streamD(p)),1.-smoothstep(${f3(POOL.r - 0.3)},${f3(POOL.r + 1.6)},length(p-vec2(${f3(POOL.x)},${f3(POOL.z)})))));
+  float tm=trailM(p); float pm=max(max(pathM(p),tm),max((1.-smoothstep(.55+.35*vn(p*.7)+.35*(vn(p*2.6)-.5),2.+.3*vn(p*1.9),trackD(p)+.35*(vn(p*5.3)-.5)))*.9 /* M41: frayed verge */,(1.-smoothstep(.4+.2*vn(p*1.3),1.1,wornD(p)))*.75)); // M26: the quarry track // M22b: a hard packed cut, not a soft dirt tint
   { // M32 · trampled earth at the hub where the paths meet by the Wayfinder: ragged, patchy, thinning into the meadow
     float hd=length(p-vec2(${f3(WAYFINDER.x)},${f3(WAYFINDER.z)}))+2.2*(vn(p*.45)-.5)+1.2*(vn(p*1.6)-.5); pm=max(pm,(1.-smoothstep(2.6,6.2,hd))*(.55+.35*vn(p*.9))); }
   RUT=0.; RCROWN=0.;
@@ -86,6 +86,11 @@ vec4 W4; float SNOW; float RUT; float RCROWN; vec2 UVg; vec2 UVp; vec2 UVr; vec2
     cp*=1.-.5*RUT; cp=mix(cp,cp*vec3(1.08,1.1,1.02)+.02,RCROWN*.5);
     float pud=RUT*smoothstep(.62,.74,vn(p*.85+vec2(3.,7.))); cp=mix(cp,vec3(.15,.14,.12),pud*.65); }
   vec3 cb=texture2D(tBd,UVb).rgb*mix(1.,.55,smoothstep(1.,0.,dc-creekHalf(p.y)*.4));
+  { // M41 · creek banks: a dark wet-mud lip at the waterline, earthy (not bleached grey) gravel above it, pebble flecks
+    float bk=dc-creekHalf(p.y), wn=vn(p*1.3);
+    cb=mix(cb,cb*vec3(.5,.46,.38),(1.-smoothstep(.0,1.1,abs(bk-.15+.6*(wn-.5))))*.75);
+    cb=mix(cb,vec3(.29,.25,.18)*(.75+.5*vn(p*2.2)),smoothstep(.5,1.6,bk)*.55);
+    cb=mix(cb,cb*1.35+.03,smoothstep(.78,.86,vn(p*6.3))*smoothstep(-.2,.4,bk)*.6); }
   // Snow caps: above ~44 m on gentler faces, ragged by noise.
   SNOW=smoothstep(44.,56.,alt+10.*(macro2-.5)+6.*(vn(p*.2)-.5))*smoothstep(.45,.75,vWN.y);
   diffuseColor.rgb*= cg*W4.x+cp*W4.y+cr*W4.z+cb*W4.w;

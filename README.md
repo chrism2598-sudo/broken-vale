@@ -331,3 +331,9 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
   Probe (`tools/m40-camprobe.cjs`, Pale ground floor, boom from the head, 5.24 m normal), median/min before → after: Kitchen 2.37/0.63 → 2.92/1.84, Chapel 2.92/0.63 → 5.24/3.39, Library 2.92/0.63 → 5.24/2.79, Entry 3.80/0.63 → 5.24/1.84, Armoury 2.92/0.63 → 5.24/2.55, Great hall views under 2.6 m 98 → 23 of 933.
 - Three-pier bridge: end posts are weathered parapet-stone piers with a dressed cap and a low pyramid weathering instead of dark-brick cubes.
 - Wing Gate white stone: a faint veined, mottled marble texture (still white per canon) instead of flat untextured white.
+
+### M41 · castle camera follow-up, creek banks, verges
+- Castle camera never folds into the hero: boom fit from a pivot nudged off the wall, doors tested from inside the room, the boom swings off a wall (up to 80°) before it shortens, a ceiling look-down as the last resort; the clamp's correction eases (no snapping), length still pulls in at once and eases out. Probe (tools/m41-camprobe.cjs, ground + upper floors + stairs, Pale and Azure): min boom 0.62 m → ≥ 1.64 m everywhere (great halls ≥ 2.62 m); tools/m41-camwalk.cjs for wall/door walks. Debug: `__vale.castleWalk(lx,lz,ly)`.
+- Creek banks: the shallows' water film fades out onto the bank (no ruled edge, no milky mirror sheet on Lite), a dark wet-mud lip and earthy gravel on the bed edge, ragged and shorter grass at the lip.
+- Track and road verges: ragged grass edge with stragglers, frayed terrain edge.
+- Audit views `banks` and `orchard` in tools/m39-audit.cjs. Notes: tools/m41-findings.md.

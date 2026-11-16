@@ -74,9 +74,9 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
         for (let k = 0; k < per; k++) {
           const x = (gx + rr()) * cell, z = (gz + rr()) * cell;
           const rot = rr() * Math.PI * 2, sc0 = rr(), sc1 = rr(), t0 = rr(), t1 = rr(), t2 = rr();
-          const pm = pathMask(x, z); if (pm > 0.42) continue; if (trackMask(x, z) > 0.42 || inStream(x, z) || (Math.abs(Math.hypot(x - LANDMARKS[0].x, z - LANDMARKS[0].z) - 26.6) < 1.9) /* M36: no grass over the scree band */ || (Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 4.6 && Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1 < 0.75) || (Math.abs(x - RSTAIR.x) < RSTAIR.half + 0.3 && z > RSTAIR.z0 - 0.6 && z < RSTAIR.z1 + 0.4)) continue; // M26
+          const pm = pathMask(x, z), tk = trackMask(x, z), edgeN = fbm(x * 0.55 + 7, z * 0.55 - 3), hh = (Math.sin(x * 91.7 + z * 47.3) * 43758.5453) % 1; /* M41: ragged verges with stragglers, not a ruled line */ if (pm > 0.4 + 0.3 * edgeN + 0.4 * (Math.abs(hh) - 0.5)) continue; if (tk > 0.4 + 0.4 * edgeN + 0.5 * (Math.abs(hh) - 0.5) || inStream(x, z) || (Math.abs(Math.hypot(x - LANDMARKS[0].x, z - LANDMARKS[0].z) - 26.6) < 1.9) /* M36: no grass over the scree band */ || (Math.hypot(x - WAYFINDER.x, z - WAYFINDER.z) < 4.6 && Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1 < 0.75) || (Math.abs(x - RSTAIR.x) < RSTAIR.half + 0.3 && z > RSTAIR.z0 - 0.6 && z < RSTAIR.z1 + 0.4)) continue; // M26
           const tm = trailMask(x, z); if (tm > 0.55) continue; // M22b: clear the Greycrown trail and outlook pad
-          const dcr = Math.abs(x - creekX(z)); if (dcr < creekHalf(z) + 0.6) continue;
+          const dcr = Math.abs(x - creekX(z)), bankE = dcr - creekHalf(z) - 0.6 + 0.9 * edgeN + 0.9 * (Math.abs(hh) - 0.5); if (bankE < 0) continue; // M41: ragged creek-bank edge
           if (Math.hypot(x - SHRINE.x, z - SHRINE.z) < 7) continue;
           if (x > QUARRY.x0 - 0.6 && x < QUARRY.x1 + 0.6 && z > POOL.z + POOL.r && z < 63.8) continue; // M39: no lawn on the quarry cut
           if (Math.hypot(x - PALE_YARD.x, z - PALE_YARD.z) < 21.8 || Math.abs(Math.hypot(x - PALE_YARD.x, z - PALE_YARD.z) - 23.8) < 2.0 || paleStair(x, z) || Math.hypot(x - PALE_PLAZA.x, z - PALE_PLAZA.z) < 7.4) continue;
@@ -88,6 +88,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
           let hy = patch < -0.12 ? 0.32 + 0.18 * sc1 : patch > 0.22 ? 1.05 + 0.35 * sc1 : 0.6 + 0.45 * sc1;
           hy *= 1 - 0.75 * Math.min(1, pm / 0.42);
           hy *= 1 - 0.85 * tm; // short fringe along the Greycrown cut
+          hy *= 0.45 + 0.55 * Math.min(1, bankE / 1.4); hy *= 1 - 0.5 * Math.min(1, tk / 0.6); // M41: shorter, trodden blades at the creek lip and the track verge
           const sc = 0.8 + sc0 * 0.45; s.set(sc, sc * hy, sc);
           m.compose(p, q, s); const o = tmpA.length; m.toArray(tmpA, o);
           tmpA.push(0.85 + t0 * 0.3, 0.9 + t1 * 0.2, 0.7 + t2 * 0.35, x, z);

@@ -2092,6 +2092,7 @@ ${GRADE_GLSL}
     castleAt(lx: number, lz: number, ly: number, face = 0) { if (!castle) return; state.px = castle.O.x + lx; state.pz = castle.O.z + lz; castle.place(state.px, state.pz, ly); state.facing = face; state.yaw = face + Math.PI; snapCam = true; },
     perchAt(u: number, v: number) { if (!perch) return; const p = kp(perch.id, u, v); state.px = p.x; state.pz = p.z; snapCam = true; },
     kLocal: (x: number, z: number, id: KeepId = 'pale') => kLocal(id, x, z),
+    castleWalk(lx: number, lz: number, ly: number) { return !!castle && castle.walkable(castle.O.x + lx, castle.O.z + lz, ly); }, // M41 QA: is (local x,z,y) a floor the hero can stand on
     camInfo: () => ({ cam: camera.position.toArray().map((v) => +v.toFixed(2)), player: player.root.position.toArray().map((v) => +v.toFixed(2)), inCastleScene: player.root.parent === castle?.scene, vis: player.root.visible, st: { px: state.px, pz: state.pz, yaw: state.yaw, dist: state.dist } }),
     fog: () => ({ explored: +fogExplored(fogNow()).toFixed(3) }),
     world: () => ({ tod: +tod.toFixed(4), night: +nightK.toFixed(3), day: save.day ?? 0, rk: { ...(save.rk ?? {}) }, frozen: timeFrozen, locked: todLocked, playerHp, swings: roamSwings, down: roamDown, fading, near: nearestInteract()?.label ?? null, exposure: +renderer.toneMappingExposure.toFixed(3), sunI: +sun.intensity.toFixed(3), lantern: +lantern.intensity.toFixed(2),
@@ -2281,7 +2282,7 @@ float wH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float wN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(wH(i), wH(i + vec2(1, 0)), f.x), mix(wH(i + vec2(0, 1)), wH(i + vec2(1, 1)), f.x), f.y); }
 void main() {`).replace('vec3 outgoingLight = albedo;', `float wE = min(vWU.x, 1. - vWU.x) * 2.; float shal = 1. - smoothstep(.22, .62, wE + (wN(vWU * vec2(3., 6.)) - .5) * .15);
 					float fl = smoothstep(.62, .9, wN(vec2(vWU.x * 7., vWU.y * 2.2 + time * .6))) * (1. - shal * .6);
-					vec3 outgoingLight = mix(albedo, vec3(.27, .31, .22) * (.55 + .45 * diffuseLight.r) + specularLight * .5, shal * .7) + fl * .06;`).replace('gl_FragColor = vec4( outgoingLight, alpha );', 'gl_FragColor = vec4( outgoingLight, alpha * mix(1., .6, shal) );');
+					vec3 outgoingLight = mix(albedo, vec3(.27, .31, .22) * (.55 + .45 * diffuseLight.r) + specularLight * .5, shal * .7) + fl * .06;`).replace('gl_FragColor = vec4( outgoingLight, alpha );', 'gl_FragColor = vec4( outgoingLight, alpha * mix(1., .6, shal) * smoothstep(.0, .16, wE + (wN(vWU * vec2(9., 14.)) - .5) * .12) );');
     wm.transparent = true;
     return { mesh: w as THREE.Object3D, update: (t: number) => { u.time.value = t * 0.6; }, setDawn: (k: number) => { u.uDawn.value = k; } };
   }
@@ -2301,7 +2302,8 @@ float wN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); re
   float wE = min(vWU.x, 1. - vWU.x) * 2.; float shal = 1. - smoothstep(.22, .62, wE + (wN(vWU * vec2(3., 6.)) - .5) * .15);
   float fl = smoothstep(.62, .9, wN(vec2(vWU.x * 7., vWU.y * 2.2 + uWT * .35))) * (1. - shal * .6);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.27, .31, .22), shal * .75) + fl * .07;
-  diffuseColor.a *= mix(1., .5, shal);`); };
+  diffuseColor.a *= mix(1., .4, shal) * smoothstep(.0, .16, wE + (wN(vWU * vec2(9., 14.)) - .5) * .12); // M41: the film thins out onto the bank instead of ending in a ruled edge`)
+      .replace('vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;', 'vec3 outgoingLight = totalDiffuse + totalSpecular * mix(1., .35, shal) + totalEmissiveRadiance; // M41: shallows over the bed stop mirroring the bright sky (the milky sheet)'); };
   return { mesh: m as THREE.Object3D, update: (t: number) => { normals.offset.set(t * 0.01, -t * 0.05); wT.value = t; }, setDawn: (k: number) => { wmat.color.copy(c0).lerp(c1, k); wmat.emissive.setRGB(0.16 * k, 0.07 * k, 0.04 * k); } };
 }
 

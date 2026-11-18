@@ -454,6 +454,24 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
         put(slitM, new THREE.PlaneGeometry(0.16, 1.1), x, y, z, ry); const nx = Math.round(Math.sin(ry)), nz = Math.round(Math.cos(ry));
         for (const sd2 of [-1, 1]) box(stoneM, nz ? 0.14 : 0.12, 1.4, nz ? 0.12 : 0.14, x + nx * 0.05 + (nz ? sd2 * 0.16 : 0), y - 0.7, z + nz * 0.05 + (nx ? sd2 * 0.16 : 0));
         for (const yy of [-0.62, 0.62]) box(stoneM, nz ? 0.46 : 0.12, 0.12, nz ? 0.12 : 0.46, x + nx * 0.05, y + yy - 0.06, z + nz * 0.05); } }
+    // ---- M43 · ground-floor rooms and the gallery (both keeps): fuller library, a vaulted chapel, a dressed dungeon, a furnished gallery ----
+    // library: two more bookcases on the south wall (camera blockers), a ladder against the north shelves
+    for (const lx of [7.0, 8.7]) { box(darkWoodM, 1.6, 3.0, 0.45, lx, 0, 4.25); for (const yy of [0.7, 1.4, 2.1]) box(woodM, 1.5, 0.04, 0.4, lx, yy, 4.27); put(bookM, new THREE.PlaneGeometry(1.44, 2.7), lx, 1.5, 4.49); }
+    block(6.15, 9.55, 4.0, 4.5, 0, 3);
+    { const lean = 0.28; for (const dx of [-0.22, 0.22]) { const r2 = new THREE.BoxGeometry(0.06, 2.9, 0.06); r2.rotateX(lean); put(woodM, r2, 6.6 + dx, 1.4, 8.9); } for (let k = 0; k < 8; k++) { const yy = 0.25 + k * 0.33; put(woodM, new THREE.BoxGeometry(0.44, 0.04, 0.04), 6.6, yy, 8.9 + (yy - 1.4) * Math.tan(lean)); } }
+    // chapel: stone pilasters and transverse ribs (a plain vault), iron candle stands with wax
+    for (const x of [-9.4, -6.9, -4.4]) { for (const z of [4.14, 9.86]) box(stoneM, 0.34, 5.2, 0.26, x, 0, z); box(stoneM, 0.3, 0.32, 5.7, x, 5.2 - 0.32, 7); for (const z of [4.4, 9.6]) { const hb = new THREE.BoxGeometry(0.3, 0.26, 0.8); hb.rotateX(z < 7 ? -0.6 : 0.6); put(stoneM, hb, x, 4.62, z); } }
+    for (const z of [5.4, 8.6]) { cyl(ironM, 0.18, 0.04, -9.3, 0, z, 10); cyl(ironM, 0.03, 1.3, -9.3, 0.04, z, 6); cyl(ironM, 0.12, 0.04, -9.3, 1.34, z, 10); cyl(waxM2, 0.045, 0.32, -9.3, 1.38, z, 8); }
+    // dungeon: straw on the cell floors, manacles and chains on the cell back wall, a wine rack against the east wall (camera blocker)
+    { const Y = CELLAR_Y; for (let c = 0; c < 3; c++) { const x0 = -14.8 + c * 2.6; for (let k = 0; k < 14; k++) box(cloth2M, 0.5 + R() * 0.4, 0.015, 0.05 + R() * 0.05, x0 + 0.4 + R() * 1.8, Y + 0.005 + (k % 3) * 0.004, -17.6 + R() * 1.7, R() * 3);
+        for (const dx of [0.9, 1.6]) { box(ironM, 0.16, 0.06, 0.06, x0 + dx, Y + 1.7, -17.96); for (let k = 0; k < 5; k++) put(ironM, new THREE.TorusGeometry(0.045, 0.012, 4, 8).rotateY(k % 2 ? Math.PI / 2 : 0), x0 + dx, Y + 1.62 - k * 0.08, -17.92); put(ironM, new THREE.TorusGeometry(0.07, 0.02, 4, 10), x0 + dx, Y + 1.18, -17.92); } }
+      const bottleG = mat('#2b3a24', 0.3), bottleR = mat('#3a2024', 0.3);
+      box(darkWoodM, 0.45, 1.8, 1.4, -5.25, Y, -14.5); for (let r2 = 0; r2 < 5; r2++) for (let k = 0; k < 4; k++) { const bt = new THREE.CylinderGeometry(0.045, 0.045, 0.06, 8); bt.rotateZ(Math.PI / 2); put(k % 2 ? bottleG : bottleR, bt, -5.5, Y + 0.25 + r2 * 0.32, -15.0 + k * 0.33); }
+      block(-5.5, -5.0, -15.2, -13.8, Y, 1.8); }
+    // gallery: a runner along the walk, two framed hangings between the doors, a bench under them
+    { const rn = new THREE.PlaneGeometry(13, 0.9); rn.rotateX(-Math.PI / 2); put(rugM, rn, -0.6, UP + 0.02, -8.2);
+      for (const x of [-1.6, 1.4]) { tap(1.0, 1.3, x, UP + 1.9, -9.94, 0); box(darkWoodM, 1.12, 0.08, 0.06, x, UP + 1.21, -9.94); }
+      box(darkWoodM, 1.8, 0.08, 0.4, -0.1, UP + 0.42, -9.6); for (const dx of [-0.75, 0.75]) box(darkWoodM, 0.08, 0.42, 0.36, -0.1 + dx, UP, -9.6); block(-1.0, 0.8, -9.62, -9.3, UP); }
     // ceilings: joists between the beams, stone corbels under each beam end; the hall gets a ridge beam and purlins
     for (const r of rooms) { if (r.id === 'shaft') continue; const top = r.y0 + r.h, d = r.z1 - r.z0, cz = (r.z0 + r.z1) / 2;
       for (let u = r.x0 + 0.35; u < r.x1 - 0.2; u += 0.75) box(beamM, 0.1, 0.12, d, u, top - 0.13, cz);
@@ -504,7 +522,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     { const X = 11.6, Z = -6.6; cyl(darkWoodM, 0.25, 0.06, X, 0, Z, 10); cyl(darkWoodM, 0.04, 1.0, X, 0.06, Z, 6);
       put(mailM, lathe([[0.3, 0], [0.31, 0.2], [0.27, 0.45], [0.3, 0.62], [0.33, 0.7], [0.12, 0.78], [0.08, 0.8]], 14), X, 1.0, Z);
       for (const s of [-1, 1]) { const a = new THREE.CylinderGeometry(0.08, 0.1, 0.36, 8); a.rotateZ(s * 0.35); put(mailM, a, X + s * 0.38, 1.52, Z); }
-      put(mailM, new THREE.SphereGeometry(0.13, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), X, 1.92, Z); put(clothM, new THREE.CylinderGeometry(0.26, 0.31, 0.06, 12), X, 1.25, Z); block(X - 0.4, X + 0.4, Z - 0.35, Z + 0.35, 0); }
+      put(mailM, new THREE.SphereGeometry(0.13, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), X, 1.92, Z); put(clothM, new THREE.CylinderGeometry(0.26, 0.31, 0.06, 12), X, 1.25, Z); block(X - 0.4, X + 0.4, Z - 0.35, Z + 0.35, 0, 2.1); }
     // -- armoury: a whetstone bench (trestle, treadle wheel, a water trough) against the west wall
     { const X = 9.75, Z = -5.9; box(darkWoodM, 1.1, 0.08, 0.5, X, 0.55, Z); for (const [dx, dz] of [[-0.45, -0.18], [0.45, -0.18], [-0.45, 0.18], [0.45, 0.18]]) box(darkWoodM, 0.07, 0.55, 0.07, X + dx, 0, Z + dz);
       const wh = new THREE.CylinderGeometry(0.28, 0.28, 0.1, 18); wh.rotateX(Math.PI / 2); put(mat('#9a9286', 0.95), wh, X + 0.2, 0.9, Z); const ax = new THREE.CylinderGeometry(0.025, 0.025, 0.5, 6); ax.rotateX(Math.PI / 2); put(ironM, ax, X + 0.2, 0.9, Z);

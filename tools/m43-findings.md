@@ -1,0 +1,14 @@
+# M43 findings (append-only)
+- Start Tue Nov 17 6:15 PM PT on 33bb5e8; env intact (node_modules, dist = index-CpE3BPgl.js, /tmp/qa-mods, my 8090 server pid 940445).
+- Before shots: shots/m39-m42c-lite-r-{hall,library,chapel,armory,cellar,gallery}.png (Pale), shots/m39-m42az-lite-r-*.png + m39-m43b-az-lite-r-{chapel,cellar,gallery}.png (Azure). Close views (new `c-*` audit views, mobs cleared via the m20-door preset): before shots/m39-m43b-lite-c-{lib,chapel,cellar,gallery}.png, after m39-m43a3-lite-c-*.png.
+- Room changes (castle.ts, both keeps, merged into existing per-material meshes; +2 tiny materials for wine bottles):
+  - Gallery: a long red runner down the walk, two framed woven hangings between the solar and tower doors, an oak bench under them. (Most improved.)
+  - Library: two more full bookcases on the south wall (camera blockers, h 3), a ladder leaning on the north shelves.
+  - Chapel: stone pilasters + transverse ribs with haunches (a plain vault), two iron candle stands with wax by the altar.
+  - Dungeon/cellar: straw on the cell floors, manacles and chains on the cell back walls, a wine rack of bottles on the east wall (camera blocker, h 1.8). (Second most improved.)
+  - Armoury: the mail mannequin is now a camera blocker (the boom used to sit in it).
+  - Great hall: left as is (already the most dressed room: M23/M34/M35).
+- Draw calls on the same views before/after: c-lib 37/37, c-chapel 43/43, c-cellar 35/35, c-gallery 65/65 (halved); the first cellar pass made each bottle its own material (+20 calls) - caught and fixed (shared bottle materials).
+- Camera probe after (logs/m43/cam-{pale,azure}.log): no room below its M42/M41 minimum (Pale/Azure identical mins: hall 2.62, entry 2.70, chapel 2.64, library 2.64, solar 2.59, tower 2.78, kitchen 1.84, armoury 1.99, bed 1.84, hidden 1.80/1.64). Armoury samples <2.6 m: 17 -> 20 (mannequin is now a blocker). The probe does not cover the cellar (no camBox sampling there) - left open.
+- Glitch hunt (Lite, 412x915 phone): tools/m37-glitch.cjs (old save, calm/fight button states, jump, night roamers inside geometry, reload at night): all clean, errors []. tools/m37-audit.cjs (25 areas opening -> coast/sea-cave/cave, keep, night): no console errors (only three's Clock deprecation warning), no UI overlaps except the known sea-cave action-vs-combat container rect (visually fine, M37). Shots shots/m37-*.png reviewed: 'shafts'/'shafts2' have the hero at the frame edge by design (they frame the window light). M42 opening-route walk (tools/m37-walk.cjs) flags are the known false positives.
+- Perf (Lite, halved): track 162 calls / 709k tris, hub 187, night-hub 199 (at the cap, unchanged since M42), shrine 194, keep hall 80, armoury 90, kitchen 62; under-bridge 290 calls (558 in M37 -> 580 now, doubled) - a worst-case look-up view, not one of the capped areas - left open.

@@ -21,6 +21,9 @@ const S={
   'hall-n':[-9,9,4,-10,0]};
  for(const [k,[x0,x1,z0,z1,y]] of Object.entries(RM)){const cx=(x0+x1)/2,cz=(z0+z1)/2,W=Math.abs(x1-x0)>=Math.abs(z1-z0),hx=W?x0+0.3*(x1-x0):cx,hz=W?cz:z1-0.3*(z1-z0),f=W?Math.atan2(x1-x0,0):Math.atan2(0,z0-z1);
   S['r-'+k]=[''+(process.env.QQ||'q=lite')+'&shot='+(process.env.KEEPSHOT||'m20-hall'),`__vale.castleAt(${hx.toFixed(2)},${hz.toFixed(2)},${y},${f.toFixed(3)});__vale.view(${f.toFixed(3)},${(f+Math.PI).toFixed(3)},0.06,3.2)`];}}
+// M43 · close views of the dressed rooms (mobs killed via the m20-door preset): [lx, lz, ly, face, yawOffset, pitch, dist]
+for (const [k,[x,z,y,f,yo,pt,d]] of Object.entries({'c-lib':[8.2,7.8,0,Math.PI+0.3,0.5,0.15,3.6],'c-chapel':[-5.0,7,0,-Math.PI/2,0.3,-0.15,3.6],'c-cellar':[-9.5,-14.2,-4,Math.PI+0.4,0.3,0.12,3.6],'c-gallery':[3.5,-8.2,4.5,-Math.PI/2,0,0.05,3.0],'c-armory':[10.5,-8.5,0,Math.PI/2-0.4,0.3,0.15,4.5]}))
+  S[k]=[''+(process.env.QQ||'q=lite')+'&shot='+(process.env.KEEPSHOT||'m20-door'),`__vale.castleAt(${x},${z},${y},${f.toFixed(3)});__vale.view(${f.toFixed(3)},${(f+Math.PI+yo).toFixed(3)},${pt},${d})`];
 (async()=>{const b=await pc.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:600000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
  const names=process.argv.slice(2).length?process.argv.slice(2):Object.keys(S);
  for(const n of names){const [q,js]=S[n];const p=await b.newPage();const logs=[];p.on('pageerror',e=>logs.push('PE '+e.message.slice(0,200)));p.on('console',m=>{const t=m.type();if(t==='error'||t==='warning'||t==='warn')logs.push(t[0].toUpperCase()+' '+m.text().slice(0,200));});

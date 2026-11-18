@@ -342,3 +342,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Castle camera: tall furniture (kitchen cook-hearth, hidden-room press, library shelves, armoury racks, bed, wardrobe, solar bookcase) is a camera occluder; when the boom would pass through one (typically after leaving through an outer wall, dollhouse-style) it stops in front of it and the usual crane / wall swing / ceiling look-down takes over. Kitchen and hidden-room views were solid black before. Probe: no room below its M41 minimum.
 - Bedchamber: oak wainscot, a woven hanging, bedside table with a live candle, panelled wardrobe front (was a black slab). Solar: wainscot, a filled bookcase, books on the table. Tower: five arrow slits in stone surrounds up the shaft.
 - Audit: `r-<room>` views in tools/m39-audit.cjs (`KEEPSHOT=m20-azure` for Azure). Notes: tools/m42-findings.md.
+
+### M43 · gallery, library, chapel, dungeon dressed; full-game glitch hunt
+- Gallery: runner down the walk, two framed woven hangings, an oak bench. Library: two more full bookcases (south wall) and a ladder. Chapel: stone pilasters and transverse ribs, iron candle stands. Dungeon: straw in the cells, manacles and chains, a wine rack. Armoury mannequin, library cases and the wine rack are camera blockers. All merged into the existing per-material meshes (no extra draws on the room views).
+- Camera probe: no room below its M41/M42 minimum. Glitch hunt (m37-glitch, m37-audit, full QA): see tools/m43-findings.md.
+- Audit: close `c-*` room views in tools/m39-audit.cjs (mobs cleared via the m20-door preset).

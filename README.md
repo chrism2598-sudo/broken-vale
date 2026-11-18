@@ -353,3 +353,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Lite distance LOD for small far props, plus distance-gated shadows for big casters. The Warden's loose meshes are merged per joint. Under-bridge Lite goes from 279 to 200 draw calls. Add `?nolod` to compare.
 - The quarry falls and the Veilfall now show streaky falling threads instead of flat white sheets.
 - Notes: tools/m44-findings.md.
+
+### M45
+- Stream and pool gravel bed tint restored. A comment had swallowed it since M41.
+- Pale Keep exterior: per-block ashlar tone, rain streaks, damp and grime at the base, curtain-wall machicolations, string courses, buttresses and arrow slits, and deeper keep windows. No extra draw calls.
+- Notes: tools/m45-findings.md.

@@ -12,12 +12,12 @@ export type BuildTex = { brick: GroundTex; roof: GroundTex; sand: GroundTex; met
  * World-space triplanar PBR (diffuse + ARM roughness/AO, tangent-free normal perturbation) on a standard
  * material, so any primitive (lathes, boxes, domes) gets correctly scaled texture without UV work.
  */
-export function triplanar(set: GroundTex, scale: number, tint: string, o: { metal?: number; rough?: number; emissive?: string; sat?: number; gain?: number; ground?: number } = {}): THREE.MeshStandardMaterial {
+export function triplanar(set: GroundTex, scale: number, tint: string, o: { metal?: number; rough?: number; emissive?: string; sat?: number; gain?: number; ground?: number; ash?: number } = {}): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ color: tint, roughness: o.rough ?? 1, metalness: o.metal ?? 0, emissive: o.emissive ?? '#000000' });
   for (const t of [set.diff, set.nor, set.arm]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; }
   set.diff.colorSpace = THREE.SRGBColorSpace;
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.tD = { value: set.diff }; sh.uniforms.uSat = { value: o.sat ?? 1 }; sh.uniforms.uGround = { value: o.ground ?? -1e4 }; sh.uniforms.uGain = { value: o.gain ?? 1 }; sh.uniforms.tN = { value: set.nor }; sh.uniforms.tA = { value: set.arm };
+    sh.uniforms.tD = { value: set.diff }; sh.uniforms.uSat = { value: o.sat ?? 1 }; sh.uniforms.uGround = { value: o.ground ?? -1e4 }; sh.uniforms.uGain = { value: o.gain ?? 1 }; sh.uniforms.uAsh = { value: o.ash ?? 0 }; sh.uniforms.tN = { value: set.nor }; sh.uniforms.tA = { value: set.arm };
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vTW; varying vec3 vTN;')
       .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
   #ifdef USE_INSTANCING
@@ -27,7 +27,7 @@ export function triplanar(set: GroundTex, scale: number, tint: string, o: { meta
   #endif
   vTW = (tm * vec4(transformed, 1.)).xyz; vTN = normalize(mat3(tm) * objectNormal);`);
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-uniform sampler2D tD; uniform float uSat; uniform float uGain; uniform float uGround; uniform sampler2D tN; uniform sampler2D tA; varying vec3 vTW; varying vec3 vTN;
+uniform sampler2D tD; uniform float uSat; uniform float uGain; uniform float uGround; uniform float uAsh; uniform sampler2D tN; uniform sampler2D tA; varying vec3 vTW; varying vec3 vTN;
 vec3 W3; vec2 UX, UY, UZ;
 vec4 tri(sampler2D t){ return texture2D(t,UX)*W3.x + texture2D(t,UY)*W3.y + texture2D(t,UZ)*W3.z; }
 float tH(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
@@ -43,13 +43,21 @@ float MAC;`)
     diffuseColor.rgb *= mix(vec3(.80, .83, .86), vec3(1.07, 1.03, .96), smoothstep(.2, .8, MAC));
     float tl = dot(td, vec3(.3, .59, .11)); diffuseColor.rgb *= mix(.72, 1.04, smoothstep(.06, .42, tl));
     float hb = vTW.y - uGround; float streak = .5 + .5 * sin(vTW.x * 2.1 + sin(vTW.z * 1.3) * 2.) * sin(vTW.z * 1.7 + vTW.x * .4);
-    diffuseColor.rgb *= mix(vec3(.55, .58, .45), vec3(1.), smoothstep(0., 2.6, hb + streak * 1.4)); }`)
+    diffuseColor.rgb *= mix(vec3(.55, .58, .45), vec3(1.), smoothstep(0., 2.6, hb + streak * 1.4));
+    // M45 · dressed-stone walls (uAsh = course height): each ashlar block its own tone (warm/cool, lighter/darker) on vertical faces,
+    //       rain-wash streaks running down from ledges, and green-grey damp creeping up the first metres above the footing
+    if (uAsh > 0.) { vec3 wn = normalize(vTN); float vf = 1. - W3.y; float cu = dot(vTW.xz, normalize(vec2(-wn.z, wn.x) + 1e-4)), cy = floor(vTW.y / uAsh);
+      vec2 cell = vec2(floor(cu / (uAsh * 2.1) + fract(cy * .5) * 1.), cy); float hv = tH(cell + 3.7), hw = tH(cell * 1.3 + 11.1);
+      diffuseColor.rgb *= mix(vec3(1.), mix(vec3(.8, .79, .78), vec3(1.12, 1.07, .98), hv) * mix(.9, 1.06, hw), vf);
+      float rain = smoothstep(.58, .9, tVn(vec2(cu * 1.7, vTW.y * .06))) * smoothstep(.3, .8, tVn(vec2(cu * .4 + 5., vTW.y * .2)));
+      diffuseColor.rgb *= 1. - rain * .2 * vf;
+      float damp = (1. - smoothstep(0., 4.5 + 2. * tVn(vec2(cu * .5, 1.)), hb)) * vf; diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(.74, .8, .7), damp * .65); } }`)
       .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness; { vec3 a = tri(tA).rgb; roughnessFactor *= a.g; roughnessFactor *= mix(.82, 1.06, MAC); diffuseColor.rgb *= mix(1., a.r * a.r, .85); }`)
       .replace('#include <normal_fragment_maps>', `{ vec3 tn = tri(tN).xyz * 2. - 1.; vec3 wn = normalize(vTN);
   vec3 pert = normalize(wn + (vec3(tn.x, 0., tn.y) * W3.y + vec3(0., tn.y, tn.x) * W3.x + vec3(tn.x, tn.y, 0.) * W3.z) * .85);
   normal = normalize((viewMatrix * vec4(pert, 0.)).xyz); }`);
   };
-  m.customProgramCacheKey = () => 'tri' + scale;
+  m.customProgramCacheKey = () => 'tri' + scale + (o.ash ? 'a' : '');
   addRimFill(m, { fill: 0.22, rim: 0.22, rimColor: '#e9e2cf' });
   return m;
 }
@@ -110,7 +118,7 @@ const WIN_GLASS = new THREE.MeshStandardMaterial({ color: '#1c2430', roughness: 
 function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, pennant: string, solids: Solid[]): THREE.Group {
   const b = new Builder(); const roofDoors: THREE.Mesh[] = [];
   const pale = l.id === 'pale'; // M24 · Pale Keep follows the book: tall, narrow, cream-to-pale stone, dark-green scale cones, a crown of stone points
-  const st = pale ? triplanar(t.sand, 2.8, wallTint, { sat: 0.45, gain: 2.25, emissive: '#2a2216' }) : triplanar(t.brick, 3.2, wallTint, { sat: 0.35, gain: 1.5 });
+  const st = pale ? triplanar(t.sand, 2.8, wallTint, { sat: 0.45, gain: 2.25, emissive: '#2a2216', ground: l.pad - 0.9, ash: 0.62 }) /* M45: base grime, ashlar tone, rain streaks */ : triplanar(t.brick, 3.2, wallTint, { sat: 0.35, gain: 1.5 });
   const trim = triplanar(t.sand, 1.6, pale ? '#f2e4c6' : '#cfc5b2', { sat: 0.3, gain: pale ? 2.0 : 1.3, emissive: pale ? '#2a2318' : '#000000' }); /* M23: dressed ashlar for quoins, portal and mullions */
   const roof = pale ? triplanar(t.roof, 1.1, roofTint, { rough: 0.5, sat: 0, gain: 2.3, emissive: '#06140a' }) : triplanar(t.roof, 2.2, roofTint, { rough: 0.85 });
   const y0 = l.pad - 0.3; const R = 19, W = 8.5;
@@ -129,6 +137,14 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
       b.add(st, box(len, W, 2.2), mid.x, y0, mid.y, ang);
       for (let k = 0; k < 9; k++) { const u = (k + 0.5) / 9 - 0.5; b.add(st, box(len / 9 * 0.55, 1.2, 2.4), mid.x + ux * u * len, y0 + W, mid.y + uz * u * len, ang); }
       for (let k = 0; k <= 6; k++) { const u = k / 6; solids.push({ x: l.x + p0.x + (p1.x - p0.x) * u, z: l.z + p0.y + (p1.y - p0.y) * u, r: 1.9 }); }
+      if (pale) { // M45 · outer face detail: corbelled machicolation under the merlons, a string course, two stepped buttresses, arrow slits
+        const nx = mid.x / mid.length(), nz = mid.y / mid.length(), Q = (u: number, o: number) => [mid.x + ux * u * len + nx * o, mid.y + uz * u * len + nz * o] as const;
+        { const [x, z] = Q(0, 1.2); b.add(st, box(len - 5.6, 0.5, 0.45), x, y0 + W - 0.55, z, ang); b.add(st, box(len - 5.8, 0.22, 0.3), x, y0 + W * 0.52, z, ang);
+          const [xi, zi] = Q(0, -1.15); b.add(st, box(len - 5.8, 0.22, 0.3), xi, y0 + W * 0.52, zi, ang); }
+        for (let k = 0; k < 15; k++) { const u = (k + 0.5) / 15 - 0.5; if (Math.abs(u * len) > len / 2 - 3.0) continue; const [x, z] = Q(u, 1.25); b.add(st, box(0.3, 0.7, 0.36), x, y0 + W - 1.25, z, ang); b.add(SLIT, box(0.5, 0.22, 0.04), x + ux * len / 30, y0 + W - 0.58 - 0.24, z + uz * len / 30, ang); }
+        for (const u of [-0.17, 0.17]) { const [x, z] = Q(u, 1.55); b.add(st, box(1.3, 4.6, 0.9), x, y0, z, ang); const [x2, z2] = Q(u, 1.35); b.add(st, box(1.0, 2.0, 0.5), x2, y0 + 4.6, z2, ang);
+          const cap = new THREE.BoxGeometry(1.32, 0.18, 1.0).rotateX(-0.5); const [x3, z3] = Q(u, 1.5); b.add(trim, cap, x3, y0 + 4.62, z3, ang); }
+        for (const u of [-0.34, 0, 0.34]) { const [x, z] = Q(u, 1.12); b.add(SLIT, box(0.13, 1.25, 0.05), x, y0 + 4.9, z, ang); b.add(trim, box(0.42, 0.12, 0.16), x, y0 + 4.82, z, ang); b.add(trim, box(0.42, 0.12, 0.16), x, y0 + 6.2, z, ang); } }
     }
     tower(b, st, roof, p0.x, y0, p0.y, 3.1, W + (pale ? 7 : 5), pale ? 9.5 : 6.5, pale);
     solids.push({ x: l.x + p0.x, z: l.z + p0.y, r: 3.6 });
@@ -150,6 +166,11 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
         const [x, z] = P(u, sgn * (KEEP_D / 2 + 0.02)); const ry = face + (sgn < 0 ? Math.PI : 0);
         b.add(WIN_GLASS, glass, x, y0 + lvl, z, ry); b.add(st, hood, x, y0 + lvl, z, ry); b.add(st, box(1.4, 0.18, 0.4), x, y0 + lvl - 0.18, z, ry);
         b.add(trim, box(0.1, 2.35, 0.16), x, y0 + lvl, z, ry); b.add(trim, box(1.1, 0.09, 0.16), x, y0 + lvl + 1.35, z, ry); } } // M23: stone mullion + transom
+    if (pale) { const cs2 = Math.cos(face), sn2 = Math.sin(face); // M45 · window depth: projecting dressed jambs and a deeper weathered sill, so each opening reads as cut into the wall
+      for (const sgn of [-1, 1]) for (const lvl of [8.4, 14.2]) for (let k = 0; k < 5; k++) { const u = ((k + 0.5) / 5 - 0.5) * (KEEP_W - 3); if (lvl < 9 && Math.abs(u) < 2) continue;
+        const ry = face + (sgn < 0 ? Math.PI : 0), nxw = Math.sin(ry), nzw = Math.cos(ry);
+        for (const j of [-0.7, 0.7]) { const [x, z] = P(u + j * (sgn < 0 ? -1 : 1), sgn * (KEEP_D / 2 + 0.17)); void cs2; void sn2; b.add(trim, box(0.24, 2.0, 0.34), x, y0 + lvl - 0.1, z, ry); }
+        const [x, z] = P(u, sgn * (KEEP_D / 2 + 0.3)); b.add(trim, box(1.7, 0.16, 0.6), x + nxw * 0.0, y0 + lvl - 0.34, z + nzw * 0.0, ry); } }
     // M23 · quoins at every corner (alternating long/short dressed blocks) and a battered plinth broken for the door
     for (const [su, sv] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) for (let k = 0; k < 20; k++) { const lng = k % 2 === 0, a = lng ? 1.1 : 0.6, c = lng ? 0.6 : 1.1; const [x, z] = P(su * (KEEP_W / 2 - a / 2 + 0.07), sv * (KEEP_D / 2 - c / 2 + 0.07)); b.add(trim, box(a, 0.4, c), x, y0 + 1.3 + k * 0.84, z, face); }
     { const T = 0.55; for (const [u, v, w, d] of [[0, -(KEEP_D / 2 + T / 2), KEEP_W + 2 * T, T], [KEEP_W / 2 + T / 2, 0, T, KEEP_D], [-(KEEP_W / 2 + T / 2), 0, T, KEEP_D], [-(KEEP_W / 4 + 1.25), KEEP_D / 2 + T / 2, KEEP_W / 2 - 2.5 + 2 * T, T], [KEEP_W / 4 + 1.25, KEEP_D / 2 + T / 2, KEEP_W / 2 - 2.5 + 2 * T, T]]) {

@@ -364,3 +364,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Bleached creek bank fixed: the bed was glossy-wet everywhere and mirrored the sky. Wetness is now height-based.
 - Wing Gate plaza slabs: grimy joints, chips, cracks and blotches.
 - Notes: tools/m46-findings.md.
+
+### M47
+- Combat feel: foes freeze briefly on contact (hit-stop), flinch and get knocked back, and glow and flicker before they swing. Hits throw a spark burst and give a small camera punch.
+- Pale Keep has a second hidden passage behind a wainscot panel under the great-hall tapestry, with a small stash. It is saved as `pale-nook` in `secrets`.
+- Notes: tools/m47-findings.md.

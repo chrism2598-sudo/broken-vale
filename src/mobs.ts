@@ -60,6 +60,7 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
   const RR = look === 'king' ? 3.0 : big ? 2.6 : 2.1; const ring = new THREE.Mesh(new THREE.RingGeometry(RR - 0.15, RR, 32, 1, -0.9, 1.8), ringM); ring.rotation.x = -Math.PI / 2; ring.rotation.z = -Math.PI / 2; ring.position.y = 0.05; ring.visible = false; g.add(ring); // M38: hidden while transparent (no draw call)
   const REACH = RR, RECOVER = look === 'shade' ? 0.8 : 1.1;
   let bob = 0, hp = HPM, state: 'idle' | 'chase' | 'windup' | 'recover' | 'stagger' | 'dead' = 'idle', t = 0, flash = 0, deadT = 0; void sword;
+  let flinch = 0, kbx = 0, kbz = 0, stopT = 0; // M47 · hit reaction: a short lean-back flinch and a knockback slide away from the blow
   const m = {
     id, group: g, look, maxHp: HPM, dmg: S.dmg, xp: S.xp, name: S.name,
     setHome(hx: number, hz: number) { homeX = hx; homeZ = hz; },
@@ -71,15 +72,20 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
     reset() { if (state === 'dead') return; hp = HPM; state = 'idle'; t = 0; g.position.set(x, y, z); g.rotation.y = face; ringM.opacity = 0; },
     kill() { hp = 0; state = 'dead'; deadT = 9; g.visible = false; },
     /** dmg already scaled; stagger ≥ 0.8 interrupts a wind-up. Returns true when this blow killed it. */
-    hit(dmg: number, stagger: number) {
+    hit(dmg: number, stagger: number, fromX?: number, fromZ?: number) {
       if (state === 'dead') return false; hp -= dmg; flash = 0.18;
+      if (dmg > 0 && fromX !== undefined && fromZ !== undefined) { const dx = g.position.x - fromX, dz = g.position.z - fromZ, d = Math.hypot(dx, dz) || 1, v = stagger >= 0.8 ? 5.2 : 2.8; kbx = dx / d * v; kbz = dz / d * v; flinch = 1; stopT = stagger >= 0.8 ? 0.09 : 0.055; } // M47 · hit-stop: the struck foe freezes on contact for a beat
       if (hp <= 0) { state = 'dead'; deadT = 0; ringM.opacity = 0; return true; }
       if (stagger >= 0.8 || state !== 'windup') { state = 'stagger'; t = stagger >= 0.8 ? 0.9 : 0.35; }
       return false;
     },
     /** walk(x,z) says whether the mob may stand there. Returns 'swing' on the frame the blow lands (main resolves it). */
     tick(dt: number, px: number, pz: number, py: number, walk: (x: number, z: number) => boolean, playerDown: boolean, canSee = true): MobHit {
-      flash = Math.max(0, flash - dt); plate.emissive.setRGB(flash * 4, flash * 3, flash * 2);
+      if (stopT > 0 && state !== 'dead') { stopT -= dt; plate.emissive.setRGB(0.72, 0.54, 0.36); return null; }
+      flash = Math.max(0, flash - dt); flinch = Math.max(0, flinch - dt * 4.5);
+      { const wk = state === 'windup' ? 1 - Math.max(0, t) / WINDUP : 0, tell = state === 'windup' && t < 0.2 ? 0.5 + 0.5 * Math.sin(t * 60) : 0; // M47 · the wind-up glows hotter as it builds, and flickers in the last 0.2 s before the blow
+        plate.emissive.setRGB(flash * 4 + wk * 0.35 + tell * 0.5, flash * 3 + wk * 0.1 + tell * 0.18, flash * 2); }
+      if (state !== 'dead' && (kbx !== 0 || kbz !== 0)) { const nx = g.position.x + kbx * dt, nz = g.position.z + kbz * dt; if (walk(nx, nz)) { g.position.x = nx; g.position.z = nz; } else { kbx = 0; kbz = 0; } const dec = Math.exp(-dt * 9); kbx *= dec; kbz *= dec; if (Math.hypot(kbx, kbz) < 0.05) { kbx = 0; kbz = 0; } }
       if (state === 'dead') { deadT += dt; body.rotation.x = Math.min(1.4, deadT * 2.5); body.position.y = -Math.min(0.9, deadT * 1.2); if (deadT > 1.2) g.visible = false; return null; }
       const dx = px - g.position.x, dz = pz - g.position.z, d = Math.hypot(dx, dz), sameFloor = Math.abs(py - g.position.y) < (ground ? 3 : 1.2) && canSee;
       const want = Math.atan2(dx, dz); const turn = (rate: number) => { let a = want - g.rotation.y; a = Math.atan2(Math.sin(a), Math.cos(a)); g.rotation.y += Math.max(-rate * dt, Math.min(rate * dt, a)); };
@@ -96,7 +102,7 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
       // pose
       const k = state === 'windup' ? 1 - Math.max(0, t) / WINDUP : 0;
       armR.rotation.x = state === 'windup' ? -2.4 * Math.min(1, k * 1.6) : state === 'recover' ? THREE.MathUtils.lerp(0.9, 0, 1 - Math.max(0, t) / RECOVER) : 0;
-      body.rotation.z = state === 'stagger' ? Math.sin(t * 30) * 0.08 : 0; body.rotation.x = state === 'stagger' ? -0.15 : 0;
+      body.rotation.z = state === 'stagger' ? Math.sin(t * 30) * 0.08 : 0; body.rotation.x = (state === 'stagger' ? -0.15 : state === 'windup' ? 0.2 * Math.min(1, k * 1.4) : 0) - 0.4 * flinch * flinch; // M47: rear back into the wind-up; snap back on a hit
       armL.rotation.x = state === 'chase' || state === 'windup' ? -0.6 : 0;
       ringM.opacity = state === 'windup' ? 0.25 + 0.55 * k : 0; ring.visible = ringM.opacity > 0; eyeM.color.set(state === 'windup' ? '#ff7a4a' : EYE);
       if (ground) g.position.y = ground(g.position.x, g.position.z) + (shade ? 0.14 + 0.07 * Math.sin((bob += dt) * 2.6) : 0); return out;

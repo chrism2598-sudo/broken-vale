@@ -631,8 +631,8 @@ ${GRADE_GLSL}
   }
   function nearestSeaMob(r = 1e9): Mob | null { let b: Mob | null = null, bd = r; for (const m of seaMobs) { if (!m.alive) continue; const d = Math.hypot(m.x - state.px, m.z - state.pz); if (d < bd) { bd = d; b = m; } } return b; }
   function hitSeaMob(m: Mob, sk: Strike) {
-    cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit();
-    if (m.hit(sk.dmg, sk.stagger)) { const lv = levelOf(save.xp); if (!sList('foes').includes(m.id)) { sList('foes').push(m.id); save.xp += m.xp; persist(); } toast(`${m.name} slumps into the tide · +${m.xp} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3); return; }
+    cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit(); mobFx(m, sk);
+    if (m.hit(sk.dmg, sk.stagger, state.px, state.pz)) { const lv = levelOf(save.xp); if (!sList('foes').includes(m.id)) { sList('foes').push(m.id); save.xp += m.xp; persist(); } toast(`${m.name} slumps into the tide · +${m.xp} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3); return; }
     toast(sk.stagger >= 0.8 ? `Staggered! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}` : `Hit! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}`, 1.4);
   }
   function seaRecover() {
@@ -830,6 +830,7 @@ ${GRADE_GLSL}
     c.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && !Array.isArray(m) && m.transparent && ((o as THREE.Mesh).isMesh || (o as THREE.Sprite).isSprite)) o.layers.set(1); });
     for (const ch of c.chests) if (sList('chests').includes(ch.def.id)) c.openChest(ch.def.id, true);
     if (sList('secrets').includes(id)) c.openSecret(true);
+    if (sList('secrets').includes(id + '-nook')) c.openNook(true); // M47 · old saves have no entry → the passage stays shut
     castleMobs[id] = c.mobs.map((s) => { const m = makeSentinel(s.id, c.O.x + s.x, c.O.z + s.z, s.y, s.face, id === 'azure' ? '#aeb9c6' : '#bdb6aa'); if (sList('foes').includes(s.id)) m.kill(); mobHome.set(m, c.roomAt(m.x, m.z, m.y)); c.scene.add(m.group); return m; });
     castles[id] = c; return c;
   }
@@ -891,6 +892,7 @@ ${GRADE_GLSL}
       else if (it.kind === 'chest') { if (!sList('chests').includes(it.id)) r = { label: 'Open the chest', act: () => openKeepChest(it.id), x: wx, z: wz }; }
       else if (it.kind === 'lore') r = { label: id === 'pale' ? 'Read the open ledger' : 'Read the tide-warden’s log', act: () => readLore(LECTERN_LORE[id], true), x: wx, z: wz };
       else if (it.kind === 'stash') { const st = STASH[it.id]; if (st && !(save.stashes ?? []).includes(it.id)) r = { label: st.label, act: () => { (save.stashes ??= []).push(it.id); save.xp += st.xp; persist(); audio.chime(); toast(st.note, 4.5); hudT = 0; }, x: wx, z: wz }; }
+      else if (it.kind === 'nook' && !c.nookOpen) r = { label: 'Wainscot under the tapestry · one panel sits proud', act: () => openKeepNook(), x: wx, z: wz };
       else if (it.kind === 'secret' && !c.secretOpen) r = { label: id === 'pale' ? 'Hearth · a soot-black stone' : 'Tapestry · a silver-tasselled cord', act: () => openKeepSecret(), x: wx, z: wz };
       if (r) { best = r; bd = d; }
     }
@@ -914,12 +916,17 @@ ${GRADE_GLSL}
     if (!sList('secrets').includes(c.id)) { sList('secrets').push(c.id); save.xp += 10; persist(); }
     toast(c.id === 'pale' ? (plate ? 'A flagstone clicks underfoot · the bookshelf grinds aside (+10 XP · secret found)' : 'The stone sinks under your palm · the bookshelf beside the hearth grinds aside (+10 XP · secret found)') : 'The tapestry rolls up on its cord · a door behind it (+10 XP · secret found)', 4.5); hudT = 0;
   }
+  function openKeepNook() { // M47 · Pale's hidden passage behind the hall tapestry
+    const c = castle!; if (c.nookOpen) return; c.openNook(); audio.chime(); shake = Math.max(shake, 0.15);
+    if (!sList('secrets').includes(c.id + '-nook')) { sList('secrets').push(c.id + '-nook'); save.xp += 10; persist(); }
+    toast('The panel gives under your shoulder and slides aside · a narrow passage behind the tapestry (+10 XP · secret found)', 4.5); hudT = 0;
+  }
   const mobHome = new WeakMap<Mob, string>();
   const mobEngaged = () => inCastle && mobs.some((m) => m.alive && m.state !== 'idle');
   function nearestMob(): Mob | null { let b: Mob | null = null, bd = 1e9; if (!castle) return null; for (const m of mobs) { if (!m.alive || Math.abs(m.y - castle.y) > 1.2) continue; const d = Math.hypot(m.x - state.px, m.z - state.pz); if (d < bd) { bd = d; b = m; } } return b; }
   function hitMob(m: Mob, sk: Strike) {
-    cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit();
-    if (m.hit(sk.dmg * whetMul(), sk.stagger)) { const lv = levelOf(save.xp); if (!sList('foes').includes(m.id)) { sList('foes').push(m.id); save.xp += MOB_XP; persist(); } toast(`Hollow Sentinel falls apart · +${MOB_XP} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3); return; }
+    cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit(); mobFx(m, sk);
+    if (m.hit(sk.dmg * whetMul(), sk.stagger, state.px, state.pz)) { const lv = levelOf(save.xp); if (!sList('foes').includes(m.id)) { sList('foes').push(m.id); save.xp += MOB_XP; persist(); } toast(`Hollow Sentinel falls apart · +${MOB_XP} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3); return; }
     toast(sk.stagger >= 0.8 ? `Staggered! Sentinel ${Math.ceil(m.hp)}/${MOB_HP}` : `Hit! Sentinel ${Math.ceil(m.hp)}/${MOB_HP}`, 1.4);
   }
   let downT = 0;
@@ -971,8 +978,8 @@ ${GRADE_GLSL}
   }
   function nearestBarMob(maxD = 14): Mob | null { let b: Mob | null = null, bd = maxD; for (const m of barMobs()) { if (!m.alive) continue; const d = Math.hypot(m.x - state.px, m.z - state.pz); if (d < bd) { bd = d; b = m; } } return b; }
   function hitBar(m: Mob, sk: Strike) {
-    const b = barrow!; cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit();
-    if (m.hit(sk.dmg, sk.stagger)) { const lv = levelOf(save.xp); save.xp += m.xp; let extra = '';
+    const b = barrow!; cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit(); mobFx(m, sk);
+    if (m.hit(sk.dmg, sk.stagger, state.px, state.pz)) { const lv = levelOf(save.xp); save.xp += m.xp; let extra = '';
       if (m === b.king) { sq(save).barrow = Math.max(2, stage(save, 'barrow')); for (const r of b.risen) if (r.alive) r.hit(99, 1); b.showGlow(true); extra = ' · the vault behind his throne lies open'; shake = 0.4; audio.chime(); }
       else if (stage(save, 'barrow') < 1 && b.hallMobs.every((x) => !x.alive)) { sq(save).barrow = 1; b.setGate(true); extra = ' · an iron grate grinds up at the hall’s far end'; }
       persist(); hudT = 0; toast(`${m.name} falls · +${m.xp} XP${extra}${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3.5); return; }
@@ -999,8 +1006,8 @@ ${GRADE_GLSL}
   let roamDown = 0, roamCalm = 0, foeMob: Mob | null = null, roamSwings = 0;
   function nearestRoamer(maxD = 12): Mob | null { let b: Mob | null = null, bd = maxD; for (const m of roam.live()) { const d = Math.hypot(m.x - state.px, m.z - state.pz); if (d < bd) { bd = d; b = m; } } return b; }
   function hitRoamer(m: Mob, sk: Strike) {
-    cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit();
-    if (m.hit(sk.dmg, sk.stagger)) { const lv = levelOf(save.xp); save.xp += m.xp; const g = roam.groupOf(m); let extra = '';
+    cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit(); mobFx(m, sk);
+    if (m.hit(sk.dmg, sk.stagger, state.px, state.pz)) { const lv = levelOf(save.xp); save.xp += m.xp; const g = roam.groupOf(m); let extra = '';
       if (roam.allDead(g) && g.def.camp) { (save.gone ??= {})[g.def.id] = save.day ?? 0; extra = ' · the Ashen Hollow falls quiet — their strongbox is unguarded'; }
       else if (roam.allDead(g)) { (save.rk ??= {})[g.def.id] = save.day ?? 0; extra = g.def.night ? ' · the shades here are gone for tonight' : ' · the road is clear for today'; }
       persist(); hudT = 0; toast(`${m.name} falls · +${m.xp} XP${extra}${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3); return; }
@@ -1206,6 +1213,28 @@ ${GRADE_GLSL}
   // ---------- Vale Warden (optional) ----------
   const wd = { hp: 6, phase: save.warden ? 3 : 0, teleT: 0, recT: 0, sx: WARDEN.x, sz: WARDEN.z, awake: false, warned: false, freeze: -1 };
   let playerHp = hpMax(), atkCd = 0, shake = 0, swingT = 0, swingFreeze = false;
+  // M47 · impact feel: a spark burst and a hot flash where the blade lands, and a short camera punch toward the struck foe (the foe's own hit-stop, flinch and knockback live in mobs.ts)
+  let kick = 0, sparkT = 0; const kickDir = new THREE.Vector3(), SPN = 18, sparkVel = new Float32Array(SPN * 3);
+  const sparkTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d')!; const g = x.createRadialGradient(16, 16, 0, 16, 16, 16); g.addColorStop(0, 'rgba(255,255,240,1)'); g.addColorStop(0.35, 'rgba(255,200,120,0.8)'); g.addColorStop(1, 'rgba(255,140,60,0)'); x.fillStyle = g; x.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(c); })();
+  const sparkGeo = new THREE.BufferGeometry(); sparkGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SPN * 3), 3));
+  const sparkM = new THREE.PointsMaterial({ map: sparkTex, size: 0.2, color: '#ffd08a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const sparks = new THREE.Points(sparkGeo, sparkM); sparks.frustumCulled = false; sparks.visible = false; sparks.renderOrder = 5;
+  const flashS = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTex, color: '#fff0d0', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); flashS.visible = false; flashS.renderOrder = 5;
+  for (const o of [sparks, flashS]) o.layers.set(1); // the transparent-effects layer (skips the AO pass)
+  function impactFx(x: number, y: number, z: number, heavy: boolean) {
+    kick = heavy ? 0.3 : 0.17; kickDir.set(x - camera.position.x, y - camera.position.y, z - camera.position.z).normalize();
+    const par = player.root.parent; if (par && sparks.parent !== par) { par.add(sparks); par.add(flashS); }
+    const pa = sparkGeo.attributes.position as THREE.BufferAttribute, hx = (x + state.px) / 2, hz = (z + state.pz) / 2;
+    for (let i = 0; i < SPN; i++) { pa.setXYZ(i, hx, y, hz); const a = Math.random() * Math.PI * 2, up = 0.6 + Math.random() * 1.6, sp = (heavy ? 3.5 : 2.4) + Math.random() * 2.5; sparkVel[i * 3] = Math.cos(a) * sp; sparkVel[i * 3 + 1] = up * sp * 0.6; sparkVel[i * 3 + 2] = Math.sin(a) * sp; }
+    pa.needsUpdate = true; sparkT = 0.34; sparks.visible = true; flashS.visible = true; flashS.position.set(hx, y, hz); flashS.scale.setScalar(heavy ? 1.7 : 1.15);
+  }
+  function tickFx(dt: number) {
+    if (sparkT <= 0) return; sparkT -= dt; const pa = sparkGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < SPN; i++) { sparkVel[i * 3 + 1] -= 14 * dt; pa.setXYZ(i, pa.getX(i) + sparkVel[i * 3] * dt, pa.getY(i) + sparkVel[i * 3 + 1] * dt, pa.getZ(i) + sparkVel[i * 3 + 2] * dt); } pa.needsUpdate = true;
+    sparkM.opacity = Math.max(0, sparkT / 0.34); (flashS.material as THREE.SpriteMaterial).opacity = Math.max(0, (sparkT - 0.22) / 0.12);
+    if (sparkT <= 0) { sparks.visible = false; flashS.visible = false; } else if (sparkT < 0.22) flashS.visible = false;
+  }
+  const mobFx = (m: Mob, sk: Strike) => impactFx(m.x, m.y + 1.25, m.z, sk.heavy || sk.stagger >= 0.8);
   const wardenDist = () => Math.hypot(state.px - WARDEN.x, state.pz - WARDEN.z);
   function resetWarden() { if (save.warden) { wd.phase = 3; wd.hp = 0; return; } wd.hp = W_HP; wd.phase = 0; wd.teleT = 0; wd.recT = 0; wd.awake = false; wd.warned = false; }
   const W_HP = 6;
@@ -1508,6 +1537,7 @@ ${GRADE_GLSL}
   const damp = (k: number, dt: number) => 1 - Math.exp(-k * dt);
   let camYOff = 0, camDistS = -1, camGy = 0; const stickF = { x: 0, y: 0 }; const backV = new THREE.Vector3(), rightV = new THREE.Vector3(), fwdV = new THREE.Vector3(), shU = new THREE.Vector3(), shV = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0);
   function update(dt: number, t: number) {
+    tickFx(dt); // M47
     if (!HIGH) liteLod(); // M44
     if (creating) { previewUpdate(dt, t); return; }
     lastDt = dt; advanceTime(dt);
@@ -1677,6 +1707,7 @@ ${GRADE_GLSL}
     }
     camera.lookAt(tmp);
     if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake * 0.5; camera.position.y += (Math.random() - 0.5) * shake * 0.4; }
+    if (kick > 0) { camera.position.addScaledVector(kickDir, kick); kick = Math.max(0, kick - dt * 1.6); } // M47 camera punch
     tick(t, gy);
   }
 
@@ -2018,6 +2049,8 @@ ${GRADE_GLSL}
           if (v === 'fight') { for (const m of mobs) if (m.id.endsWith('-chapel')) m.kill(); at(-3.0, -3.6, 0, Math.PI, 0.6, 0.14, 4.4); }
           if (v === 'tower') at(8.1, -13.4, 11.7, Math.PI, 0.9, 0.62, 5.2);
           if (v === 'chest') { c.openChest(c.id + '-library', true); at(8.2, 7.4, 0, 2.68, 0, 0.75, 3.6); }
+          if (v === 'nook' || v === 'nookopen') { for (const m of mobs) m.kill(); if (v === 'nookopen') c.openNook(true); at(5.6, 2.0, 0, Math.PI / 2 - 0.2, 0.45, 0.04, 3.2); } // M47
+          if (v === 'nookin') { for (const m of mobs) m.kill(); c.openNook(true); at(10.2, 2.2, 0, Math.PI / 2 - 0.3, 0.4, 0.2, 2.6); }
           if (v === 'secret') { c.openSecret(true); at(-7.4, 1.0, 0, -Math.PI / 2, -0.3, 0.14, 4.4); }
           for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + i / 30);
           if (v === 'fight') { const m = mobs.find((q) => q.id.endsWith('-hall'))!; for (let i = 0; i < 600 && !(m.winding && m.state === 'windup'); i++) update(1 / 30, clock.elapsedTime + 2 + i / 30); for (let i = 0; i < 14; i++) update(1 / 30, clock.elapsedTime + 22 + i / 30); }
@@ -2102,7 +2135,7 @@ ${GRADE_GLSL}
       picks: PICK.map((k) => ({ id: k.id, x: k.x, z: k.z, taken: !k.p.group.visible })), seaPick: seaPick ? { x: seaPick.x, z: seaPick.z, taken: !seaPick.p.group.visible } : null, guidance, inHand: holders.map((h) => h.id),
       ui: { buttons: ['b-atk', 'b-hvy', 'b-blk', 'b-dge', 'b-jmp', 'b-wpn'].map((id) => { const r = document.getElementById(id)!.getBoundingClientRect(); return { id, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), vis: r.width > 0 && getComputedStyle(document.getElementById('cbt')!).display !== 'none' && getComputedStyle(document.getElementById(id)!).visibility !== 'hidden' }; }), calm: ctlCalm, atkLabel: ctlLbl, act: !actBtn.hidden, arrow: getComputedStyle(carrow).display !== 'none', ctext: ctext.textContent, wpick: !wpick.hidden } }),
     setGuidance(on: boolean) { setGuidance(on); },
-    castle: () => ({ inCastle, id: castle?.id ?? null, y: castle ? +castle.y.toFixed(3) : null, room: castle ? castle.roomName(state.px, state.pz) : null, perch: perch ? { ...perch } : null, secret: castle?.secretOpen ?? null, O: castle?.O ?? null,
+    castle: () => ({ inCastle, id: castle?.id ?? null, y: castle ? +castle.y.toFixed(3) : null, room: castle ? castle.roomName(state.px, state.pz) : null, perch: perch ? { ...perch } : null, secret: castle?.secretOpen ?? null, nook: castle?.nookOpen ?? null, O: castle?.O ?? null,
       mobs: mobs.map((m) => ({ id: m.id, x: +m.x.toFixed(2), z: +m.z.toFixed(2), y: m.y, hp: m.hp, state: m.state, alive: m.alive })), playerHp, near: nearestInteract()?.label ?? null, fading,
       doors: KEEP_IDS.map((id) => ({ id, ...keepDoor(id) })), save: { chests: save.chests ?? [], lore: save.lore ?? [], foes: save.foes ?? [], secrets: save.secrets ?? [], views: save.views ?? [], whet: save.whet ?? 0 } }),
     enterCastle(id: KeepId, at: 'door' | 'roof' | 'top' = 'door') { return enterCastle(id, at, true); },

@@ -1,0 +1,17 @@
+# M44 findings (append-only)
+- Cellar probe (tools/m41-camprobe.cjs now takes YS/PEACE env + whole-keep x span; new debug __vale.castlePeace()): Pale Cellar@down n 248 min 3.47 m, 0 under 2.6; Azure identical. Stair walks (tools/m41-camwalk.cjs CELLAR=1, both keeps): down min boom 4.93, up 4.86, cells 3.19, max jump 0.34-0.49 - no collapse in the dungeon or on its stair, nothing to fix.
+- Under-bridge look-up (Lite) was 279-290 draws/frame. Breakdown via new debug __vale.drawList()/shadowCasters()/topInfo(): ~200 main-pass objects (tree-field instances, hero 16, Wayfinder + another NPC 12 each, the Vale Warden's ~33 loose meshes at 140 m, landmark lamp sprites and small camp props 100-200 m away) + ~60 shadow-pass draws (hero, 8 huge merged landmark meshes whose bounding spheres always touch the 48 m Lite shadow box, small props).
+- FIX (Lite only, main.ts liteLod(), every 6th update outdoors): small props (bounding radius <= 3 m) whose diameter would be under ~11 px on the phone (distance > 175 x radius; glowing sprites never before 90 m) leave the camera layer (layers mask, so game-logic .visible is untouched; restored as soon as they are closer). Skinned characters are skipped (no half-bodies). Tiny props (r < 0.45) stop casting shadows (a few texels in the 1024 map). Big merged landmark meshes (r > 12) cast shadows only within 40 m of the hero. `?nolod` disables it for comparison.
+- FIX warden.ts: the Warden's rigid leaf meshes are merged per material per joint (35 -> 20 nodes); joints stay Groups so the windup/slam animation is unchanged.
+- Result under-bridge: 279 -> 200 draws/frame (bench 4 frames: 1116 -> 800). Audit (halved) under-bridge 196-200, hub 187 -> 160, night-hub 199 -> 163, track 162 -> 145, dome 104 -> 100. Side-by-side with ?nolod (shots/m39-m44n-lite-*.png vs m39-m44l2-lite-*.png): no visible difference at phone scale.
+
+## Outdoor realism pass (task 3)
+Picked from the fresh m44b Lite audit (shots/m39-m44b-lite-*.png), the weakest spots on the opening route:
+1. **Quarry falls (opening route)**: the three drops read as flat, opaque white rectangles. The drop segments of the fall shader now use fast streaky threads, with gaps where the wet rock shows through. They are lighter at the lip and keep the white water at each landing. Before/after: shots/m44-before-after-falls.png (m39-m44b-lite-falls vs m39-m44a5-lite-falls).
+2. **Veilfall falls from the bridge/hub approach**: one flat white curtain. Now it has falling threads with blue-grey gaps, ragged animated edges and a brighter foam foot. Before/after: shots/m44-before-after-bridge.png.
+3. **Bleached creek bank (banks view)**: I tried darker silt shallows, an earthier bank gravel tint and moss creep. None of it made a visible difference: diffs were under 4/255. The paleness comes from the gravel texture under high sun plus tone mapping. All of it is reverted, so it stays open.
+- No extra draw calls or tris (falls 131, bridge 158, banks 129 halved; same as before).
+- Found while debugging: in terrain.ts line ~48, the stream/pool `bed=max(...)` code is commented out by the trailing "// M41: ragged bank line" comment. Since M41, side streams and the quarry pool have had no gravel bed tint. Left as is (it's a look change; flag for the next round).
+
+## Final perf (Lite, m39-audit halved, LOD_K=175)
+under-bridge 200, hub 179, night-hub 183, track 150 (695k tris), dome 97, bridge 158, falls 131, banks 129.

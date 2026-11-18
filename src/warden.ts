@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { fromMap, heightAt, SPAWN } from './world';
 import { triplanar } from './landmarks';
 import { addRimFill } from './shading';
@@ -94,6 +95,16 @@ export function makeWarden(t: { rock: GroundTex; metal: GroundTex }) {
   const spark = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTex, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, opacity: 0 }));
   spark.position.set(0, 1.55, 0.75); spark.visible = false; spark.renderOrder = 6; root.add(spark);
   let flash = 0, slam = 0, kneel = 0, dustT = 0, held = false;
+  // M44 · ~33 separate meshes cost ~33 draws wherever the Warden is in view (also from across the vale): merge the rigid leaf meshes of
+  // every joint (root, body, torso, head, each arm) per material. Joints stay Groups, so the windup/slam animation is unchanged.
+  root.updateMatrixWorld(true);
+  root.traverse((node) => { const by = new Map<THREE.Material, THREE.Mesh[]>();
+    for (const c of node.children) { const m = c as THREE.Mesh; if (!m.isMesh || c.children.length || Array.isArray(m.material)) continue; const l = by.get(m.material) ?? []; l.push(m); by.set(m.material, l); }
+    for (const [mt, list] of by) { if (list.length < 2) continue;
+      const geos = list.map((m) => { m.updateMatrix(); let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone(); g.applyMatrix4(m.matrix);
+        for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
+        if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); if (!g.attributes.normal) g.computeVertexNormals(); return g; });
+      const mg = mergeGeometries(geos, false); if (!mg) continue; const mm = new THREE.Mesh(mg, mt); mm.castShadow = list.some((m) => m.castShadow); mm.receiveShadow = true; for (const m of list) node.remove(m); node.add(mm); } });
   return {
     group,
     placeZone,

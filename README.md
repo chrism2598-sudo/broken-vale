@@ -347,3 +347,9 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Gallery: runner down the walk, two framed woven hangings, an oak bench. Library: two more full bookcases (south wall) and a ladder. Chapel: stone pilasters and transverse ribs, iron candle stands. Dungeon: straw in the cells, manacles and chains, a wine rack. Armoury mannequin, library cases and the wine rack are camera blockers. All merged into the existing per-material meshes (no extra draws on the room views).
 - Camera probe: no room below its M41/M42 minimum. Glitch hunt (m37-glitch, m37-audit, full QA): see tools/m43-findings.md.
 - Audit: close `c-*` room views in tools/m39-audit.cjs (mobs cleared via the m20-door preset).
+
+### M44
+- Castle camera probe now covers the cellar/dungeon in both keeps (`YS`, `CELLAR=1`): no collapse found.
+- Lite distance LOD for small far props, plus distance-gated shadows for big casters. The Warden's loose meshes are merged per joint. Under-bridge Lite goes from 279 to 200 draw calls. Add `?nolod` to compare.
+- The quarry falls and the Veilfall now show streaky falling threads instead of flat white sheets.
+- Notes: tools/m44-findings.md.

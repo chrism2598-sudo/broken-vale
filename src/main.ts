@@ -1508,6 +1508,7 @@ ${GRADE_GLSL}
   const damp = (k: number, dt: number) => 1 - Math.exp(-k * dt);
   let camYOff = 0, camDistS = -1, camGy = 0; const stickF = { x: 0, y: 0 }; const backV = new THREE.Vector3(), rightV = new THREE.Vector3(), fwdV = new THREE.Vector3(), shU = new THREE.Vector3(), shV = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0);
   function update(dt: number, t: number) {
+    if (!HIGH) liteLod(); // M44
     if (creating) { previewUpdate(dt, t); return; }
     lastDt = dt; advanceTime(dt);
     // Input → desired velocity in camera space.
@@ -1820,6 +1821,23 @@ ${GRADE_GLSL}
   function gate(ts: number): number { if (motionSmooth && lastTs >= 0 && ts - lastTs < 29.3) return -1; const d = lastTs < 0 ? 0 : Math.max(0, Math.min(0.1, (ts - lastTs) / 1000)); lastTs = ts; return d; }
   const FIXED = 1 / 60; let acc = 0, simT = 0, lastTs = -1, interpOn = false;
   const ipP0 = new THREE.Vector3(), ipP1 = new THREE.Vector3(), ipC0 = new THREE.Vector3(), ipC1 = new THREE.Vector3(), ipQ0 = new THREE.Quaternion(), ipQ1 = new THREE.Quaternion(); let ipR0 = 0, ipR1 = 0;
+  // M44 · Lite distance LOD for tiny far props: anything that would cover under ~11 px on a phone (diameter vs distance; glowing sprites only past 90 m) leaves the
+  // camera's layer (its .visible, which game logic owns, is never touched; restored the moment it comes closer). Mostly far camp props,
+  // landmark lamp sprites, NPC/mob parts across the vale. Hero, terrain, sky, water, instanced fields and unbounded objects are skipped.
+  const NOLOD = new URLSearchParams(location.search).has('nolod'), LOD_K = 175, LOD_FLOOR = 90, lodList: { o: THREE.Object3D; r: number; c: THREE.Vector3; mask: number; off: boolean; sp: boolean }[] = []; let lodBuilt = false, lodTick = 0; const bigCasters: { m: THREE.Mesh; box: THREE.Box3 }[] = []; const lodV = new THREE.Vector3();
+  function liteLod() {
+    if (NOLOD || inCastle || inCave || inBarrow) return; if (lodBuilt && (lodTick = (lodTick + 1) % 6) !== 0) return;
+    if (!lodBuilt) { lodBuilt = true; scene.updateMatrixWorld(true); scene.traverse((o) => { const m = o as THREE.Mesh; if (!(m.isMesh || (o as THREE.Sprite).isSprite) || (m as unknown as THREE.InstancedMesh).isInstancedMesh || (m as unknown as THREE.SkinnedMesh).isSkinnedMesh || !o.frustumCulled) return; // characters stay whole
+      for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === player.root) return;
+      const g = m.geometry; if (!g) return; if (!g.boundingSphere) g.computeBoundingSphere(); const bs = g.boundingSphere!; o.getWorldScale(lodV); const r = bs.radius * Math.max(lodV.x, lodV.y, lodV.z);
+      if (r > 12 && m.isMesh && m.castShadow) { bigCasters.push({ m, box: new THREE.Box3().setFromObject(o) }); return; } if (!(r > 0) || r > 3) return;
+      if (r < 0.45) o.castShadow = false; // tiny props: their shadow is a few blurred texels in the 1024 Lite map
+      lodList.push({ o, r, c: bs.center.clone(), mask: o.layers.mask, off: false, sp: !!(o as THREE.Sprite).isSprite }); }); }
+    const cp = camera.position;
+    lodV.set(state.px, player.root.position.y, state.pz); for (const c of bigCasters) c.m.castShadow = c.box.distanceToPoint(lodV) < 40; // big merged landmark meshes only feed the 48 m Lite shadow box when near
+    for (const e of lodList) { lodV.copy(e.c).applyMatrix4(e.o.matrixWorld); const far = lodV.distanceTo(cp) > Math.max(e.sp ? LOD_FLOOR : 0, LOD_K * e.r);
+      if (far !== e.off) { e.off = far; if (far) { e.mask = e.o.layers.mask; e.o.layers.mask = 1 << 30; } else e.o.layers.mask = e.mask; } }
+  }
   function stepFrame(frameDt: number) {
     if (legacyMotion) { update(frameDt, clock.elapsedTime); interpOn = false; return; }
     if (simT === 0) { simT = clock.elapsedTime; acc = FIXED; } // first frame always simulates once (state/sky applied immediately)
@@ -2092,6 +2110,13 @@ ${GRADE_GLSL}
     castleAt(lx: number, lz: number, ly: number, face = 0) { if (!castle) return; state.px = castle.O.x + lx; state.pz = castle.O.z + lz; castle.place(state.px, state.pz, ly); state.facing = face; state.yaw = face + Math.PI; snapCam = true; },
     perchAt(u: number, v: number) { if (!perch) return; const p = kp(perch.id, u, v); state.px = p.x; state.pz = p.z; snapCam = true; },
     kLocal: (x: number, z: number, id: KeepId = 'pale') => kLocal(id, x, z),
+    drawList() { const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)); const out: Record<string, number> = {}; // M44 QA: what the draw calls are
+      scene.traverseVisible((o) => { const m = o as THREE.Mesh; if (!(m.isMesh || (o as THREE.Sprite).isSprite || (o as THREE.Points).isPoints)) return; if (o.frustumCulled && m.geometry && !fr.intersectsObject(o)) return; if (!o.layers.test(camera.layers)) return;
+        let top: THREE.Object3D = o; while (top.parent && top.parent !== scene) top = top.parent; let k = 'top' + scene.children.indexOf(top) + (top.name ? '-' + top.name : ''); const wp = o.getWorldPosition(new THREE.Vector3()), dd = wp.distanceTo(camera.position); k = (k || 'anon') + ':' + (m.isMesh ? ((m as THREE.InstancedMesh).isInstancedMesh ? 'inst' : m.geometry.type) : o.type) + '@' + (dd < 40 ? 'a<40' : dd < 100 ? 'b<100' : dd < 200 ? 'c<200' : 'd>200') + (Array.isArray(m.material) ? '*' + m.material.length : ''); out[k] = (out[k] || 0) + 1; });
+      const tops = [7, 16, 18, 20, 63, 65, 66, 69, 73].map((i) => { const t = scene.children[i]; if (!t) return null; const bb = new THREE.Box3().setFromObject(t); let n = 0; t.traverse(() => n++); return [i, t.type, t.name, n, bb.min.toArray().map((v) => Math.round(v)), bb.max.toArray().map((v) => Math.round(v))]; }); return { list: Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 70), tops }; },
+    shadowCasters() { const out: Record<string, number> = {}; const v = new THREE.Vector3(); scene.traverseVisible((o) => { const m = o as THREE.Mesh; if (!m.isMesh || !m.castShadow) return; o.getWorldPosition(v); const d = Math.hypot(v.x - state.px, v.z - state.pz); if (d > 36 && !(m.geometry.boundingSphere && m.geometry.boundingSphere.radius > 30)) return; let top: THREE.Object3D = o; while (top.parent && top.parent !== scene) top = top.parent; const k = 'top' + scene.children.indexOf(top) + ':' + ((m as THREE.InstancedMesh).isInstancedMesh ? 'inst' : m.geometry.type) + (m.geometry.boundingSphere ? '/r' + Math.round(m.geometry.boundingSphere.radius) : ''); out[k] = (out[k] || 0) + 1; }); return Object.entries(out).sort((a, b) => b[1] - a[1]); }, // M44 QA
+    topInfo(i: number) { const t = scene.children[i]; const out: string[] = []; t.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Sprite).isSprite) { const mt = m.material as THREE.MeshStandardMaterial; out.push(`${o.name}|${m.isMesh ? m.geometry.type : 'Sprite'}|${mt?.color?.getHexString?.()}|${o.getWorldPosition(new THREE.Vector3()).toArray().map((v) => Math.round(v)).join(',')}`); } }); return out; }, // M44 QA
+    castlePeace() { for (const m of mobs) m.kill(); }, // M44 QA: probes without sentinels shoving the hero
     castleWalk(lx: number, lz: number, ly: number) { return !!castle && castle.walkable(castle.O.x + lx, castle.O.z + lz, ly); }, // M41 QA: is (local x,z,y) a floor the hero can stand on
     camInfo: () => ({ cam: camera.position.toArray().map((v) => +v.toFixed(2)), player: player.root.position.toArray().map((v) => +v.toFixed(2)), inCastleScene: player.root.parent === castle?.scene, vis: player.root.visible, st: { px: state.px, pz: state.pz, yaw: state.yaw, dist: state.dist } }),
     fog: () => ({ explored: +fogExplored(fogNow()).toFixed(3) }),

@@ -652,8 +652,11 @@ function makeVeilfall(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): {
       float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
       float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
       void main(){float s=n(vec2(vUv.x*12.,vUv.y*4.+uTime*2.6))*.6+n(vec2(vUv.x*26.,vUv.y*8.+uTime*3.4))*.4;
-        float edge=smoothstep(0.,.18,vUv.x)*smoothstep(1.,.82,vUv.x);
-        gl_FragColor=vec4(mix(vec3(.62,.84,.92),vec3(1.),s),edge*(.5+.5*s)*.9);}`,
+        float rg=.1+.14*n(vec2(vUv.y*5.+uTime*2.,3.1)); float edge=smoothstep(0.,rg+.08,vUv.x)*smoothstep(1.,.92-rg,vUv.x);
+        // M44 · it read as one flat white curtain: falling threads with darker gaps, brighter foam toward the foot
+        float thr=smoothstep(.28,.7,n(vec2(vUv.x*34.,vUv.y*1.6+uTime*2.2)))*.7+.3*n(vec2(vUv.x*9.,vUv.y*1.+uTime*1.5)), foot=smoothstep(.3,0.,vUv.y);
+        vec3 c=mix(vec3(.42,.55,.6),mix(vec3(.66,.8,.86),vec3(1.),s),.35+.65*max(thr,foot));
+        gl_FragColor=vec4(c,edge*(.5+.5*s)*.9*mix(.35+.65*thr,1.,foot));}`,
   });
   const fall = new THREE.Mesh(new THREE.PlaneGeometry(6, 24, 1, 8), fallMat);
   // Slight outward curve of the sheet.
@@ -794,7 +797,10 @@ function makeOpening(t: BuildTex, solids: Solid[]): { group: THREE.Group; update
         float white=clamp(vW+vF*(.3+.45*st)+(s2-.5)*.35,0.,1.);
         vec3 base=mix(vec3(.3,.44,.45),vec3(.62,.78,.82),vF);
         vec3 c=mix(base,vec3(.97,.99,1.),white*(.6+.4*s1));
-        gl_FragColor=vec4(c,clamp(edge*(mix(.5,.78,vF)+.2*s1+.3*white),0.,.95));}` });
+        // M44 · the drops were flat white curtains: streaky sheets (fast thin threads with gaps the wet rock shows through), lighter at the lip
+        float thr=smoothstep(.3,.72,n(vec2(u*24.,v*.5-uTime*sp*.8)))*.75+.25*n(vec2(u*7.,v*.3-uTime*sp*.6)), fall=step(.99,vF);
+        c=mix(c,mix(vec3(.55,.66,.68),vec3(.95,.98,1.),thr),fall*.55);
+        gl_FragColor=vec4(c,clamp(edge*(mix(.5,.78,vF)+.2*s1+.3*white)*mix(1.,.38+.62*thr,fall*(1.-vW*.6)),0.,.95));}` });
   const foamMat = new THREE.MeshBasicMaterial({ color: '#f4fbff', map: brokenFoamTex(), transparent: true, opacity: 0.75, depthWrite: false });
   { const pts: { z: number; y: number; w: number; f: number }[] = []; const wid = (s2: number, extra = 0) => Math.min(1.32, 1.05 + 0.18 * Math.sin(s2 * 2.1) + 0.08 * Math.sin(s2 * 5.3) + extra);
     let zs = benchFront[BENCH - 1] + 3.0, acc = 0; const impacts: number[] = [];

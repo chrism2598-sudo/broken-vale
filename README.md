@@ -337,3 +337,8 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Creek banks: the shallows' water film fades out onto the bank (no ruled edge, no milky mirror sheet on Lite), a dark wet-mud lip and earthy gravel on the bed edge, ragged and shorter grass at the lip.
 - Track and road verges: ragged grass edge with stragglers, frayed terrain edge.
 - Audit views `banks` and `orchard` in tools/m39-audit.cjs. Notes: tools/m41-findings.md.
+
+### M42 · keep rooms dressed, camera never films the back of furniture
+- Castle camera: tall furniture (kitchen cook-hearth, hidden-room press, library shelves, armoury racks, bed, wardrobe, solar bookcase) is a camera occluder; when the boom would pass through one (typically after leaving through an outer wall, dollhouse-style) it stops in front of it and the usual crane / wall swing / ceiling look-down takes over. Kitchen and hidden-room views were solid black before. Probe: no room below its M41 minimum.
+- Bedchamber: oak wainscot, a woven hanging, bedside table with a live candle, panelled wardrobe front (was a black slab). Solar: wainscot, a filled bookcase, books on the table. Tower: five arrow slits in stone surrounds up the shaft.
+- Audit: `r-<room>` views in tools/m39-audit.cjs (`KEEPSHOT=m20-azure` for Azure). Notes: tools/m42-findings.md.

@@ -16,6 +16,11 @@ const S={
   'kitchen':[''+(process.env.QQ||'q=lite')+'&shot=m20-kitchen',''], 'armoury':[''+(process.env.QQ||'q=lite')+'&shot=m20-hall',`__vale.warp(6010.9,-5.0);__vale.view(Math.PI/2-0.3+Math.PI,Math.PI/2-0.3,-0.08,2.0)`],
   'night-hub':[''+(process.env.QQ||'q=lite')+'&shot=spawn&tod=0.98',v(0,6,Math.PI,0.1,7)], 'night-stair':[''+(process.env.QQ||'q=lite')+'&shot=spawn&tod=0.98',v(-35.6,47.8,H(-35.6,47.8,-34,62),0.08,5)],
 };
+// M42 · Pale keep room views: hero a third in from one end, looking down the long axis (castleAt + view). Names r-<room>.
+{const RM={entry:[-4,4,4,10,0],hall:[-9,9,-10,4,0],library:[4,11,4,10,0],chapel:[-11,-4,4,10,0],solar:[-9,-1,-17,-10,4.5],tower:[2,9,-17,-10,4.5],secret:[-15,-9,-2,4,0],kitchen:[-15,-9,-10,-4,0],armory:[9,15,-10,-4,0],cellar:[-15,-5,-18,-10,-4],bed:[-15,-9,-17,-10.6,4.5],gallery:[-8,8,-9.6,-7,4.5],
+  'hall-n':[-9,9,4,-10,0]};
+ for(const [k,[x0,x1,z0,z1,y]] of Object.entries(RM)){const cx=(x0+x1)/2,cz=(z0+z1)/2,W=Math.abs(x1-x0)>=Math.abs(z1-z0),hx=W?x0+0.3*(x1-x0):cx,hz=W?cz:z1-0.3*(z1-z0),f=W?Math.atan2(x1-x0,0):Math.atan2(0,z0-z1);
+  S['r-'+k]=[''+(process.env.QQ||'q=lite')+'&shot='+(process.env.KEEPSHOT||'m20-hall'),`__vale.castleAt(${hx.toFixed(2)},${hz.toFixed(2)},${y},${f.toFixed(3)});__vale.view(${f.toFixed(3)},${(f+Math.PI).toFixed(3)},0.06,3.2)`];}}
 (async()=>{const b=await pc.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:600000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
  const names=process.argv.slice(2).length?process.argv.slice(2):Object.keys(S);
  for(const n of names){const [q,js]=S[n];const p=await b.newPage();const logs=[];p.on('pageerror',e=>logs.push('PE '+e.message.slice(0,200)));p.on('console',m=>{const t=m.type();if(t==='error'||t==='warning'||t==='warn')logs.push(t[0].toUpperCase()+' '+m.text().slice(0,200));});

@@ -120,7 +120,8 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   const box = (m: THREE.Material, w: number, h: number, d: number, x: number, y: number, z: number, ry = 0) => put(m, new THREE.BoxGeometry(w, h, d), x, y + h / 2, z, ry);
   const cyl = (m: THREE.Material, r: number, h: number, x: number, y: number, z: number, seg = 10) => put(m, new THREE.CylinderGeometry(r, r, h, seg), x, y + h / 2, z);
   const regions: Region[] = []; const blockers: (Rect & { y: number })[] = [];
-  const block = (x0: number, x1: number, z0: number, z1: number, y: number) => blockers.push({ x0, x1, z0, z1, y });
+  const occ: { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number }[] = []; // M42: tall furniture the camera boom must not look through
+  const block = (x0: number, x1: number, z0: number, z1: number, y: number, h = 0) => { blockers.push({ x0, x1, z0, z1, y }); if (h > 1.2) occ.push({ x0, x1, z0, z1, y0: y, y1: y + h }); };
   const inter: CInteract[] = []; const mobs: MobSpawn[] = [];
   const fires: ReturnType<typeof makeFire>[] = []; const candles: { f: THREE.Sprite; ph: number }[] = [];
 
@@ -252,7 +253,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   // ---- library (east): shelves, lectern, chest ----
   for (const lx of [5, 6.6, 8.2, 9.8]) { box(darkWoodM, 1.5, 3.0, 0.45, lx + 0.3, 0, 9.55); put(bookM, new THREE.PlaneGeometry(1.36, 2.7), lx + 0.3, 1.5, 9.3); }
   for (const lz of [5.2, 6.8]) { box(darkWoodM, 0.45, 3.0, 1.5, 10.55, 0, lz + 0.2); const p = new THREE.PlaneGeometry(1.36, 2.7); p.rotateY(-Math.PI / 2); put(bookM, p, 10.3, 1.5, lz + 0.2); }
-  block(4.4, 11, 9.1, 10, 0); block(10.1, 11, 4.4, 8, 0);
+  block(4.4, 11, 9.1, 10, 0, 3); block(10.1, 11, 4.4, 8, 0, 3);
   box(darkWoodM, 0.5, 1.0, 0.5, 7.2, 0, 6.2); box(woodM, 0.7, 0.06, 0.55, 7.2, 1.0, 6.2, 0.3); block(6.8, 7.6, 5.8, 6.6, 0);
   { const pg = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.36), mat('#efe3c4', 0.9)); pg.rotation.x = -Math.PI / 2 + 0.3; pg.position.set(7.2, 1.1, 6.2); g.add(pg); }
   inter.push({ id: id + '-library-lectern', kind: 'lore', x: 7.2, z: 6.9, y: 0, r: 1.7 });
@@ -293,7 +294,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     void flights;
   }
   // ---- secret rooms ----
-  if (!az) { box(darkWoodM, 1.8, 0.9, 0.8, -12, 0, -1.4); box(ironM, 0.2, 2.0, 1.4, -14.8, 0, 2); for (let k = 0; k < 3; k++) box(stoneM, 0.5, 0.5, 0.5, -14.4, 0, -1.4 + k * 0.6); block(-13, -11, -2, -0.9, 0); }
+  if (!az) { box(darkWoodM, 1.8, 0.9, 0.8, -12, 0, -1.4); box(ironM, 0.2, 2.0, 1.4, -14.8, 0, 2); for (let k = 0; k < 3; k++) box(stoneM, 0.5, 0.5, 0.5, -14.4, 0, -1.4 + k * 0.6); block(-13, -11, -2, -0.9, 0); occ.push({ x0: -14.95, x1: -14.65, z0: 1.25, z1: 2.75, y0: 0, y1: 2.0 }); }
   else { box(darkWoodM, 1.8, 0.9, 0.8, -12, UP, -16.5); block(-13, -11, -17, -16, UP); }
   inter.push(az ? { id: 'secret', kind: 'secret', x: -8.0, z: -12.2, y: UP, r: 1.9 } : { id: 'secret', kind: 'secret', x: -8.0, z: 0.4, y: 0, r: 2.0 });
 
@@ -303,7 +304,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     box(stoneM, 0.28, 2.6, 3.2, -14.82, 0, -7);
     box(stoneM, 0.72, 2.6, 0.5, -14.48, 0, -8.35); box(stoneM, 0.72, 2.6, 0.5, -14.48, 0, -5.65);
     box(stoneM, 0.72, 0.55, 2.3, -14.48, 2.05, -7); box(stoneM, 1.1, 0.4, 3.6, -14.4, 2.6, -7);
-    box(stoneM, 0.5, 0.14, 2.4, -14.05, 0, -7); block(-15, -13.6, -8.8, -5.2, 0);
+    box(stoneM, 0.5, 0.14, 2.4, -14.05, 0, -7); block(-15, -13.6, -8.8, -5.2, 0, 3.4);
     // M22: the firebox was a black hole — its soot-black back and cheeks now glow with the fire from below.
     const fireBackM = mat('#16100c', 0.95, 0, { emissive: '#ff6a22', emissiveIntensity: 0.3, emissiveMap: canvasTex(4, 128, (x) => { const gr = x.createLinearGradient(0, 128, 0, 0); gr.addColorStop(0, '#ff9a48'); gr.addColorStop(0.12, '#a83c10'); gr.addColorStop(0.4, '#2a0e04'); gr.addColorStop(0.75, '#000000'); x.fillStyle = gr; x.fillRect(0, 0, 4, 128); }) });
     box(fireBackM, 0.06, 1.85, 2.15, -14.66, 0.14, -7); box(fireBackM, 0.55, 1.85, 0.06, -14.4, 0.14, -8.08); box(fireBackM, 0.55, 1.85, 0.06, -14.4, 0.14, -5.92); void sootM;
@@ -320,8 +321,8 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     const sk = new THREE.PlaneGeometry(1.1, 1.1); sk.rotateX(-Math.PI / 2); put(rugM, sk, -11.6, 0.02, -8.6); }
   // ---- armoury: weapon racks, armour stands, shields, a loose stone ----
   { const steel = mat('#9aa0a6', 0.35, 0.85);
-    for (const z of [-9.2, -4.8]) { box(darkWoodM, 4.2, 0.1, 0.3, 12.2, 0.9, z); box(darkWoodM, 4.2, 0.1, 0.3, 12.2, 1.9, z); for (let k = 0; k < 7; k++) { box(steel, 0.05, 1.9, 0.05, 10.5 + k * 0.58, 0.2, z); box(darkWoodM, 0.07, 0.5, 0.07, 10.5 + k * 0.58, 0, z); } block(10, 14.4, z - 0.35, z + 0.35, 0); }
-    for (const z of [-7.8, -6.2]) { cyl(darkWoodM, 0.06, 1.4, 14.2, 0, z, 6); box(steel, 0.5, 0.65, 0.3, 14.2, 1.0, z); const hm = new THREE.SphereGeometry(0.17, 10, 8); put(steel, hm, 14.2, 1.85, z); box(steel, 0.75, 0.12, 0.2, 14.2, 1.55, z); } block(13.7, 15, -8.3, -5.7, 0);
+    for (const z of [-9.2, -4.8]) { box(darkWoodM, 4.2, 0.1, 0.3, 12.2, 0.9, z); box(darkWoodM, 4.2, 0.1, 0.3, 12.2, 1.9, z); for (let k = 0; k < 7; k++) { box(steel, 0.05, 1.9, 0.05, 10.5 + k * 0.58, 0.2, z); box(darkWoodM, 0.07, 0.5, 0.07, 10.5 + k * 0.58, 0, z); } block(10, 14.4, z - 0.35, z + 0.35, 0, 2); }
+    for (const z of [-7.8, -6.2]) { cyl(darkWoodM, 0.06, 1.4, 14.2, 0, z, 6); box(steel, 0.5, 0.65, 0.3, 14.2, 1.0, z); const hm = new THREE.SphereGeometry(0.17, 10, 8); put(steel, hm, 14.2, 1.85, z); box(steel, 0.75, 0.12, 0.2, 14.2, 1.55, z); } block(13.7, 15, -8.3, -5.7, 0, 2);
     for (const [y, z] of [[2.6, -8], [2.6, -6], [2.9, -7]]) { const sh = new THREE.CylinderGeometry(0.45, 0.45, 0.06, 16); sh.rotateZ(Math.PI / 2); put(clothM, sh, 14.93, y, z); const b2 = new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10); b2.rotateZ(Math.PI / 2); put(steel, b2, 14.9, y, z); }
     box(stoneM, 0.06, 0.32, 0.5, 14.95, 0.5, -5.4); inter.push({ id: id + '-stone', kind: 'stash', x: 14.0, z: -5.4, y: 0, r: 1.3 }); }
   // ---- cellar / dungeon: a stone stair down from the kitchen, iron-barred cells, barrels, two sentinels ----
@@ -346,8 +347,8 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   if (!az) { const Y = UP;
     box(darkWoodM, 2.0, 0.5, 2.6, -13.4, Y, -15.4); box(cloth2M, 1.9, 0.18, 2.4, -13.4, Y + 0.5, -15.4); box(clothM, 1.9, 0.2, 0.7, -13.4, Y + 0.55, -16.3);
     for (const [dx, dz] of [[-0.95, -1.25], [0.95, -1.25], [-0.95, 1.25], [0.95, 1.25]]) box(darkWoodM, 0.12, 2.5, 0.12, -13.4 + dx, Y, -15.4 + dz);
-    box(clothM, 2.0, 0.08, 2.6, -13.4, Y + 2.5, -15.4); for (const s2 of [-1, 1]) box(clothM, 0.04, 1.9, 2.5, -13.4 + s2 * 1.0, Y + 0.6, -15.4); block(-14.5, -12.3, -16.9, -14.0, Y);
-    box(darkWoodM, 1.4, 2.2, 0.6, -10.4, Y, -16.6); box(ironM, 0.05, 0.2, 0.05, -10.5, Y + 1.1, -16.28); box(ironM, 0.05, 0.2, 0.05, -10.3, Y + 1.1, -16.28); block(-11.2, -9.6, -17, -16.2, Y);
+    box(clothM, 2.0, 0.08, 2.6, -13.4, Y + 2.5, -15.4); for (const s2 of [-1, 1]) box(clothM, 0.04, 1.9, 2.5, -13.4 + s2 * 1.0, Y + 0.6, -15.4); block(-14.5, -12.3, -16.9, -14.0, Y, 2.6);
+    box(darkWoodM, 1.4, 2.2, 0.6, -10.4, Y, -16.6); box(ironM, 0.05, 0.2, 0.05, -10.5, Y + 1.1, -16.28); box(ironM, 0.05, 0.2, 0.05, -10.3, Y + 1.1, -16.28); block(-11.2, -9.6, -17, -16.2, Y, 2.2);
     const rg = new THREE.PlaneGeometry(2.4, 1.6); rg.rotateX(-Math.PI / 2); put(rugM, rg, -12.6, Y + 0.02, -12.6);
     const ring = new THREE.TorusGeometry(0.09, 0.02, 6, 12); put(ironM, ring, -14.93, Y + 1.3, -13.6, Math.PI / 2); inter.push({ id: 'pale-lever', kind: 'stash', x: -14.0, z: -13.6, y: Y, r: 1.3 }); }
   const ft = flameTex();
@@ -431,6 +432,28 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
     for (const [x, z, n] of [[9.9, 8.6, 5], [8.8, 8.9, 3]] as const) for (let k = 0; k < n; k++) box(k % 3 === 0 ? clothM : k % 3 === 1 ? cloth2M : darkWoodM, 0.36, 0.08, 0.28, x, k * 0.08, z, R() * 0.6);
     // chapel: altar candles and two tall stands
     for (const z of [6.4, 7.6]) { cyl(waxM2, 0.035, 0.24, -10.2, 1.02, z, 6); const f = makeFlame(flameTex(), 0.26); f.position.set(-10.2, 1.27, z); g.add(f); candles.push({ f, ph: z }); }
+    // ---- M42 · upper-floor rooms were bare brick: oak wainscot, a filled bookcase, a bedside candle, a woven hanging; arrow slits up the tower ----
+    // wainscot: plank panel + moulded top rail along a wall run (gaps left for doors)
+    const wsc = (x0: number, z0: number, x1: number, z1: number, y: number, nx: number, nz: number) => { const len = Math.hypot(x1 - x0, z1 - z0), cx = (x0 + x1) / 2 + nx * 0.03, cz = (z0 + z1) / 2 + nz * 0.03, alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0);
+      box(darkWoodM, alongX ? len : 0.05, 1.0, alongX ? 0.05 : len, cx, y, cz); box(woodM, alongX ? len : 0.09, 0.07, alongX ? 0.09 : len, cx + nx * 0.02, y + 1.0, cz + nz * 0.02);
+      for (let u = 0.6; u < len - 0.3; u += 1.2) { const k = u / len; box(woodM, alongX ? 0.06 : 0.07, 0.9, alongX ? 0.07 : 0.06, x0 + (x1 - x0) * k + nx * 0.06, y + 0.05, z0 + (z1 - z0) * k + nz * 0.06); } };
+    // solar (both keeps): wainscot on the outer walls, a bookcase against the south wall
+    wsc(-8.4, -16.98, -1.6, -16.98, UP, 0, 1); wsc(-1.02, -16.4, -1.02, -10.6, UP, -1, 0);
+    box(darkWoodM, 1.6, 2.4, 0.4, -6.2, UP, -16.75); for (const yy of [0.55, 1.15, 1.75]) box(woodM, 1.5, 0.04, 0.36, -6.2, UP + yy, -16.73); put(bookM, new THREE.PlaneGeometry(1.44, 2.1), -6.2, UP + 1.2, -16.53); block(-7.0, -5.4, -17, -16.5, UP, 2.4);
+    for (let k = 0; k < 5; k++) box(k % 2 ? clothM : cloth2M, 0.3, 0.06, 0.22, -3.7 + R() * 0.2, UP + 0.86 + k * 0.06, -15.7 + R() * 0.2, R() * 0.6); // a stack of books on the solar table
+    if (!az) { // bedchamber: wainscot all round (door gap east), a hanging over the bed-head wall, a bedside table and candle
+      wsc(-15, -10.62, -9.0, -10.62, UP, 0, -1); wsc(-14.98, -16.9, -14.98, -10.7, UP, 1, 0); wsc(-9.02, -11.5, -9.02, -10.7, UP, -1, 0); wsc(-9.02, -16.1, -9.02, -13.3, UP, -1, 0);
+      tap(2.2, 1.9, -12.3, UP + 2.15, -10.66, Math.PI);
+      // the wardrobe front read as a black slab: two framed doors, a cornice and a plinth in the lighter oak
+      for (const dx of [-0.34, 0.34]) { for (const yy of [0.18, 1.95]) box(woodM, 0.6, 0.06, 0.03, -10.4 + dx, UP + yy, -16.29); for (const ex of [-0.28, 0.28]) box(woodM, 0.05, 1.83, 0.03, -10.4 + dx + ex, UP + 0.18, -16.29); }
+      box(woodM, 1.5, 0.1, 0.68, -10.4, UP + 2.2, -16.6); box(woodM, 1.46, 0.12, 0.64, -10.4, UP, -16.6);
+      box(darkWoodM, 0.5, 0.6, 0.45, -11.95, UP, -16.55); box(woodM, 0.56, 0.04, 0.5, -11.95, UP + 0.6, -16.55); cyl(waxM2, 0.03, 0.16, -11.9, UP + 0.64, -16.5, 6); { const f = makeFlame(flameTex(), 0.24); f.position.set(-11.9, UP + 0.82, -16.5); g.add(f); candles.push({ f, ph: 6.1 }); } }
+    // tower: tall arrow slits (daylight in a stone surround) up the outer walls
+    { const slitM = new THREE.MeshBasicMaterial({ color: az ? '#7f93a8' : '#9a9384' });
+      for (const [x, z, y, ry] of [[8.97, -15.4, UP + 3.4, -Math.PI / 2], [8.97, -11.7, UP + 7.6, -Math.PI / 2], [3.6, -16.97, UP + 5.6, 0], [7.4, -16.97, UP + 9.8, 0], [2.03, -12.0, UP + 10.8, Math.PI / 2]] as const) {
+        put(slitM, new THREE.PlaneGeometry(0.16, 1.1), x, y, z, ry); const nx = Math.round(Math.sin(ry)), nz = Math.round(Math.cos(ry));
+        for (const sd2 of [-1, 1]) box(stoneM, nz ? 0.14 : 0.12, 1.4, nz ? 0.12 : 0.14, x + nx * 0.05 + (nz ? sd2 * 0.16 : 0), y - 0.7, z + nz * 0.05 + (nx ? sd2 * 0.16 : 0));
+        for (const yy of [-0.62, 0.62]) box(stoneM, nz ? 0.46 : 0.12, 0.12, nz ? 0.12 : 0.46, x + nx * 0.05, y + yy - 0.06, z + nz * 0.05); } }
     // ceilings: joists between the beams, stone corbels under each beam end; the hall gets a ridge beam and purlins
     for (const r of rooms) { if (r.id === 'shaft') continue; const top = r.y0 + r.h, d = r.z1 - r.z0, cz = (r.z0 + r.z1) / 2;
       for (let u = r.x0 + 0.35; u < r.x1 - 0.2; u += 0.75) box(beamM, 0.1, 0.12, d, u, top - 0.13, cz);
@@ -569,10 +592,15 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
       // the narrow tower shaft is framed dollhouse-style: the boom may leave through a wall into the empty dark outside (single-sided walls vanish)
       // M40 · every room is framed dollhouse-style through its OUTER walls (single-sided, they vanish from behind): the boom may leave into empty space at room height, never into another room or through floor/ceiling
       const ok = (a: number, b: number, c: number) => inside(a, b, c, r) || (!!other && inside(a, b, c, other)) || (b > r.y0 + 0.3 && b < r.y1 - 0.3 && noRoom(a, b, c));
-      if (ok(cx, cy, cz)) return;
+      const occd = (a: number, b: number, c: number) => occ.some((o) => a > o.x0 - 0.12 && a < o.x1 + 0.12 && c > o.z0 - 0.12 && c < o.z1 + 0.12 && b > o.y0 && b < o.y1 + 0.1);
+      const seen = () => { for (let i = 1; i <= 24; i++) { const m = i / 24; if (occd(tx + (cx - tx) * m, ty + (cy - ty) * m, tz + (cz - tz) * m)) return false; } return true; };
+      if (ok(cx, cy, cz) && (!occ.length || seen())) return;
       // M41 · in a doorway (or hugging a wall) the head itself sits in the wall margin, so every boom 'failed' and the camera collapsed to 12 %: fit from a pivot nudged into the room instead
       const P = ok(tx, ty, tz) ? target : piv.set(O.x + Math.min(r.x1 - 0.3, Math.max(r.x0 + 0.3, tx)), Math.min(r.y1 - 0.3, Math.max(r.y0 + 0.25, ty)), O.z + Math.min(r.z1 - 0.3, Math.max(r.z0 + 0.3, tz)));
-      const fit = (c: THREE.Vector3) => { let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; tv.lerpVectors(P, c, m); const [a, b, cc] = lx(tv); if (ok(a, b, cc)) lo = m; else hi = m; } return lo; };
+      const fit = (c: THREE.Vector3) => { let lo = 0, hi = 1; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; tv.lerpVectors(P, c, m); const [a, b, cc] = lx(tv); if (ok(a, b, cc)) lo = m; else hi = m; }
+        // M42 · tall furniture (hearth, shelves, bed, wardrobe, racks) between hero and camera: stop the boom in front of it instead of filming its back
+        if (occ.length) for (let i = 1; i <= 24; i++) { const m = lo * i / 24; tv.lerpVectors(P, c, m); const [a, b, cc] = lx(tv); if (occd(a, b, cc)) return lo * (i - 1) / 24; }
+        return lo; };
       // Tight rooms: rather than shoving the camera into the hero's back, crane the boom up (look down from higher) until it fits.
       let best = fit(cam), bestC = cv.copy(cam); const L = cam.distanceTo(target);
       // M21b · tall rooms (great hall + its stair) crane earlier and higher so the stair never ends in a tight over-the-back view.

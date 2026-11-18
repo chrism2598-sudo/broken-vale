@@ -702,7 +702,7 @@ ${GRADE_GLSL}
   function hitKeeper(sk: Strike) {
     if (!keep) return; const r = keep.strike(sk.dmg * sk.keeperMul);
     if (r === 'armoured') { audio.clank(); cb.hitStop = 0.04; if (toastT < 0.6) toast(KEEPER_LINES.armoured, 1.8); return; }
-    cb.landed(sk);
+    cb.landed(sk); impactFx(keep.center.x, player.root.position.y + 1.4, keep.center.z, sk.heavy || r !== 'hit'); // M48: the M47 spark burst + camera punch
     if (r === 'hit') { toast(`Hit the tide-core! Keeper ${Math.ceil(keep.hp)}/${KEEPER_HP}`, 1.6); shake = Math.max(shake, sk.heavy ? 0.22 : 0.12); }
     else if (r === 'phase') { audio.hit(); toast(`⚠ ${KEEPER_LINES.phaseUp[keep.phase - 2]}`, 3, true); shake = 0.3; }
     else if (r === 'dead') { audio.hit(); keeperWin(); }
@@ -1242,7 +1242,7 @@ ${GRADE_GLSL}
   function attackWarden() { if (save.warden) { toast('The Warden remains dormant.', 2); return; } state.facing = Math.atan2(WARDEN.x - state.px, WARDEN.z - state.pz); startAttack(); }
   function hitWarden(sk: Strike) {
     if (save.warden) return;
-    wd.hp = Math.max(0, +(wd.hp - sk.dmg).toFixed(3)); if (wd.hp < 0.05) wd.hp = 0; warden.hit(); cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1);
+    wd.hp = Math.max(0, +(wd.hp - sk.dmg).toFixed(3)); if (wd.hp < 0.05) wd.hp = 0; warden.hit(); cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); impactFx(WARDEN.x, player.root.position.y + 1.6, WARDEN.z, sk.heavy); /* M48 */
     if (wd.hp <= 0) {
       wd.phase = 3; const lv = levelOf(save.xp); audio.hit();
       if (!save.warden) { save.warden = true; save.xp += WARDEN_XP; persist(); toast(`Vale Warden falls dormant · +${WARDEN_XP} XP · Warden's Crest${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 5); }

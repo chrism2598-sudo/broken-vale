@@ -41,7 +41,7 @@ float pathM(vec2 p){if(p.y>22.)return 0.;float d=abs(p.x-pathX(p.y));float w=1.2
  w*=.85+.35*vn(p*.35); return (1.-smoothstep(w*.3,w*1.6,d))*smoothstep(26.,16.,p.y)*(p.y< -92.?smoothstep(-100.,-92.,p.y):1.);}
 float trailM(vec2 p){ float d=1e4; ${TRAIL.slice(1).map((b, i) => { const a = TRAIL[i]; return `{ vec2 a=vec2(${a.x.toFixed(1)},${a.z.toFixed(1)}), b=vec2(${b.x.toFixed(1)},${b.z.toFixed(1)}); vec2 ab=b-a; float u=clamp(dot(p-a,ab)/dot(ab,ab),0.,1.); d=min(d,length(p-a-ab*u)); }`; }).join(' ')}
   return 1.-smoothstep(1.55+.2*vn(p*.5),2.55+.15*vn(p*.8),d); }
-vec4 W4; float WETB; float SNOW; float RUT; float RCROWN; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
+vec4 W4; float WETB; float BANKG; float SNOW; float RUT; float RCROWN; vec2 UVg; vec2 UVp; vec2 UVr; vec2 UVb;
 `)
       .replace('#include <map_fragment>', `
 { vec2 p=vWP.xz; float slope=1.-clamp(vWN.y,0.,1.);
@@ -90,7 +90,8 @@ vec4 W4; float WETB; float SNOW; float RUT; float RCROWN; vec2 UVg; vec2 UVp; ve
   { // M41 · creek banks: a dark wet-mud lip at the waterline, earthy (not bleached grey) gravel above it, pebble flecks
     float bk=dc-creekHalf(p.y), wn=vn(p*1.3);
     WETB=1.-smoothstep(${f3(WATER_Y + 0.03)},${f3(WATER_Y + 0.3)},vWP.y+.12*(wn-.5)); // M46 · only the bed under water and a damp lip just above it are wet/glossy; exposed gravel bars stay matte
-    cb*=mix(vec3(.84,.8,.72),vec3(1.),WETB); // M46 · dry bank gravel a touch darker and warmer
+    cb*=mix(vec3(.84,.8,.72),vec3(1.),WETB);
+    BANKG=(1.-smoothstep(3.,8.,bk))*smoothstep(-.6,.6,bk); cg=mix(cg,cg*vec3(.84,.9,.76),BANKG*.8); // M48 · the grass bank beside the creek read washed-out in sun: deeper, less yellow // M46 · dry bank gravel a touch darker and warmer
     cb=mix(cb,cb*vec3(.5,.46,.38),(1.-smoothstep(.0,1.1,abs(bk-.15+.6*(wn-.5))))*.75);
     cb=mix(cb,vec3(.29,.25,.18)*(.75+.5*vn(p*2.2)),smoothstep(.5,1.6,bk)*.55);
     cb=mix(cb,cb*1.35+.03,smoothstep(.78,.86,vn(p*6.3))*smoothstep(-.2,.4,bk)*.6); }
@@ -106,7 +107,7 @@ vec4 W4; float WETB; float SNOW; float RUT; float RCROWN; vec2 UVg; vec2 UVp; ve
 }`)
       .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness;
 { vec3 a=texture2D(tGa,UVg).rgb*W4.x+texture2D(tPa,UVp).rgb*W4.y+texture2D(tRa,UVr).rgb*W4.z+texture2D(tBa,UVb).rgb*W4.w;
-  roughnessFactor*=a.g; float wet=W4.w*max(WETB,.12); /* M46: the whole bank was wet-glossy (rough .25), so it mirrored the sky and read bleached */ roughnessFactor=mix(roughnessFactor,max(roughnessFactor,.9),W4.w*(1.-WETB)); /* M46: dry bank gravel is matte (its ARM roughness was low, so it mirrored the sky env at grazing angles) */ roughnessFactor=mix(roughnessFactor,.6,wet*.7); /* M46: submerged gravel was rough .25 under the water film: a doubled sky mirror (the bleached bank) */ roughnessFactor=mix(roughnessFactor,.6,SNOW); roughnessFactor=mix(roughnessFactor,.5,RUT*W4.y*.5); diffuseColor.rgb*=mix(1.,a.r,.75*(1.-SNOW)); }`)
+  roughnessFactor*=a.g; float wet=W4.w*max(WETB,.12); /* M46: the whole bank was wet-glossy (rough .25), so it mirrored the sky and read bleached */ roughnessFactor=mix(roughnessFactor,max(roughnessFactor,.9),W4.w*(1.-WETB)); roughnessFactor=mix(roughnessFactor,max(roughnessFactor,.95),W4.x*BANKG); /* M48: and matte, so it stops catching the sky */ /* M46: dry bank gravel is matte (its ARM roughness was low, so it mirrored the sky env at grazing angles) */ roughnessFactor=mix(roughnessFactor,.6,wet*.7); /* M46: submerged gravel was rough .25 under the water film: a doubled sky mirror (the bleached bank) */ roughnessFactor=mix(roughnessFactor,.6,SNOW); roughnessFactor=mix(roughnessFactor,.5,RUT*W4.y*.5); diffuseColor.rgb*=mix(1.,a.r,.75*(1.-SNOW)); }`)
       .replace('#include <normal_fragment_maps>', `
 { vec3 tn=(texture2D(tGn,UVg).xyz*W4.x+texture2D(tPn,UVp).xyz*W4.y+texture2D(tRn,UVr).xyz*W4.z+texture2D(tBn,UVb).xyz*W4.w)*2.-1.;
   tn.xy*=1.15*(1.-.8*SNOW); vec3 N=normalize(vWN); vec3 T=normalize(vec3(1.,0.,0.)-N*N.x); vec3 B=normalize(cross(T,N));

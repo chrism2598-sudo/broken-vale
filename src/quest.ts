@@ -21,7 +21,7 @@ function gear(s: { weapons?: unknown; weapon?: unknown; fog?: unknown }) {
   const L = (v: unknown) => Array.isArray(v) ? (v as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 64) : undefined;
   const o = s as Record<string, unknown>; const ext: Record<string, unknown> = {};
   if (typeof o.ressStair === 'number') ext.ressStair = Math.max(0, Math.min(1, o.ressStair | 0)); // M27 · the opening Ress talk at the ridge stair (one-time)
-  for (const k of ['chests', 'lore', 'foes', 'secrets', 'views', 'found', 'kit']) { const v = L(o[k]); if (v) ext[k] = v; }
+  for (const k of ['chests', 'lore', 'foes', 'secrets', 'views', 'found', 'kit', 'stashes']) { const v = L(o[k]); if (v) ext[k] = v; } // M48: 'stashes' was dropped on load, so every castle stash paid again after a reload
   if (typeof o.whet === 'number') ext.whet = Math.max(0, Math.min(4, o.whet | 0));
   // M20b · time of day, day counter, cleared roaming groups (id → day cleared)
   if (typeof o.tod === 'number' && isFinite(o.tod)) ext.tod = ((o.tod % 1) + 1) % 1;

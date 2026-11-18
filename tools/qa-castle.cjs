@@ -97,5 +97,17 @@ for(const kid of ['azure','pale']){const ROUTE=[...ROUTE0.slice(0,9),...(kid==='
 // 19 · M21b: loose stone (once), cellar chest → lore page
 {await at(14.0,-5.4,0,Math.PI/2);let k1=await K();const x0=(await Q()).save.xp;ok('armoury loose stone offered',/loose stone/i.test(k1.near||''),{near:k1.near});await act();await sleep(200);const x1=(await Q()).save.xp;await act();await sleep(200);const x2=(await Q()).save.xp;ok('loose stone pays once',x1===x0+15&&x2===x1,{x0,x1,x2});
  await at(-6.3,-16.0,-4,Math.PI);await act();await settle(`(window.__vale.quest().save.lore||[]).includes('pale-cellar')`,8000).catch(()=>{});const q=await Q();ok('cellar chest opens with a lore page',q.save.chests.includes('pale-cellar')&&(q.save.lore||[]).includes('pale-cellar'),{chests:q.save.chests,lore:q.save.lore});}
+// 20 · M48: Pale's second hidden passage (behind the hall wainscot under the tapestry): shut on a save without it, opens, walk in, stash pays once, survives a reload
+{await p.evaluate(()=>window.__vale.enterCastle('pale'));await settle(`window.__vale.castle().id==='pale'&&!window.__vale.castle().fading`,30000).catch(()=>{});await sleep(500);await p.evaluate(()=>{const v=window.__vale;if(v.castlePeace)v.castlePeace();});
+ let k1=await K();ok('nook shut on a save that never opened it',k1.nook===false&&!k1.save.secrets.includes('pale-nook'),{nook:k1.nook,secrets:k1.save.secrets});
+ await at(8.2,2.65,0);await walk(1,0,40);k1=await K();ok('shut panel blocks the way',k1.room==='Great hall',{room:k1.room});
+ await at(8.1,2.65,0,Math.PI/2);k1=await K();ok('wainscot panel offered',/panel sits proud/.test(k1.near||''),{near:k1.near});
+ const xa=(await Q()).save.xp;await act();await sleep(300);k1=await K();ok('nook opens (+10 XP, saved)',k1.nook===true&&k1.save.secrets.includes('pale-nook')&&(await Q()).save.xp===xa+10,{nook:k1.nook,secrets:k1.save.secrets});
+ await sleep(1500);await at(8.2,2.65,0);await walk(1,0,40);k1=await K();ok('walk into the hidden passage',k1.room==='Hidden passage',{room:k1.room});
+ await at(12.2,2.2,0,Math.PI/2);k1=await K();ok('iron-bound box offered',/iron-bound box/i.test(k1.near||''),{near:k1.near});
+ const xb=(await Q()).save.xp;await act();await sleep(200);await act();await sleep(200);let q1=await Q();ok('nook stash pays once (+20 XP)',(q1.save.stashes||[]).includes('pale-nook')&&q1.save.xp===xb+20,{xp:q1.save.xp-xb,stashes:q1.save.stashes});
+ await p.reload({waitUntil:'load'});await ready();await sleep(1500);await p.evaluate(()=>window.__vale.enterCastle('pale'));await settle(`window.__vale.castle().id==='pale'&&!window.__vale.castle().fading`,30000).catch(()=>{});await sleep(500);
+ k1=await K();q1=await Q();ok('nook open + stash looted after reload',k1.nook===true&&k1.save.secrets.includes('pale-nook')&&(q1.save.stashes||[]).includes('pale-nook'),{nook:k1.nook,stashes:q1.save.stashes});
+ await at(12.2,2.2,0,Math.PI/2);k1=await K();ok('looted stash not offered again',!/iron-bound box/i.test(k1.near||''),{near:k1.near});}
 ok('no page errors',errs.length===0,errs.slice(0,5));
 console.log(fails?`QA-CASTLE FAIL ${fails}`:'QA-CASTLE PASS');await b.close();process.exit(fails?1:0);})().catch(e=>{console.log('QA-CASTLE ERROR',e.message);process.exit(2);});

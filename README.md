@@ -358,3 +358,9 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Stream and pool gravel bed tint restored. A comment had swallowed it since M41.
 - Pale Keep exterior: per-block ashlar tone, rain streaks, damp and grime at the base, curtain-wall machicolations, string courses, buttresses and arrow slits, and deeper keep windows. No extra draw calls.
 - Notes: tools/m45-findings.md.
+
+### M46
+- Azure Keep exterior gets the M45 weathering and wall detail.
+- Bleached creek bank fixed: the bed was glossy-wet everywhere and mirrored the sky. Wetness is now height-based.
+- Wing Gate plaza slabs: grimy joints, chips, cracks and blotches.
+- Notes: tools/m46-findings.md.

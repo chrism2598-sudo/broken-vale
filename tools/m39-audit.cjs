@@ -12,7 +12,7 @@ const S={
   'hall':[''+(process.env.QQ||'q=lite')+'&shot=m20-hall',`__vale.warp(6000,2.6);__vale.view(Math.PI,0,-0.12,6.5)`], 'shafts':[''+(process.env.QQ||'q=lite')+'&shot=m20-hall',`__vale.warp(6003,-1.8);__vale.view(Math.PI/2,-Math.PI/2,0.35,2.2)`],
   'under-bridge':[L,`__vale.warp(-45,-55.9);__vale.view(0.7,0.7-Math.PI,0.25,4)`],
   'shafts2':[''+(process.env.QQ||'q=lite')+'&shot=m20-hall',`__vale.warp(6003,-1.8);__vale.view(Math.PI/2,-Math.PI/2,-0.35,2.2)`],
-  'pale-approach':[L,v(-50,-68,H(-50,-68,-91.8,-128.5),0.06,10)], 'pale-yard':[L,v(-80.5,-112,H(-80.5,-112,-91.8,-128.5),0.02,7)], 'pale-side':[L,v(-106.5,-97.9,H(-106.5,-97.9,-91.8,-128.5),-0.12,7)], 'stream':[L,v(-30,37.5,H(-30,37.5,-26,45),0.45,6)], // M45
+  'pale-approach':[L,v(-50,-68,H(-50,-68,-91.8,-128.5),0.06,10)], 'pale-yard':[L,v(-80.5,-112,H(-80.5,-112,-91.8,-128.5),0.02,7)], 'pale-side':[L,v(-106.5,-97.9,H(-106.5,-97.9,-91.8,-128.5),-0.12,7)], 'azure-side':[L,v(37,-127.2,H(37,-127.2,71,-128.5),-0.12,7)], 'azure-near':[L,v(62,-100,H(62,-100,71,-128.5),-0.15,8)], 'stream':[L,v(-30,37.5,H(-30,37.5,-26,45),0.45,6)], // M45
   'banks':[L,v(-55,-22,H(-55,-22,-62,-40),0.12,6)], 'orchard':[L,v(-20,30,H(-20,30,-30,40),0.1,6)],
   'kitchen':[''+(process.env.QQ||'q=lite')+'&shot=m20-kitchen',''], 'armoury':[''+(process.env.QQ||'q=lite')+'&shot=m20-hall',`__vale.warp(6010.9,-5.0);__vale.view(Math.PI/2-0.3+Math.PI,Math.PI/2-0.3,-0.08,2.0)`],
   'night-hub':[''+(process.env.QQ||'q=lite')+'&shot=spawn&tod=0.98',v(0,6,Math.PI,0.1,7)], 'night-stair':[''+(process.env.QQ||'q=lite')+'&shot=spawn&tod=0.98',v(-35.6,47.8,H(-35.6,47.8,-34,62),0.08,5)],

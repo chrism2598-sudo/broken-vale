@@ -118,7 +118,7 @@ const WIN_GLASS = new THREE.MeshStandardMaterial({ color: '#1c2430', roughness: 
 function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, pennant: string, solids: Solid[]): THREE.Group {
   const b = new Builder(); const roofDoors: THREE.Mesh[] = [];
   const pale = l.id === 'pale'; // M24 · Pale Keep follows the book: tall, narrow, cream-to-pale stone, dark-green scale cones, a crown of stone points
-  const st = pale ? triplanar(t.sand, 2.8, wallTint, { sat: 0.45, gain: 2.25, emissive: '#2a2216', ground: l.pad - 0.9, ash: 0.62 }) /* M45: base grime, ashlar tone, rain streaks */ : triplanar(t.brick, 3.2, wallTint, { sat: 0.35, gain: 1.5 });
+  const st = pale ? triplanar(t.sand, 2.8, wallTint, { sat: 0.45, gain: 2.25, emissive: '#2a2216', ground: l.pad - 0.9, ash: 0.62 }) /* M45: base grime, ashlar tone, rain streaks */ : triplanar(t.brick, 3.2, wallTint, { sat: 0.35, gain: 1.5, ground: l.pad - 0.9, ash: 0.5 }) /* M46: Azure gets the same weathering */;
   const trim = triplanar(t.sand, 1.6, pale ? '#f2e4c6' : '#cfc5b2', { sat: 0.3, gain: pale ? 2.0 : 1.3, emissive: pale ? '#2a2318' : '#000000' }); /* M23: dressed ashlar for quoins, portal and mullions */
   const roof = pale ? triplanar(t.roof, 1.1, roofTint, { rough: 0.5, sat: 0, gain: 2.3, emissive: '#06140a' }) : triplanar(t.roof, 2.2, roofTint, { rough: 0.85 });
   const y0 = l.pad - 0.3; const R = 19, W = 8.5;
@@ -137,11 +137,12 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
       b.add(st, box(len, W, 2.2), mid.x, y0, mid.y, ang);
       for (let k = 0; k < 9; k++) { const u = (k + 0.5) / 9 - 0.5; b.add(st, box(len / 9 * 0.55, 1.2, 2.4), mid.x + ux * u * len, y0 + W, mid.y + uz * u * len, ang); }
       for (let k = 0; k <= 6; k++) { const u = k / 6; solids.push({ x: l.x + p0.x + (p1.x - p0.x) * u, z: l.z + p0.y + (p1.y - p0.y) * u, r: 1.9 }); }
-      if (pale) { // M45 · outer face detail: corbelled machicolation under the merlons, a string course, two stepped buttresses, arrow slits
+      { // M45 (Pale) / M46 (Azure too) · outer face detail: corbelled machicolation under the merlons, a string course, two stepped buttresses, arrow slits
         const nx = mid.x / mid.length(), nz = mid.y / mid.length(), Q = (u: number, o: number) => [mid.x + ux * u * len + nx * o, mid.y + uz * u * len + nz * o] as const;
         { const [x, z] = Q(0, 1.2); b.add(st, box(len - 5.6, 0.5, 0.45), x, y0 + W - 0.55, z, ang); b.add(st, box(len - 5.8, 0.22, 0.3), x, y0 + W * 0.52, z, ang);
           const [xi, zi] = Q(0, -1.15); b.add(st, box(len - 5.8, 0.22, 0.3), xi, y0 + W * 0.52, zi, ang); }
         for (let k = 0; k < 15; k++) { const u = (k + 0.5) / 15 - 0.5; if (Math.abs(u * len) > len / 2 - 3.0) continue; const [x, z] = Q(u, 1.25); b.add(st, box(0.3, 0.7, 0.36), x, y0 + W - 1.25, z, ang); b.add(SLIT, box(0.5, 0.22, 0.04), x + ux * len / 30, y0 + W - 0.58 - 0.24, z + uz * len / 30, ang); }
+        if (!pale) for (const u of [-0.17, 0.17]) { const [x, z] = Q(u, 1.7); solids.push({ x: l.x + x, z: l.z + z, r: 0.95 }); } // M46: Azure has no glacis, so its buttresses get solids
         for (const u of [-0.17, 0.17]) { const [x, z] = Q(u, 1.55); b.add(st, box(1.3, 4.6, 0.9), x, y0, z, ang); const [x2, z2] = Q(u, 1.35); b.add(st, box(1.0, 2.0, 0.5), x2, y0 + 4.6, z2, ang);
           const cap = new THREE.BoxGeometry(1.32, 0.18, 1.0).rotateX(-0.5); const [x3, z3] = Q(u, 1.5); b.add(trim, cap, x3, y0 + 4.62, z3, ang); }
         for (const u of [-0.34, 0, 0.34]) { const [x, z] = Q(u, 1.12); b.add(SLIT, box(0.13, 1.25, 0.05), x, y0 + 4.9, z, ang); b.add(trim, box(0.42, 0.12, 0.16), x, y0 + 4.82, z, ang); b.add(trim, box(0.42, 0.12, 0.16), x, y0 + 6.2, z, ang); } }
@@ -166,7 +167,7 @@ function makeKeep(l: Landmark, t: BuildTex, roofTint: string, wallTint: string, 
         const [x, z] = P(u, sgn * (KEEP_D / 2 + 0.02)); const ry = face + (sgn < 0 ? Math.PI : 0);
         b.add(WIN_GLASS, glass, x, y0 + lvl, z, ry); b.add(st, hood, x, y0 + lvl, z, ry); b.add(st, box(1.4, 0.18, 0.4), x, y0 + lvl - 0.18, z, ry);
         b.add(trim, box(0.1, 2.35, 0.16), x, y0 + lvl, z, ry); b.add(trim, box(1.1, 0.09, 0.16), x, y0 + lvl + 1.35, z, ry); } } // M23: stone mullion + transom
-    if (pale) { const cs2 = Math.cos(face), sn2 = Math.sin(face); // M45 · window depth: projecting dressed jambs and a deeper weathered sill, so each opening reads as cut into the wall
+    { const cs2 = Math.cos(face), sn2 = Math.sin(face); // M45 (Pale) / M46 (Azure too) · window depth: projecting dressed jambs and a deeper weathered sill, so each opening reads as cut into the wall
       for (const sgn of [-1, 1]) for (const lvl of [8.4, 14.2]) for (let k = 0; k < 5; k++) { const u = ((k + 0.5) / 5 - 0.5) * (KEEP_W - 3); if (lvl < 9 && Math.abs(u) < 2) continue;
         const ry = face + (sgn < 0 ? Math.PI : 0), nxw = Math.sin(ry), nzw = Math.cos(ry);
         for (const j of [-0.7, 0.7]) { const [x, z] = P(u + j * (sgn < 0 ? -1 : 1), sgn * (KEEP_D / 2 + 0.17)); void cs2; void sn2; b.add(trim, box(0.24, 2.0, 0.34), x, y0 + lvl - 0.1, z, ry); }
@@ -508,6 +509,12 @@ function plazaTex(): THREE.Texture {
   for (let k = 0; k < 8; k++) { const a0 = k / 8 * Math.PI * 2; gold(14); x.beginPath(); for (let i = 0; i <= 40; i++) { const t = i / 40, a = a0 + t * 1.6, rr = N * (0.12 + t * 0.28); const px = C + Math.cos(a) * rr, py = C + Math.sin(a) * rr; if (i) x.lineTo(px, py); else x.moveTo(px, py); } x.stroke(); }
   for (const s of [-1, 1]) for (let f = 0; f < 6; f++) { gold(18 - f * 2); x.beginPath(); x.moveTo(C, C + 30); x.quadraticCurveTo(C + s * (90 + f * 30), C - 40 - f * 18, C + s * (150 + f * 34), C - 120 - f * 22 + f * f * 6); x.stroke(); }
   x.fillStyle = 'rgba(196,150,58,1)'; x.beginPath(); x.arc(C, C, 70, 0, Math.PI * 2); x.fill(); x.fillStyle = '#cdbf9c'; x.beginPath(); x.arc(C, C, 40, 0, Math.PI * 2); x.fill();
+  // M46 · weathering (design and colours unchanged): grimy joints, chipped slab edges, hairline cracks, damp/soot blotches
+  x.strokeStyle = 'rgba(72,60,42,0.38)'; x.lineWidth = 3; for (let gy = 0; gy <= N; gy += 64) { x.beginPath(); x.moveTo(0, gy + 1); x.lineTo(N, gy + 1); x.stroke(); const o = (gy / 64) % 2 ? 32 : 0; for (let gx = o; gx <= N; gx += 64) { x.beginPath(); x.moveTo(gx + 1, gy); x.lineTo(gx + 1, gy + 64); x.stroke(); } }
+  for (let gy = 0; gy < N; gy += 64) for (let gx = 0; gx < N; gx += 64) { if (r() < 0.45) continue; const o = (gy / 64) % 2 ? 32 : 0, cx = gx + o + 2 + (r() < 0.5 ? 0 : 60), cy = gy + 2 + (r() < 0.5 ? 0 : 60), s2 = 4 + r() * 9;
+    x.fillStyle = `rgba(236,228,206,${0.25 + r() * 0.25})`; x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx + (cx % 64 < 32 ? s2 : -s2), cy); x.lineTo(cx, cy + (cy % 64 < 32 ? s2 : -s2)); x.fill(); }
+  for (let i = 0; i < 30; i++) { let px = r() * N, py = r() * N; x.strokeStyle = `rgba(62,52,40,${0.25 + r() * 0.25})`; x.lineWidth = 0.8 + r() * 0.8; x.beginPath(); x.moveTo(px, py); for (let k = 0; k < 5; k++) { px += (r() - 0.5) * 34; py += (r() - 0.5) * 34; x.lineTo(px, py); } x.stroke(); }
+  for (let i = 0; i < 70; i++) { const px = r() * N, py = r() * N, rr = 30 + r() * 110, g = x.createRadialGradient(px, py, 0, px, py, rr); g.addColorStop(0, `rgba(82,72,54,${0.08 + r() * 0.14})`); g.addColorStop(1, 'rgba(82,72,54,0)'); x.fillStyle = g; x.fillRect(px - rr, py - rr, rr * 2, rr * 2); }
   for (let i = 0; i < 1400; i++) { x.fillStyle = `rgba(240,246,250,${0.05 + r() * 0.18})`; const s = 2 + r() * 9; x.fillRect(r() * N, r() * N, s, s * (0.4 + r())); }
   const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 4; _plaza = tx; return tx;
 }

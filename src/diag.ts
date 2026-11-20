@@ -9,6 +9,8 @@
  *   (tokens combine with '~', or '+' / '%2B' / space)
  *   base · pr1.25 | pr1 | pr0.75 (pixel ratio) · shoff (no shadow casting) | shhalf (shadow map every 2nd frame) | shfreeze
  *   (never re-rendered) · grassoff · foloff (alpha-tested foliage hidden) | folopaque (alpha test + A2C off) · vegoff (grass + foliage)
+ *   · M57: adaptfast[N] (diag copy of the controller + severe-stutter rule: ≥N (3) frames > 50 ms in 1 s → 2 levels down) · adaptfloorX (diag copy, floor X;
+ *     measurement only) · adaptcopy (diag copy, production rules: parity) · &draws=1 adds a per-frame draw breakdown to every run · stalls always recorded
  *   · adaptoff (M56: Lite adaptive resolution held at the base ratio; any prN token also holds it) · ovl (live overlay DOM updates; default is collect-only) · lodspread (liteLod 1/6 per call) · simcapN (diag-only fixed-step cap).
  * Timing: frame intervals from rAF timestamps of presented frames. CPU breakdown: performance.now() on the main thread.
  * GPU: EXT_disjoint_timer_query_webgl2 (shadow pass vs main pass) when exposed, else "unsupported". Anything inferred from
@@ -16,10 +18,12 @@
  */
 import * as THREE from 'three';
 import { grassDiag } from './grass';
+import { startDraws, startStalls } from './diagdraws';
+import { createDiagAdapt } from './diagadapt';
 
 export interface Diag { idle: boolean; adaptOff: boolean; simCap: number; lodSpread: boolean; nSteps: number; lodTicks: number;
   b(ts: number): void; m(i: number): void; r0(): void; r1(): void; e(): void; lodMs(ms: number): void }
-type Api = { renderer: THREE.WebGLRenderer; camera: THREE.Camera; grass: THREE.Object3D; params: URLSearchParams; quality: string; motion: () => string; activeScene: () => THREE.Scene; adapt: import('./adaptres').AdaptRes | null; adaptOn: () => boolean };
+type Api = { renderer: THREE.WebGLRenderer; camera: THREE.Camera; grass: THREE.Object3D; params: URLSearchParams; quality: string; motion: () => string; activeScene: () => THREE.Scene; refs: Record<string, THREE.Object3D | undefined>; adapt: import('./adaptres').AdaptRes | null; adaptOn: () => boolean };
 type V = { ready?: boolean; warp: (x: number, z: number) => void; view: (f: number, y: number, p: number, d: number) => void; enterCastle: (id: string) => Promise<void> | void;
   castle: () => { fading?: boolean; inCastle?: boolean }; castleAt: (x: number, z: number, y: number, f: number) => void; castlePeace: () => void };
 
@@ -45,15 +49,19 @@ export function startDiag(a: Api): Diag {
   const F = { iv: new Float32Array(CAP), cpu: new Float32Array(CAP), sim: new Float32Array(CAP), oth: new Float32Array(CAP), grass: new Float32Array(CAP), rnd: new Float32Array(CAP),
     steps: new Uint8Array(CAP), lodT: new Uint8Array(CAP), lodMs: new Float32Array(CAP), swaps: new Uint8Array(CAP), heap: new Float32Array(CAP), calls: new Float32Array(CAP), tris: new Float32Array(CAP),
     gS: new Float32Array(CAP), gM: new Float32Array(CAP), t: new Float32Array(CAP) };
+  const DRAWS = P.get('draws') === '1' ? startDraws(R, a.camera, a.grass, a.refs ?? {}, a.activeScene) : null; const ST = startStalls(R);
+  let camStart: number[] = [], curIv = 0, dA: ReturnType<typeof createDiagAdapt> | null = null, dAcfg: Record<string, unknown> | null = null, curCfg = '', runT0 = 0;
   let n = 0, recording = false, lastTs = -1, tB = 0, tL = 0, fc = 0, lodAcc = 0, swaps0 = 0, bytes0 = 0, shMode = '';
   const D: Diag = { idle: false, adaptOff: false, simCap: 7, lodSpread: false, nSteps: 0, lodTicks: 0,
     b(ts) { tB = tL = performance.now(); D.nSteps = 0; D.lodTicks = 0; lodAcc = 0; fc++; pollGpu();
       if (shMode === 'half') R.shadowMap.needsUpdate = fc % 2 === 0;
+      curIv = lastTs >= 0 ? ts - lastTs : 0; if (lastTs >= 0) ST.gap(ts, ts - lastTs, { cfg: curCfg, recording, pr: R.getPixelRatio(), prevCpuMs: n > 0 ? Math.round(F.cpu[n - 1] * 10) / 10 : null });
       if (recording && n < CAP) { F.iv[n] = lastTs >= 0 ? ts - lastTs : NaN; F.t[n] = ts; F.gS[n] = NaN; F.gM[n] = NaN; } lastTs = ts; },
     m(i) { const t = performance.now(), d = t - tL; tL = t; if (!recording || n >= CAP) return; if (i === 0) F.sim[n] = d; else if (i === 1) F.oth[n] = d; else F.grass[n] = d; },
     r0() { tL = performance.now(); if (gpu && recording && n < CAP) { segs = []; qBegin(1); } },
     r1() { const t = performance.now(); if (recording && n < CAP) F.rnd[n] = t - tL; tL = t; if (gpu && segs.length) { qEnd(); pending.push({ fi: n, segs }); segs = []; if (pending.length > 240) { const o = pending.shift()!; for (const s of o.segs) gl.deleteQuery(s.q); } } },
-    e() { if (!recording || n >= CAP) return; const inf = R.info.render;
+    e() { if (dA && lastTs >= 0) { if (a.motion() === 'fast' && !document.hidden) dA.feed(curIv, lastTs); else dA.idle(); }
+      DRAWS?.frame(performance.now()); if (!recording || n >= CAP) return; const inf = R.info.render;
       F.cpu[n] = performance.now() - tB; F.steps[n] = Math.min(255, D.nSteps); F.lodT[n] = D.lodTicks; F.lodMs[n] = lodAcc; F.swaps[n] = grassDiag.swaps - swaps0; swaps0 = grassDiag.swaps;
       F.heap[n] = heapMB(); F.calls[n] = inf.calls; F.tris[n] = inf.triangles; n++; },
     lodMs(ms) { lodAcc += ms; } };
@@ -76,7 +84,7 @@ export function startDiag(a: Api): Diag {
     R.setPixelRatio(basePR); R.shadowMap.autoUpdate = true; R.shadowMap.needsUpdate = true; shMode = '';
     for (const l of casters) l.castShadow = true; casters = [];
     for (const f of fol) { f.m.layers.mask = f.mask; for (const x of f.mats) { if (x.mt.alphaTest !== x.at || x.mt.alphaToCoverage !== x.a2c) { x.mt.alphaTest = x.at; x.mt.alphaToCoverage = x.a2c; x.mt.needsUpdate = true; } } } fol = []; folHide = false;
-    a.grass.layers.mask = grassMask; D.lodSpread = false; D.simCap = 7; ovl = false; D.adaptOff = false; a.adapt?.reset();
+    a.grass.layers.mask = grassMask; D.lodSpread = false; D.simCap = 7; ovl = false; D.adaptOff = false; a.adapt?.reset(); dA = null; dAcfg = null;
   }
   function collectFol() { if (fol.length) return; a.activeScene().traverse((o) => { const m = o as THREE.Mesh; if (isFol(m)) fol.push({ m, mask: m.layers.mask, mats: (Array.isArray(m.material) ? m.material : [m.material]).map((mt) => ({ mt: mt as never, at: (mt as THREE.Material).alphaTest, a2c: (mt as THREE.Material).alphaToCoverage })) }); }); }
   function apply(cfg: string): string[] {
@@ -86,6 +94,8 @@ export function startDiag(a: Api): Diag {
       if (tok === 'base') continue;
       else if (pr) { D.adaptOff = true; R.setPixelRatio(+pr[1]); }
       else if (tok === 'adaptoff') D.adaptOff = true;
+      else if (/^adapt(fast\d?|floor[\d.]+|copy)$/.test(tok)) { D.adaptOff = true; const c = dAcfg ?? { floor: 0.8, fast: false, fastN: 3, fastMs: 50, fastJump: 2 }; const f = /^adaptfloor([\d.]+)$/.exec(tok), fn = /^adaptfast(\d)$/.exec(tok);
+        if (f) c.floor = Math.max(0.3, +f[1]); if (tok.startsWith('adaptfast')) { c.fast = true; if (fn) c.fastN = +fn[1]; } dAcfg = c; }
       else if (tok === 'shoff') a.activeScene().traverse((o) => { const l = o as THREE.Light; if (l.isLight && l.castShadow) { l.castShadow = false; casters.push(l); } });
       else if (tok === 'shhalf') { R.shadowMap.autoUpdate = false; shMode = 'half'; }
       else if (tok === 'shfreeze') { R.shadowMap.autoUpdate = false; R.shadowMap.needsUpdate = true; shMode = 'freeze'; }
@@ -98,7 +108,8 @@ export function startDiag(a: Api): Diag {
       else if (sc) D.simCap = Math.max(1, +sc[1]);
       else notes.push('unknown token ' + tok);
     }
-    if (a.adapt && D.adaptOff) notes.push('adaptive resolution off'); else if (a.adapt && !a.adaptOn()) notes.push('adaptive resolution inactive (Smooth, High, or headless without &adapt=1)');
+    if (dAcfg && a.motion() === 'fast') { dA = createDiagAdapt(R, basePR, dAcfg as never); notes.push(`diag adaptive copy ${JSON.stringify(dAcfg)}`); }
+    else if (a.adapt && D.adaptOff) notes.push('adaptive resolution off'); else if (a.adapt && !a.adaptOn()) notes.push('adaptive resolution inactive (Smooth, High, or headless without &adapt=1)');
     if (fol.length) notes.push(`${fol.length} alpha-tested meshes`);
     return notes;
   }
@@ -108,7 +119,9 @@ export function startDiag(a: Api): Diag {
   badge.style.cssText = 'position:fixed;right:6px;top:6px;z-index:99999;pointer-events:none;font:10px ui-monospace,monospace;color:#ffd890;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:5px';
   document.body.appendChild(badge);
   const el = document.createElement('div'); el.id = 'diaghud'; el.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99999;pointer-events:none;font:11px/1.35 ui-monospace,monospace;color:#e8f0e0;background:rgba(0,0,0,.62);padding:5px 7px;border-radius:6px;white-space:pre';
-  let ovl = false; const W = (window as unknown as { __diag: Record<string, unknown> }); W.__diag = { result: null, status: 'idle', blocked: () => (window as unknown as { __diagBlocked?: string[] }).__diagBlocked ?? [] };
+  let ovl = false; const W = (window as unknown as { __diag: Record<string, unknown> }); W.__diag = { result: null, status: 'idle', stallLog: () => ST.out(), setPR: (v: number) => { D.adaptOff = true; R.setPixelRatio(v); },
+    adaptSim: (ivs: number[], o: Record<string, unknown>) => { let pr = basePR; const fake = { setPixelRatio: (v: number) => { pr = v; }, getPixelRatio: () => pr }; const c = createDiagAdapt(fake, basePR, { floor: 0.8, fast: false, fastN: 3, fastMs: 50, fastJump: 2, ...o } as never); let now = 1e6; const tr: number[][] = [[0, c.ratio()]];
+      for (const iv of ivs) { now += iv; const p0 = c.ratio(); c.feed(iv, now); if (c.ratio() !== p0) tr.push([now - 1e6, c.ratio()]); } return { trace: tr, stats: c.stats(true), emergencies: c.emergencies() }; }, blocked: () => (window as unknown as { __diagBlocked?: string[] }).__diagBlocked ?? [] };
   const status = (s: string) => { (W.__diag as Record<string, unknown>).status = s; if (!ovl) el.textContent = s; };
   if (!scene) return D; document.body.appendChild(el);
   const seq = (P.get('seq') || 'base').split(',').filter(Boolean);
@@ -122,22 +135,24 @@ export function startDiag(a: Api): Diag {
     const runs: Record<string, unknown>[] = [];
     for (let i = 0; i < seq.length; i++) {
       if (i > 0 && COOL > 0) { D.idle = true; status(`DIAG ${i + 1}/${seq.length} cooling down ${COOL} s (nothing rendered)…`); await sleep(COOL * 1000); D.idle = false; }
-      const cfg = seq[i], notes = apply(cfg); path(0); if (scene === 'castle') path(0);
+      const cfg = seq[i], notes = apply(cfg); curCfg = cfg + ' (warm-up)'; path(0); if (scene === 'castle') path(0);
       status(`DIAG ${i + 1}/${seq.length} [${cfg}] warm-up ${WARM} s…`); const w0 = performance.now(); while (performance.now() - w0 < WARM * 1000) { hideFol(); await new Promise((r) => requestAnimationFrame(r)); }
       status(`DIAG ${i + 1}/${seq.length} [${cfg}] recording ${SECS} s${ovl ? '' : ' · collect-only (no live overlay)'}`);
-      n = 0; lastTs = -1; swaps0 = grassDiag.swaps; bytes0 = grassDiag.bytes; disjoint = 0; a.adapt?.resetStats(); recording = true; const t0 = performance.now(); let shown = 0;
+      n = 0; lastTs = -1; swaps0 = grassDiag.swaps; bytes0 = grassDiag.bytes; disjoint = 0; a.adapt?.resetStats(); (dA as ReturnType<typeof createDiagAdapt> | null)?.idle(); (dA as ReturnType<typeof createDiagAdapt> | null)?.resetStats(); DRAWS?.start(); curCfg = cfg; runT0 = ST.now(); recording = true; const t0 = performance.now(); let shown = 0; camStart = a.camera.position.toArray().map((v) => Math.round(v * 100) / 100);
       while (performance.now() - t0 < SECS * 1000) { const k = (performance.now() - t0) / (SECS * 1000); path(k); hideFol();
         if (ovl && performance.now() - shown > 500) { shown = performance.now(); const s = pct(F.iv.subarray(Math.max(1, n - 120), n), Math.max(0, Math.min(120, n - 1))); el.textContent = `DIAG [${cfg}] ${(k * 100).toFixed(0)}%\nFPS ${s.avg ? (1000 / s.avg).toFixed(1) : '…'}  p95 ${s.p95.toFixed(1)} ms\ncalls ${R.info.render.calls}  tris ${(R.info.render.triangles / 1000).toFixed(0)}k\nPR ${R.getPixelRatio()}${a.adapt ? (a.adaptOn() ? ' adaptive' : ' fixed') : ''}`; }
         await new Promise((r) => requestAnimationFrame(r)); }
-      recording = false; for (let k = 0; k < 30 && pending.length; k++) { await new Promise((r) => requestAnimationFrame(r)); pollGpu(); }
+      recording = false; curCfg = '';  for (let k = 0; k < 30 && pending.length; k++) { await new Promise((r) => requestAnimationFrame(r)); pollGpu(); }
       runs.push(summarize(cfg, notes, grassDiag.bytes - bytes0));
     }
     reset();
     const out = { label: headless() ? 'HEADLESS ESTIMATE' : 'DEVICE', kind: 'M55 diag', scene, quality: a.quality, motion: a.motion(), seq, secs: SECS, warm: WARM, cool: COOL,
       gpuTimer: gpu ? 'EXT_disjoint_timer_query_webgl2' : 'unsupported', build: document.querySelector<HTMLScriptElement>('script[type=module][src*="index-"]')?.src.split('/').pop() ?? 'unknown',
-      device: deviceInfo(gl), at: new Date().toISOString(), note: 'CPU = main-thread performance.now(). Frame-time not explained by CPU is INDIRECT evidence (GPU/compositor/vsync), never GPU time. GPU time only from timer queries.', runs };
+      device: deviceInfo(gl), at: new Date().toISOString(), world: worldSnap(), stallLog: ST.out(), note: 'CPU = main-thread performance.now(). Frame-time not explained by CPU is INDIRECT evidence (GPU/compositor/vsync), never GPU time. GPU time only from timer queries.', runs };
     (W.__diag as Record<string, unknown>).result = out; status('DIAG done'); showCard(out);
   })();
+  function worldSnap() { try { const v = (window as unknown as { __vale: { quest: () => { save: Record<string, unknown> } } }).__vale; const s = v.quest().save; const pick: Record<string, unknown> = {};
+      for (const k of ['xp', 'done', 'seals', 'cave', 'coast', 'sea', 'lamp', 'beacon', 'echo', 'warden', 'wind', 'day', 'tod']) pick[k] = s[k]; for (const k of ['gone', 'rk', 'stashes', 'secrets']) pick[k] = s[k] ? JSON.stringify(s[k]).length : 0; return pick; } catch { return null; } }
   function summarize(cfg: string, notes: string[], bytes: number) {
     const N = n, iv = pct(F.iv, N), cpu = pct(F.cpu, N), st = (arr: Float32Array) => { const s = pct(arr, N); return { avg: r2(s.avg), p95: r2(s.p95), max: r2(s.max) }; };
     const hist = [0, 0, 0, 0, 0]; let capHits = 0; for (let i = 0; i < N; i++) { hist[Math.min(4, F.steps[i])]++; if (F.steps[i] >= D.simCap && D.simCap < 7) capHits++; }
@@ -161,7 +176,9 @@ export function startDiag(a: Api): Diag {
       cpuMs: { frame: { avg: r2(cpu.avg), p95: r2(cpu.p95), max: r2(cpu.max) }, simInclLod: st(F.sim), other: st(F.oth), grassPump: st(F.grass), renderSubmit: st(F.rnd), liteLod: st(F.lodMs) },
       counts: { stepsHist: { '0': hist[0], '1': hist[1], '2': hist[2], '3': hist[3], '4+': hist[4] }, simMsBySteps: { '1': simBy[0], '2': simBy[1], '3+': simBy[2] }, simCap: D.simCap, simCapHits: capHits,
         grassSwaps: Array.from(F.swaps.subarray(0, N)).reduce((x, y) => x + y, 0), grassUploadMB: r1(bytes / 1048576), liteLodTicks: Array.from(F.lodT.subarray(0, N)).reduce((x, y) => x + y, 0) },
-      adapt: a.adapt ? a.adapt.stats(a.adaptOn()) : 'n/a (High)', longFrameCorrelation: corr, fpsPer10s: trend, jsHeapMB: heapOk ? Math.round(heapMB()) : 'unavailable' };
+      adapt: dA ? { ...dA.stats(true), controller: 'diag copy', opts: dAcfg, emergencies: dA.emergencies() } : a.adapt ? a.adapt.stats(a.adaptOn()) : 'n/a (High)',
+      camStart, callsPer10s: (() => { const o: number[] = []; if (N < 2) return o; const t0 = F.t[0]; let b = 0, c = 0, s2 = 0; for (let i = 0; i < N; i++) { const bk = Math.floor((F.t[i] - t0) / 10000); if (bk !== b) { o.push(Math.round(s2 / Math.max(1, c))); b = bk; c = 0; s2 = 0; } c++; s2 += F.calls[i]; } o.push(Math.round(s2 / Math.max(1, c))); return o; })(),
+      gameSecs: r1(Array.from(F.steps.subarray(0, N)).reduce((x, y) => x + y, 0) / 60), stalls: ST.since(runT0), draws: DRAWS ? DRAWS.stop(Math.round(calls.avg)) : undefined, longFrameCorrelation: corr, fpsPer10s: trend, jsHeapMB: heapOk ? Math.round(heapMB()) : 'unavailable' };
   }
   function showCard(out: Record<string, unknown>) {
     el.remove(); const runs = out.runs as ReturnType<typeof summarize>[]; const dev = out.device as ReturnType<typeof deviceInfo>;
@@ -170,6 +187,8 @@ export function startDiag(a: Api): Diag {
     let txt = `M56 DIAG · ${out.label} · ${out.scene} · ${String(out.quality).toUpperCase()} · motion ${out.motion} · ${out.secs} s each\nGPU timer: ${out.gpuTimer}\n` +
       `${pad('cfg', 14)}fps  1%lo p50  p95  p99  >33 >50 calls tris gpuS+M\n`;
     for (const r of runs) txt += `${pad(r.cfg, 14)}${pad(r.fpsAvg, 5)}${pad(r.fps1Low, 5)}${pad(r.frameMs.p50, 5)}${pad(r.frameMs.p95, 5)}${pad(r.frameMs.p99, 5)}${pad(r.long33, 4)}${pad(r.long50, 4)}${pad(r.drawCalls.avg, 6)}${pad(Math.round(r.triangles.avg / 1000) + 'k', 5)}${g(r)}\n`;
+    for (const r of runs) { const Dd = r.draws; if (Dd) { txt += `\n[${r.cfg}] draws/frame ${Dd.talliedPerFrame} (info ${Dd.infoCallsPerFrame}) · game ${r.gameSecs} s · by category main+shadow: ` + Object.entries(Dd.byCategory).slice(0, 8).map(([k, v]) => `${k} ${v.main}+${v.shadow}`).join(' · ') + `\n top: ${Dd.topObjects.slice(0, 5).join(' / ')}\n vis: ${JSON.stringify(Dd.visibility)}`; }
+      if (r.stalls.length) txt += `\n[${r.cfg}] gaps>100ms ${r.stalls.length}: ` + r.stalls.slice(0, 6).map((g) => `${g.gapMs}ms@${g.t}${(g.near as string[]).length ? '(' + (g.near as string[]).join(',') + ')' : ''}`).join(' '); }
     for (const r of runs) { const A = r.adapt; if (typeof A === 'object') txt += `\n[${r.cfg}] adaptive res ${A.enabled ? 'ON' : 'off'} · PR now ${A.current} min ${A.min} max ${A.max} · steps ${A.steps} (down ${A.down} up ${A.up}) · s at PR ${Object.entries(A.timeAtS).map(([k, v]) => k + ':' + v).join(' ')}`; }
     for (const r of runs) { const c = r.cpuMs, k = r.counts, L = r.longFrameCorrelation as Record<string, { pctOfLong: number; pctOfAll: number } | number | string>, f = (x: string) => { const v = L[x]; return typeof v === 'object' ? `${v.pctOfLong}% (all ${v.pctOfAll}%)` : String(v); };
       txt += `\n[${r.cfg}] PR ${r.pixelRatio} ${r.drawingBuffer} · max ${r.frameMs.max} ms${r.notes.length ? ' · ' + r.notes.join('; ') : ''}\n cpu ms avg/p95: frame ${c.frame.avg}/${c.frame.p95} sim ${c.simInclLod.avg}/${c.simInclLod.p95} grass ${c.grassPump.avg}/${c.grassPump.p95} render ${c.renderSubmit.avg}/${c.renderSubmit.p95} lod ${c.liteLod.avg}/${c.liteLod.max}max\n` +

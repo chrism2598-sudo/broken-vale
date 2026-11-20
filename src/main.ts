@@ -1956,7 +1956,7 @@ ${GRADE_GLSL}
   }
   renderer.setAnimationLoop(frame);
   if (AR) adaptHud = () => ({ ...AR.stats(arEnabled()) });
-  if (__DIAG__) void import('./diag').then((m) => { DG = m.startDiag({ renderer, camera, grass: grassField.mesh, params, quality, motion: () => (motionSmooth ? 'smooth' : 'fast'), adapt: AR, adaptOn: () => arEnabled(),
+  if (__DIAG__) void import('./diag').then((m) => { DG = m.startDiag({ renderer, camera, grass: grassField.mesh, refs: { terrain, water: water.mesh, island: island.group, landmarks: landmarks.group, shrine: shrine.group, warden: warden.group, updraft: updraft.group, dawnSky: dawnSky.mesh, nightSky: nightSky.mesh, grove: grove.group, stair: stair.group, outposts: outposts.group, rift, player: player.root }, params, quality, motion: () => (motionSmooth ? 'smooth' : 'fast'), adapt: AR, adaptOn: () => arEnabled(),
     activeScene: () => (inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : inKeep && keep ? keep.scene : inCastle && castle ? castle.scene : inBarrow && barrow ? barrow.scene : scene) }); }); // M55 · diag build only
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);

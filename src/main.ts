@@ -1,4 +1,6 @@
+import './diagguard'; // M55 · diag build only: localStorage write guard (empty module in production)
 import * as THREE from 'three';
+import type { Diag } from './diag';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
@@ -48,6 +50,8 @@ import { SQ_XP, sq, stage, sketched, sketchesLeft, sefaTale, dovTale, ressTale, 
 type Quality = 'high' | 'lite';
 const params = new URLSearchParams(location.search);
 if (params.get('perf') === '1') { if (params.get('perfrun')) setSaveReadOnly('perf'); void import('./perfhud').then((m) => m.startPerfHud({ ready: () => !!(window as unknown as { __vale?: { ready?: boolean } }).__vale?.ready, info: () => renderer.info.render, quality: () => quality, run: params.get('perfrun') })); } // M53/M54 · ?perf=1 overlay (lazy; nothing loads without the flag). A ?perfrun session never writes the save.
+let DG: Diag | null = null; // M55 · diagnostics hooks; only ever assigned in the diag build (__DIAG__), so production never touches it
+if (__DIAG__) setSaveReadOnly('perf'); // M55 · the diag build never writes the player's save
 // Phones/tablets default to Lite (incl. iPadOS, which reports as Macintosh with touch).
 const isPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) || (matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 900);
 document.body.classList.toggle('touch', isPhone || matchMedia('(pointer: coarse)').matches); // keyboard hints are hidden on touch
@@ -170,6 +174,7 @@ async function main() {
   const lantern = new THREE.PointLight('#ffc78a', 0, 16, 1.5); scene.add(lantern);
   const roam = makeRoam(scene, HIGH); for (const f of FIRES) SOLIDS.push({ x: f.x, z: f.z, r: 1.0 });
   let timeFrozen = navigator.webdriver && !params.has('cycle'); const todLocked = timeFrozen && !params.has('tod');
+  if (__DIAG__ && params.has('diag')) timeFrozen = true; // M55 · diag runs: identical light for every config
   let tod = params.has('tod') ? ((+params.get('tod')! % 1) + 1) % 1 : save.tod ?? 0.42, todSaveT = 0, nightK = 0;
   island.solve(save.beacon);
   const grove = makeEchoGrove(HIGH, rock); scene.add(grove.group);
@@ -1551,7 +1556,7 @@ ${GRADE_GLSL}
   let camYOff = 0, camDistS = -1, camGy = 0; const stickF = { x: 0, y: 0 }; const backV = new THREE.Vector3(), rightV = new THREE.Vector3(), fwdV = new THREE.Vector3(), shU = new THREE.Vector3(), shV = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0);
   function update(dt: number, t: number) {
     tickFx(dt); // M47
-    if (!HIGH) liteLod(); // M44
+    if (!HIGH) { if (__DIAG__ && DG) { const t0 = performance.now(); liteLod(); DG.lodMs(performance.now() - t0); } else liteLod(); } // M44
     if (creating) { previewUpdate(dt, t); return; }
     lastDt = dt; advanceTime(dt);
     // Input → desired velocity in camera space.
@@ -1883,7 +1888,14 @@ ${GRADE_GLSL}
   // landmark lamp sprites, NPC/mob parts across the vale. Hero, terrain, sky, water, instanced fields and unbounded objects are skipped.
   const NOLOD = new URLSearchParams(location.search).has('nolod'), LOD_K = 175, LOD_FLOOR = 90, lodList: { o: THREE.Object3D; r: number; c: THREE.Vector3; mask: number; off: boolean; sp: boolean }[] = []; let lodBuilt = false, lodTick = 0; const bigCasters: { m: THREE.Mesh; box: THREE.Box3 }[] = []; const lodV = new THREE.Vector3();
   function liteLod() {
+    if (__DIAG__ && DG && DG.lodSpread && lodBuilt) { // M55 · diag A/B only: the same work spread as 1/6 of the list on every call
+      if (NOLOD || inCastle || inCave || inBarrow) return; lodTick = (lodTick + 1) % 6; DG.lodTicks++; const cp = camera.position;
+      if (lodTick === 0) { lodV.set(state.px, player.root.position.y, state.pz); for (const c of bigCasters) c.m.castShadow = c.box.distanceToPoint(lodV) < 40; }
+      for (let i = lodTick; i < lodList.length; i += 6) { const e = lodList[i]; lodV.copy(e.c).applyMatrix4(e.o.matrixWorld); const far = lodV.distanceTo(cp) > Math.max(e.sp ? LOD_FLOOR : 0, LOD_K * e.r);
+        if (far !== e.off) { e.off = far; if (far) { e.mask = e.o.layers.mask; e.o.layers.mask = 1 << 30; } else e.o.layers.mask = e.mask; } }
+      return; }
     if (NOLOD || inCastle || inCave || inBarrow) return; if (lodBuilt && (lodTick = (lodTick + 1) % 6) !== 0) return;
+    if (__DIAG__ && DG) DG.lodTicks++;
     if (!lodBuilt) { lodBuilt = true; scene.updateMatrixWorld(true); scene.traverse((o) => { const m = o as THREE.Mesh; if (!(m.isMesh || (o as THREE.Sprite).isSprite) || (m as unknown as THREE.InstancedMesh).isInstancedMesh || (m as unknown as THREE.SkinnedMesh).isSkinnedMesh || !o.frustumCulled) return; // characters stay whole
       for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === player.root) return;
       const g = m.geometry; if (!g) return; if (!g.boundingSphere) g.computeBoundingSphere(); const bs = g.boundingSphere!; o.getWorldScale(lodV); const r = bs.radius * Math.max(lodV.x, lodV.y, lodV.z);
@@ -1899,8 +1911,9 @@ ${GRADE_GLSL}
     if (legacyMotion) { update(frameDt, clock.elapsedTime); interpOn = false; return; }
     if (simT === 0) { simT = clock.elapsedTime; acc = FIXED; } // first frame always simulates once (state/sky applied immediately)
     acc += frameDt; let n = 0;
-    while (acc >= FIXED && n < 7) { ipP0.copy(player.root.position); ipR0 = player.root.rotation.y; ipC0.copy(camera.position); ipQ0.copy(camera.quaternion); simT += FIXED; update(FIXED, simT); acc -= FIXED; n++; }
-    if (n === 7) acc = Math.min(acc, FIXED);
+    while (acc >= FIXED && n < (__DIAG__ && DG ? DG.simCap : 7)) { ipP0.copy(player.root.position); ipR0 = player.root.rotation.y; ipC0.copy(camera.position); ipQ0.copy(camera.quaternion); simT += FIXED; update(FIXED, simT); acc -= FIXED; n++; }
+    if (n === (__DIAG__ && DG ? DG.simCap : 7)) acc = Math.min(acc, FIXED);
+    if (__DIAG__ && DG) DG.nSteps += n;
     ipP1.copy(player.root.position); ipR1 = player.root.rotation.y; ipC1.copy(camera.position); ipQ1.copy(camera.quaternion);
     const a = acc / FIXED; interpOn = true;
     if (ipP0.distanceToSquared(ipP1) > 9 || ipC0.distanceToSquared(ipC1) > 9 || cine || dawnCine) return; // teleports/cinematics: no blend
@@ -1910,23 +1923,33 @@ ${GRADE_GLSL}
   function unInterp() { if (!interpOn) return; player.root.position.copy(ipP1); player.root.rotation.y = ipR1; camera.position.copy(ipC1); camera.quaternion.copy(ipQ1); interpOn = false; }
   let inFrame = false;
   function frame(ts?: number) {
+    if (__DIAG__ && DG && DG.idle) { clock.getDelta(); lastTs = -1; rawLast = -1; return; } // M55 · diag cool-down: nothing simulated or rendered
     renderer.info.reset();
     const cd = Math.min(0.1, clock.getDelta()), t = clock.elapsedTime;
     let dt = cd; if (!legacyMotion && ts !== undefined) {
       // Motion: Smooth = present every ~33.3 ms (2 vsyncs at 60 Hz, 3 at 90, 4 at 120): even pacing instead of 40–60 fps wobble.
       const g = gate(ts); if (g < 0) { clock.getDelta(); return; } dt = g < 1e-6 ? cd : g; }
     if (ts !== undefined) { const fms = rawLast >= 0 ? ts - rawLast : 0; rawLast = ts; if (fms > 0) { ftHist[ftI++ % 60] = fms; } }
+    if (__DIAG__ && DG) DG.b(ts ?? performance.now());
     inFrame = true; if (!paused) stepFrame(dt); inFrame = false;
+    if (__DIAG__ && DG) DG.m(0);
     // M20b · the Keeper's visuals follow the presented frame (interpolated hero/camera), not the 60 Hz tick: no coil judder vs a smooth camera.
     if (!paused && !legacyMotion && inKeep && keep) keep.update(t, dt, player.root.position);
     if (paused && !mapEl.hidden) { mapT -= dt; if (mapT <= 0) { mapT = 0.12; drawMap(t); } }
+    if (__DIAG__ && DG) DG.m(1);
     grassField.pump(motionSmooth ? 4 : 2.5); if (HIGH) grassFar.pump(2);
+    if (__DIAG__ && DG) DG.m(2);
     if (rec) recFrame(dt);
+    if (__DIAG__ && DG) DG.r0();
     if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : inKeep && keep ? keep.scene : inCastle && castle ? castle.scene : inBarrow && barrow ? barrow.scene : scene, camera);
+    if (__DIAG__ && DG) DG.r1();
     unInterp();
     frames++; totalFrames++; fpsT += dt; if (fpsT > 0.5) { fps = frames / fpsT; const fpsT0 = fpsT / frames; adaptQuality(fpsT); frames = 0; fpsT = 0; if (fpsOn) fpsEl.textContent = `${fps.toFixed(0)} fps · ${(fpsT0 * 1000).toFixed(1)} ms · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M tris · ${quality}${aqLevel ? ` · aq${aqLevel}` : ''}`; }
+    if (__DIAG__ && DG) DG.e();
   }
   renderer.setAnimationLoop(frame);
+  if (__DIAG__) void import('./diag').then((m) => { DG = m.startDiag({ renderer, camera, grass: grassField.mesh, params, quality, motion: () => (motionSmooth ? 'smooth' : 'fast'),
+    activeScene: () => (inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : inKeep && keep ? keep.scene : inCastle && castle ? castle.scene : inBarrow && barrow ? barrow.scene : scene) }); }); // M55 · diag build only
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
     composer?.setSize(innerWidth, innerHeight); gtao?.setSize(innerWidth, innerHeight);

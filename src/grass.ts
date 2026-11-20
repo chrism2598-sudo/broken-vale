@@ -6,6 +6,9 @@ const PALE_YARD = LANDMARKS.find((l) => l.id === 'pale')!; // M24: no grass thro
 const paleStair = (x: number, z: number) => { const dx = x - PALE_YARD.x, dz = z - PALE_YARD.z, v = dx * Math.sin(PALE_F) + dz * Math.cos(PALE_F), u = Math.abs(dx * Math.cos(PALE_F) - dz * Math.sin(PALE_F)); return v > 17.5 && v < 31.8 && (u < 3.5 || (v > 25.4 && u < 7.9)); };
 const PALE_F = Math.atan2(SPAWN.x - PALE_YARD.x, SPAWN.z - PALE_YARD.z), PALE_PLAZA = { x: PALE_YARD.x + Math.sin(PALE_F) * 30.2, z: PALE_YARD.z + Math.cos(PALE_F) * 38.2 }; // M25: the Wing Gate moved out to the rock's foot
 
+/** M55 · diagnostics build only (dead code in production): grass re-scatter swap / GPU upload counters. */
+export const grassDiag = { swaps: 0, bytes: 0 };
+
 /** Instanced grass clumps (tapered curved blades) with GPU wind sway and distance fade. */
 export function makeGrass(count: number, radius: number, bladesPerClump: number, seg = 4, inner = 0): { mesh: THREE.InstancedMesh; uniforms: { uTime: THREE.IUniform; uPlayer: THREE.IUniform }; center: THREE.Vector2; recenter: (x: number, z: number) => void; recenterSoon: (x: number, z: number) => void; pump: (ms: number) => void; busy: () => boolean } {
   const r = rng(7); void rng;
@@ -104,6 +107,7 @@ export function makeGrass(count: number, radius: number, bladesPerClump: number,
     return n;
   }
   function swapIn(n: number) {
+    if (__DIAG__) { grassDiag.swaps++; grassDiag.bytes += (back.m.array as Float32Array).byteLength + (back.c.array as Float32Array).byteLength; }
     const cur = { m: mesh.instanceMatrix, c: mesh.instanceColor! };
     back.m.needsUpdate = true; back.c.needsUpdate = true; mesh.instanceMatrix = back.m; mesh.instanceColor = back.c; mesh.count = n;
     back = { m: cur.m as THREE.InstancedBufferAttribute, c: cur.c }; center.copy(jobC);

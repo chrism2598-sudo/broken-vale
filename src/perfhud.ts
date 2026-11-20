@@ -10,7 +10,7 @@
  * A perf run puts the save store in read-only mode (main.ts), so measuring never touches the player's progress.
  */
 type Info = { calls: number; triangles: number; frame: number };
-type Opts = { ready: () => boolean; info: () => Info; quality: () => string; run: string | null };
+type Opts = { ready: () => boolean; info: () => Info; quality: () => string; run: string | null; adapt?: () => Record<string, unknown> | null };
 type Stats = { fps: number; low1: number; avg: number; p50: number; p95: number; p99: number; max: number; n: number; long33: number; long50: number; long33All: number; long50All: number; frames: number;
   calls: number; tris: number; firstFrameMs: number | null; readyMs: number | null; memMB: number | null; memLimitMB: number | null };
 type V = { warp: (x: number, z: number) => void; view: (f: number, y: number, p: number, d: number) => void; enterCastle: (id: string) => Promise<void> | void; castle: () => { fading?: boolean; inCastle?: boolean };
@@ -39,6 +39,7 @@ export function startPerfHud(o: Opts): void {
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99999;pointer-events:none;font:11px/1.35 ui-monospace,Menlo,monospace;color:#e8f0e0;background:rgba(0,0,0,.62);padding:5px 7px;border-radius:6px;white-space:pre';
   document.body.appendChild(el);
+  const adaptLine = () => { const A = o.adapt?.() as { enabled: boolean; current: number; min: number; max: number; steps: number } | null | undefined; return A ? `\nres: PR ${A.current} ${A.enabled ? 'adaptive' : 'fixed'} (min ${A.min} max ${A.max}, ${A.steps} steps)` : ''; }; // M56
   const stats = (): Stats => { const s = summarize(buf); return { ...s, long33All, long50All, frames, calls, tris, firstFrameMs, readyMs, ...mem() }; };
   let result: unknown = null;
   (window as unknown as { __perf: unknown }).__perf = { stats, result: () => result, reset: () => { buf.length = 0; long33All = 0; long50All = 0; frames = 0; } };
@@ -54,7 +55,7 @@ export function startPerfHud(o: Opts): void {
     }
     if (t - shown > 500) { shown = t; const s = stats(); const f = (v: number | null) => v === null ? '…' : (v / 1000).toFixed(2) + ' s';
       el.textContent = `${o.run ? 'PERF RUN ' + o.run + ' · ' : ''}FPS ${s.fps.toFixed(1)}  (${s.n} frames)\nframe avg ${s.avg.toFixed(1)}  p95 ${s.p95.toFixed(1)}  p99 ${s.p99.toFixed(1)} ms\nlong >33ms ${s.long33}  >50ms ${s.long50}  (since start ${s.long33All}/${s.long50All})\ncalls ${s.calls}  tris ${(s.tris / 1000).toFixed(0)}k\nload: first frame ${f(s.firstFrameMs)}  ready ${f(s.readyMs)}\n` +
-        (s.memMB === null ? 'memory: unavailable' : `memory: JS heap ${s.memMB.toFixed(0)} / ${s.memLimitMB!.toFixed(0)} MB`); }
+        (s.memMB === null ? 'memory: unavailable' : `memory: JS heap ${s.memMB.toFixed(0)} / ${s.memLimitMB!.toFixed(0)} MB`) + adaptLine(); }
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
@@ -81,7 +82,7 @@ export function startPerfHud(o: Opts): void {
       fpsAvg: +s.fps.toFixed(1), fps1Low: +s.low1.toFixed(1), frameMs: { avg: +s.avg.toFixed(1), p50: +s.p50.toFixed(1), p95: +s.p95.toFixed(1), p99: +s.p99.toFixed(1), max: +s.max.toFixed(1) },
       long33: s.long33, long50: s.long50, drawCalls: { avg: Math.round(avgOf(r.calls)), max: Math.max(0, ...r.calls) }, triangles: { avg: Math.round(avgOf(r.tris)), max: Math.max(0, ...r.tris) },
       load: { firstFrameS: firstFrameMs === null ? null : +(firstFrameMs / 1000).toFixed(2), readyS: readyMs === null ? null : +(readyMs / 1000).toFixed(2) },
-      jsHeapMB: mem().memMB === null ? 'unavailable' : +mem().memMB!.toFixed(0), device: deviceInfo(), build: document.querySelector<HTMLScriptElement>('script[type=module][src*="index-"]')?.src.split('/').pop() ?? 'unknown', at: new Date().toISOString() };
+      jsHeapMB: mem().memMB === null ? 'unavailable' : +mem().memMB!.toFixed(0), adapt: o.adapt?.() ?? null, device: deviceInfo(), build: document.querySelector<HTMLScriptElement>('script[type=module][src*="index-"]')?.src.split('/').pop() ?? 'unknown', at: new Date().toISOString() };
     showCard(result as Record<string, unknown>);
   })();
 }

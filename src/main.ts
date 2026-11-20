@@ -1,6 +1,7 @@
 import './diagguard'; // M55 · diag build only: localStorage write guard (empty module in production)
 import * as THREE from 'three';
 import type { Diag } from './diag';
+import { createAdaptRes } from './adaptres';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
@@ -49,7 +50,8 @@ import { SQ_XP, sq, stage, sketched, sketchesLeft, sefaTale, dovTale, ressTale, 
 // ---------- quality ----------
 type Quality = 'high' | 'lite';
 const params = new URLSearchParams(location.search);
-if (params.get('perf') === '1') { if (params.get('perfrun')) setSaveReadOnly('perf'); void import('./perfhud').then((m) => m.startPerfHud({ ready: () => !!(window as unknown as { __vale?: { ready?: boolean } }).__vale?.ready, info: () => renderer.info.render, quality: () => quality, run: params.get('perfrun') })); } // M53/M54 · ?perf=1 overlay (lazy; nothing loads without the flag). A ?perfrun session never writes the save.
+if (params.get('perf') === '1') { if (params.get('perfrun')) setSaveReadOnly('perf'); void import('./perfhud').then((m) => m.startPerfHud({ ready: () => !!(window as unknown as { __vale?: { ready?: boolean } }).__vale?.ready, info: () => renderer.info.render, quality: () => quality, run: params.get('perfrun'), adapt: () => adaptHud() })); } // M53/M54 · ?perf=1 overlay (lazy; nothing loads without the flag). A ?perfrun session never writes the save.
+let adaptHud: () => Record<string, unknown> | null = () => null; // M56 · set once the Lite adaptive-resolution controller exists (perf overlay / perfrun card)
 let DG: Diag | null = null; // M55 · diagnostics hooks; only ever assigned in the diag build (__DIAG__), so production never touches it
 if (__DIAG__) setSaveReadOnly('perf'); // M55 · the diag build never writes the player's save
 // Phones/tablets default to Lite (incl. iPadOS, which reports as Macintosh with touch).
@@ -1921,6 +1923,10 @@ ${GRADE_GLSL}
     camera.position.lerpVectors(ipC0, ipC1, a); camera.quaternion.slerpQuaternions(ipQ0, ipQ1, a);
   }
   function unInterp() { if (!interpOn) return; player.root.position.copy(ipP1); player.root.rotation.y = ipR1; camera.position.copy(ipC1); camera.quaternion.copy(ipQ1); interpOn = false; }
+  // M56 · Lite adaptive render resolution (adaptres.ts): pixel ratio only, Fast motion only (Smooth keeps the fixed Lite ratio), High untouched.
+  const AR = HIGH ? null : createAdaptRes(renderer, Math.min(window.devicePixelRatio, 1.25));
+  const arOn = !HIGH && !params.has('shot') && !params.has('noadapt') && (!navigator.webdriver || params.has('adapt'));
+  const arEnabled = () => arOn && !motionSmooth && !(__DIAG__ && DG && DG.adaptOff);
   let inFrame = false;
   function frame(ts?: number) {
     if (__DIAG__ && DG && DG.idle) { clock.getDelta(); lastTs = -1; rawLast = -1; return; } // M55 · diag cool-down: nothing simulated or rendered
@@ -1929,7 +1935,7 @@ ${GRADE_GLSL}
     let dt = cd; if (!legacyMotion && ts !== undefined) {
       // Motion: Smooth = present every ~33.3 ms (2 vsyncs at 60 Hz, 3 at 90, 4 at 120): even pacing instead of 40–60 fps wobble.
       const g = gate(ts); if (g < 0) { clock.getDelta(); return; } dt = g < 1e-6 ? cd : g; }
-    if (ts !== undefined) { const fms = rawLast >= 0 ? ts - rawLast : 0; rawLast = ts; if (fms > 0) { ftHist[ftI++ % 60] = fms; } }
+    let fms = 0; if (ts !== undefined) { fms = rawLast >= 0 ? ts - rawLast : 0; rawLast = ts; if (fms > 0) { ftHist[ftI++ % 60] = fms; } }
     if (__DIAG__ && DG) DG.b(ts ?? performance.now());
     inFrame = true; if (!paused) stepFrame(dt); inFrame = false;
     if (__DIAG__ && DG) DG.m(0);
@@ -1944,11 +1950,13 @@ ${GRADE_GLSL}
     if (composer) composer.render(); else renderer.render(inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : inKeep && keep ? keep.scene : inCastle && castle ? castle.scene : inBarrow && barrow ? barrow.scene : scene, camera);
     if (__DIAG__ && DG) DG.r1();
     unInterp();
+    if (AR) { if (!arEnabled()) { if (AR.stats(false).level !== 0) AR.reset(); } else if (paused || fading || talking || document.hidden || ts === undefined) AR.idle(); else AR.feed(fms, ts); } // M56: resize (if any) lands between frames
     frames++; totalFrames++; fpsT += dt; if (fpsT > 0.5) { fps = frames / fpsT; const fpsT0 = fpsT / frames; adaptQuality(fpsT); frames = 0; fpsT = 0; if (fpsOn) fpsEl.textContent = `${fps.toFixed(0)} fps · ${(fpsT0 * 1000).toFixed(1)} ms · ${(renderer.info.render.triangles / 1e6).toFixed(2)}M tris · ${quality}${aqLevel ? ` · aq${aqLevel}` : ''}`; }
     if (__DIAG__ && DG) DG.e();
   }
   renderer.setAnimationLoop(frame);
-  if (__DIAG__) void import('./diag').then((m) => { DG = m.startDiag({ renderer, camera, grass: grassField.mesh, params, quality, motion: () => (motionSmooth ? 'smooth' : 'fast'),
+  if (AR) adaptHud = () => ({ ...AR.stats(arEnabled()) });
+  if (__DIAG__) void import('./diag').then((m) => { DG = m.startDiag({ renderer, camera, grass: grassField.mesh, params, quality, motion: () => (motionSmooth ? 'smooth' : 'fast'), adapt: AR, adaptOn: () => arEnabled(),
     activeScene: () => (inCave && cave ? cave.scene : inCoast && coast ? coast.scene : inSea && sea ? sea.scene : inKeep && keep ? keep.scene : inCastle && castle ? castle.scene : inBarrow && barrow ? barrow.scene : scene) }); }); // M55 · diag build only
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
@@ -1988,6 +1996,9 @@ ${GRADE_GLSL}
   sndLabel();
   const api = {
     get ready() { return !fading && !caveLoading; }, errors, quality,
+    /** M56 QA: adaptive-resolution stats, and a deterministic drive of the real controller + renderer with synthetic presented-frame intervals. */
+    adapt: { stats: () => (AR ? AR.stats(arEnabled()) : null), sim(ivs: number[] | ((pr: number, i: number) => number), n?: number) { if (!AR) return null; AR.reset(); AR.resetStats(); let now = 1e6; const tr: number[][] = [[0, AR.ratio(), renderer.domElement.width]];
+      const N = typeof ivs === 'function' ? n ?? 0 : ivs.length; for (let i = 0; i < N; i++) { const iv = typeof ivs === 'function' ? ivs(AR.ratio(), i) : ivs[i]; now += iv; const pr = AR.ratio(), t0 = performance.now(); AR.feed(iv, now); if (AR.ratio() !== pr) tr.push([now - 1e6, AR.ratio(), renderer.domElement.width, Math.round((performance.now() - t0) * 100) / 100]); } const st = AR.stats(true); AR.idle(); return { trace: tr, stats: st }; }, reset: () => AR?.reset() },
     get fps() { return fps; },
     get frames() { return totalFrames; },
     get tris() { return renderer.info.render.triangles; },

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { treeBases, TREE_BASE_N } from './nature';
 import { WATER_Y, WAYFINDER, heightAt, creekX, creekHalf, pathX, TRAIL, PATH_BEND, TRACK, WORN, STREAM, POOL, QUARRY, type P2 } from './world';
 
 const B = PATH_BEND, f3 = (v: number) => v.toFixed(3);
@@ -19,14 +20,14 @@ export function makeTerrain(size: number, seg: number, sets: { grass: GroundTex;
   for (const s of all) for (const t of [s.diff, s.nor, s.arm]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; }
   for (const s of all) s.diff.colorSpace = THREE.SRGBColorSpace;
   mat.onBeforeCompile = (sh) => {
-    const u = sh.uniforms as Record<string, THREE.IUniform>;
+    const u = sh.uniforms as Record<string, THREE.IUniform>; u.uTB = treeBases; // M49
     const names = ['G', 'P', 'R', 'B'];
     all.forEach((s, i) => { u['t' + names[i] + 'd'] = { value: s.diff }; u['t' + names[i] + 'n'] = { value: s.nor }; u['t' + names[i] + 'a'] = { value: s.arm }; });
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWP=(modelMatrix*vec4(transformed,1.0)).xyz; vWN=normalize(mat3(modelMatrix)*objectNormal);');
     const decl = names.map(n => `uniform sampler2D t${n}d; uniform sampler2D t${n}n; uniform sampler2D t${n}a;`).join('\n');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-varying vec3 vWP; varying vec3 vWN;
+varying vec3 vWP; varying vec3 vWN; uniform vec4 uTB[${TREE_BASE_N}];
 ${decl}
 float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float vn(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1,0)),u.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),u.x),u.y);}
@@ -98,6 +99,9 @@ vec4 W4; float WETB; float BANKG; float SNOW; float RUT; float RCROWN; vec2 UVg;
   // Snow caps: above ~44 m on gentler faces, ragged by noise.
   SNOW=smoothstep(44.,56.,alt+10.*(macro2-.5)+6.*(vn(p*.2)-.5))*smoothstep(.45,.75,vWN.y);
   diffuseColor.rgb*= cg*W4.x+cp*W4.y+cr*W4.z+cb*W4.w;
+  { // M49 · grounded trees: under each nearby crown the ground is shaded, damper and leaf-littered, darkest at the trunk
+    float tb=0.; for (int i=0;i<${TREE_BASE_N};i++){ vec4 q=uTB[i]; if(q.w<.5) continue; float d=length(p-q.xy)/q.z; tb=max(tb,(1.-smoothstep(.15,1.,d+.25*(vn(p*1.7+q.xy)-.5)))*(.55+.45*(1.-smoothstep(0.,.35,d)))); }
+    diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.62,.6,.5)*(.85+.3*vn(p*3.1)),tb*.75*(1.-SNOW)); }
   // M22b · packed, slightly rutted earth on the Greycrown trail so the switchback reads from the cairn.
   { vec3 packed=mix(cp,vec3(.30,.20,.12),.42)*mix(vec3(1.),vec3(.82,.7,.52),vn(p*1.15));
     packed=mix(packed,packed*vec3(.62,.55,.42),1.-smoothstep(.35,1.15,1.-tm)); // darker rut down the centre

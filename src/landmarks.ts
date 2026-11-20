@@ -609,8 +609,22 @@ function makeIronDome(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): T
   const g = b.build();
   // Glowing arched windows around the drum.
   const winMat = new THREE.MeshStandardMaterial({ color: '#2a140a', emissive: '#ff8a3a', emissiveIntensity: 1.25, roughness: 0.7 });
+  // M49 · the windows were flat orange cut-outs (the survey's worst close view): now leaded panes — iron mullions and cames,
+  //       firelight brightest low in each pane and dimming up into smoke, a per-window flicker; same mesh, same draw call
+  const winU = { uT: { value: 0 } };
+  winMat.onBeforeCompile = (sh) => { sh.uniforms.uT = winU.uT;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 aW; varying vec3 vWn;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWn=aW;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uT; varying vec3 vWn;').replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { vec2 w=vWn.xy; float fl=.82+.12*sin(uT*5.1+vWn.z*2.3)+.08*sin(uT*11.7+vWn.z*5.);
+        float heat=mix(1.25,.35,smoothstep(-1.4,1.7,w.y))*fl;
+        vec2 f=abs(fract(vec2(w.x/.45,(w.y+1.4)/.5))-.5);
+        float came=max(smoothstep(.43,.48,f.x),smoothstep(.42,.48,f.y));
+        float mull=1.-smoothstep(.05,.09,abs(w.x)), bar=1.-smoothstep(.05,.09,abs(w.y-.15));
+        float iron=max(came*.85,max(mull,bar));
+        heat*=1.-.45*smoothstep(.62,.9,abs(w.x)/.9);
+        totalEmissiveRadiance*=heat*(1.-iron*.92); diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.06,.05,.045),iron); }`); };
   const wg: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; if (Math.abs(Math.atan2(Math.sin(a - face), Math.cos(a - face))) < 0.3) continue; const w = new THREE.CircleGeometry(0.9, 12, 0, Math.PI); w.scale(1, 1.9, 1); const q = new THREE.PlaneGeometry(1.8, 1.4); q.translate(0, -0.7, 0); const wm = mergeGeometries([w.toNonIndexed().deleteAttribute('uv') as THREE.BufferGeometry, q.toNonIndexed().deleteAttribute('uv') as THREE.BufferGeometry]); wm.rotateY(a); wm.translate(Math.sin(a) * (R + 1.25), y0 + 4, Math.cos(a) * (R + 1.25)); wg.push(wm); }
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; if (Math.abs(Math.atan2(Math.sin(a - face), Math.cos(a - face))) < 0.3) continue; const w = new THREE.CircleGeometry(0.9, 12, 0, Math.PI); w.scale(1, 1.9, 1); const q = new THREE.PlaneGeometry(1.8, 1.4); q.translate(0, -0.7, 0); const wm = mergeGeometries([w.toNonIndexed().deleteAttribute('uv') as THREE.BufferGeometry, q.toNonIndexed().deleteAttribute('uv') as THREE.BufferGeometry]); { const pp = wm.attributes.position as THREE.BufferAttribute, aw = new Float32Array(pp.count * 3); for (let j = 0; j < pp.count; j++) { aw[j * 3] = pp.getX(j); aw[j * 3 + 1] = pp.getY(j); aw[j * 3 + 2] = i; } wm.setAttribute('aW', new THREE.BufferAttribute(aw, 3)); } wm.rotateY(a); wm.translate(Math.sin(a) * (R + 1.25), y0 + 4, Math.cos(a) * (R + 1.25)); wg.push(wm); }
   g.add(new THREE.Mesh(mergeGeometries(wg), winMat));
   // Yard props: anvil, barrels, crates, coal heap, ore cart.
   const wood = new THREE.MeshStandardMaterial({ color: '#6a4a2e', roughness: 0.9 }), dark = new THREE.MeshStandardMaterial({ color: '#2f2a28', metalness: 0.6, roughness: 0.55 }), coal = new THREE.MeshStandardMaterial({ color: '#1d1b1a', roughness: 1 });
@@ -626,8 +640,20 @@ function makeIronDome(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): T
   const puffs: THREE.Sprite[] = [];
   for (const [cx, cz, h] of [[-9, 6, 30], [8, 8, 26]]) for (let k = 0; k < 5; k++) { const sp = new THREE.Sprite(smokeMat.clone()); sp.userData = { cx, cz, h, k }; puffs.push(sp); g.add(sp); }
   if (opts.lights) { const pl = new THREE.PointLight('#ff9a4a', 60, 28, 2); pl.position.set(fx * (R + 4), y0 + 2.5, fz * (R + 4)); g.add(pl); }
-  g.userData.tick = (time: number) => { for (const sp of puffs) { const { cx, cz, h, k } = sp.userData; const f = ((time * 0.18 + k / 5) % 1); sp.position.set(cx + f * 3, y0 + h + 1.5 + f * 12, cz + f * 1.5); sp.scale.setScalar(2 + f * 7); (sp.material as THREE.SpriteMaterial).opacity = 0.45 * Math.sin(f * Math.PI); } };
-  const ember = new THREE.MeshBasicMaterial({ color: '#ffb066', toneMapped: false });
+  g.userData.tick = (time: number) => { emberU.uT.value = time; winU.uT.value = time; for (const sp of puffs) { const { cx, cz, h, k } = sp.userData; const f = ((time * 0.18 + k / 5) % 1); sp.position.set(cx + f * 3, y0 + h + 1.5 + f * 12, cz + f * 1.5); sp.scale.setScalar(2 + f * 7); (sp.material as THREE.SpriteMaterial).opacity = 0.45 * Math.sin(f * Math.PI); } };
+  // M49 · the forge mouth was a flat orange cut-out: now a deep glowing interior — hot gold at the hearth falling off to smoky
+  //       dark red at the arch, a silhouetted anvil and hearth lip, drifting heat haze and a slow flicker
+  const emberU = { uT: { value: 0 } };
+  const ember = new THREE.ShaderMaterial({ uniforms: emberU, toneMapped: false, side: THREE.DoubleSide,
+    vertexShader: 'varying vec2 vP;void main(){vP=position.xy;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader: `uniform float uT;varying vec2 vP;
+      float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);} float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+      void main(){ vec2 q=vP/2.6; float r=length(vec2(q.x,q.y*1.15)), fl=.85+.15*n(vec2(uT*3.,q.x*2.))+.08*sin(uT*7.3);
+        float heat=(1.-smoothstep(.05,1.,length(vec2(q.x*1.3,q.y-.08))))*fl;
+        vec3 c=mix(vec3(.16,.035,.01),vec3(.95,.38,.08),smoothstep(.0,.55,heat)); c=mix(c,vec3(1.,.82,.5),smoothstep(.55,.95,heat));
+        c*=.75+.35*n(vec2(q.x*6.,q.y*4.-uT*1.4));
+        float anvil=step(abs(q.x+.28),.16)*step(q.y,.2)*step(.12,q.y)+step(abs(q.x+.28),.06)*step(q.y,.12)+step(q.y,.05)*step(abs(q.x),.9);
+        c=mix(c,vec3(.05,.02,.012),clamp(anvil,0.,1.)*.85); c*=1.-.6*smoothstep(.75,1.,r); gl_FragColor=vec4(c*1.15,1.);}` });
   const door = new THREE.Mesh(new THREE.CircleGeometry(2.6, 24, 0, Math.PI), ember); door.scale.set(1, 1.6, 1);
   door.position.set(Math.sin(face) * (R + 1.25), y0, Math.cos(face) * (R + 1.25)); door.rotation.y = face; g.add(door);
   const glow = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 2.2, 16, 1, true), new THREE.MeshBasicMaterial({ color: '#ffcf80', toneMapped: false }));

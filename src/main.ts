@@ -2031,7 +2031,7 @@ ${GRADE_GLSL}
         save.started = true; save.weapons = ['rusty', 'spear', 'maul']; save.weapon = 'rusty';
         return (async () => { const v = name.slice(4), UPF = 4.5;
           if (v === 'gate') { const f = KF.pale, d = keepDoor('pale'); state.px = d.x + Math.sin(f.face) * 6 + Math.cos(f.face) * 1.5; state.pz = d.z + Math.cos(f.face) * 6 - Math.sin(f.face) * 1.5; state.facing = f.face + Math.PI; state.yaw = f.face + 0.2; state.pitch = 0.05; state.dist = 6.5; snapCam = true; camera.position.set(state.px, 50, state.pz); for (let i = 0; i < 90; i++) update(1 / 30, clock.elapsedTime + i / 30); hudT = 0; updateHud(0); return; }
-          await enterCastle(v === 'azure' ? 'azure' : 'pale', 'door', true); const c = castle!, O = c.O;
+          await enterCastle(v === 'azure' || v === 'aznook' ? 'azure' : 'pale', 'door', true); const c = castle!, O = c.O;
           const at = (lx: number, lz: number, ly: number, face: number, yo: number, pitch: number, dist: number) => { state.px = O.x + lx; state.pz = O.z + lz; c.place(state.px, state.pz, ly); state.facing = face; state.yaw = face + Math.PI + yo; state.pitch = pitch; state.dist = dist; snapCam = true; };
           if (v === 'shelf' || v === 'shelfopen') for (const m of mobs) m.kill();
           if (v === 'cellar' || v === 'kitchen' || v === 'armory' || v === 'bed' || v === 'cells') for (const m of mobs) m.kill();
@@ -2050,6 +2050,7 @@ ${GRADE_GLSL}
           if (v === 'tower') at(8.1, -13.4, 11.7, Math.PI, 0.9, 0.62, 5.2);
           if (v === 'chest') { c.openChest(c.id + '-library', true); at(8.2, 7.4, 0, 2.68, 0, 0.75, 3.6); }
           if (v === 'nook' || v === 'nookopen') { for (const m of mobs) m.kill(); if (v === 'nookopen') c.openNook(true); at(5.6, 2.0, 0, Math.PI / 2 - 0.2, 0.45, 0.04, 3.2); } // M47
+          if (v === 'aznook') { for (const m of mobs) m.kill(); c.openNook(true); at(10.2, 2.2, 0, Math.PI / 2 - 0.3, 0.4, 0.2, 2.6); } // M49 · Azure's passage
           if (v === 'nookin') { for (const m of mobs) m.kill(); c.openNook(true); at(10.2, 2.2, 0, Math.PI / 2 - 0.3, 0.4, 0.2, 2.6); }
           if (v === 'secret') { c.openSecret(true); at(-7.4, 1.0, 0, -Math.PI / 2, -0.3, 0.14, 4.4); }
           for (let i = 0; i < 60; i++) update(1 / 30, clock.elapsedTime + i / 30);

@@ -109,5 +109,17 @@ for(const kid of ['azure','pale']){const ROUTE=[...ROUTE0.slice(0,9),...(kid==='
  await p.reload({waitUntil:'load'});await ready();await sleep(1500);await p.evaluate(()=>window.__vale.enterCastle('pale'));await settle(`window.__vale.castle().id==='pale'&&!window.__vale.castle().fading`,30000).catch(()=>{});await sleep(500);
  k1=await K();q1=await Q();ok('nook open + stash looted after reload',k1.nook===true&&k1.save.secrets.includes('pale-nook')&&(q1.save.stashes||[]).includes('pale-nook'),{nook:k1.nook,stashes:q1.save.stashes});
  await at(12.2,2.2,0,Math.PI/2);k1=await K();ok('looted stash not offered again',!/iron-bound box/i.test(k1.near||''),{near:k1.near});}
+// 21 · M49: Azure's hidden passage (the same panelled doorway in its hall): shut, opens (+10), walk in, stash pays once (+20), survives a reload
+{await p.evaluate(()=>window.__vale.enterCastle('azure'));await settle(`window.__vale.castle().id==='azure'&&!window.__vale.castle().fading`,30000).catch(()=>{});await sleep(500);await p.evaluate(()=>{const v=window.__vale;if(v.castlePeace)v.castlePeace();});
+ let k1=await K();ok('azure: nook shut on a save that never opened it',k1.nook===false&&!k1.save.secrets.includes('azure-nook'),{nook:k1.nook,secrets:k1.save.secrets});
+ await at(8.2,2.65,0);await walk(1,0,40);k1=await K();ok('azure: shut panel blocks the way',k1.room==='Great hall',{room:k1.room});
+ await at(8.1,2.65,0,Math.PI/2);k1=await K();ok('azure: wainscot panel offered',/panel sits proud/.test(k1.near||''),{near:k1.near});
+ const xa=(await Q()).save.xp;await act();await sleep(300);k1=await K();ok('azure: nook opens (+10 XP, saved)',k1.nook===true&&k1.save.secrets.includes('azure-nook')&&(await Q()).save.xp===xa+10,{nook:k1.nook,secrets:k1.save.secrets});
+ await sleep(1500);await at(8.2,2.65,0);await walk(1,0,40);k1=await K();ok('azure: walk into the hidden passage',k1.room==='Hidden passage',{room:k1.room});
+ await at(11.8,1.2,0,Math.PI/2);k1=await K();ok('azure: small chest offered',/small chest/i.test(k1.near||''),{near:k1.near});
+ const xb=(await Q()).save.xp;await act();await sleep(200);await act();await sleep(200);let q1=await Q();ok('azure: nook stash pays once (+20 XP)',(q1.save.stashes||[]).includes('azure-nook')&&q1.save.xp===xb+20,{xp:q1.save.xp-xb,stashes:q1.save.stashes});
+ await p.reload({waitUntil:'load'});await ready();await sleep(1500);await p.evaluate(()=>window.__vale.enterCastle('azure'));await settle(`window.__vale.castle().id==='azure'&&!window.__vale.castle().fading`,30000).catch(()=>{});await sleep(500);
+ k1=await K();q1=await Q();ok('azure: nook open + stash looted after reload',k1.nook===true&&k1.save.secrets.includes('azure-nook')&&(q1.save.stashes||[]).includes('azure-nook')&&k1.save.secrets.includes('pale-nook'),{nook:k1.nook,stashes:q1.save.stashes});
+ await at(11.8,1.2,0,Math.PI/2);k1=await K();ok('azure: looted stash not offered again',!/small chest/i.test(k1.near||''),{near:k1.near});}
 ok('no page errors',errs.length===0,errs.slice(0,5));
 console.log(fails?`QA-CASTLE FAIL ${fails}`:'QA-CASTLE PASS');await b.close();process.exit(fails?1:0);})().catch(e=>{console.log('QA-CASTLE ERROR',e.message);process.exit(2);});

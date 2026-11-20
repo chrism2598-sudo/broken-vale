@@ -71,9 +71,10 @@ function layout(id: KeepId) {
     { id: 'gal-shaft', x: 5.2, z: -10, ax: 'x', w: 1.9, h: 2.8, y: UP },
   ];
   if (id === 'pale') { rooms.push({ id: 'secret', name: 'Hidden room', x0: -15, x1: -9, z0: -2, z1: 4, y0: 0, h: 3.6 }); doors.push({ id: 'secret', x: -9, z: 1.0, ax: 'z', w: 1.6, h: 2.4, y: 0, secret: true });
-    // M47 · a second hidden way: a panelled-over doorway in the hall's east wainscot, under the tapestry, into a narrow passage
-    rooms.push({ id: 'nook', name: 'Hidden passage', x0: 9, x1: 13.6, z0: -0.6, z1: 3.8, y0: 0, h: 3.6 }); doors.push({ id: 'nook', x: 9, z: 2.65, ax: 'z', w: 1.3, h: 2.2, y: 0, nook: true }); }
+  }
   else { rooms.push({ id: 'secret', name: 'Hidden room', x0: -15, x1: -9, z0: -17, z1: -11, y0: UP, h: 3.4 }); doors.push({ id: 'secret', x: -9, z: -12.2, ax: 'z', w: 1.6, h: 2.4, y: UP, secret: true }); }
+  // M47 · a second hidden way: a panelled-over doorway in the hall's east wainscot, under the tapestry, into a narrow passage (M49: Azure has one too)
+  rooms.push({ id: 'nook', name: 'Hidden passage', x0: 9, x1: 13.6, z0: -0.6, z1: 3.8, y0: 0, h: 3.6 }); doors.push({ id: 'nook', x: 9, z: 2.65, ax: 'z', w: 1.3, h: 2.2, y: 0, nook: true });
   // M21b · more of the keep: kitchen (west) and armoury (east) off the hall, a cellar/dungeon under the kitchen by a stone stair, and (Pale) a bedchamber off the solar.
   rooms.push({ id: 'kitchen', name: 'Kitchen', x0: -15, x1: -9, z0: -10, z1: -4, y0: 0, h: 4 }, { id: 'armory', name: 'Armoury', x0: 9, x1: 15, z0: -10, z1: -4, y0: 0, h: 4 },
     { id: 'cellar', name: 'Cellar', x0: -15, x1: -5, z0: -18, z1: -10, y0: CELLAR_Y, h: 3.6 - CELLAR_Y });
@@ -86,6 +87,7 @@ export const CELLAR_Y = -4;
 export const STASH: Record<string, { label: string; note: string; xp: number }> = {
   'pale-stone': { label: 'A loose stone in the armoury wall', note: 'Behind the loose stone: a soldier’s purse and a tin badge (+15 XP).', xp: 15 },
   'pale-lever': { label: 'An iron ring behind the bed-hangings', note: 'The ring is a lever · a panel in the wainscot drops open: a silver ring with a moth engraved on it (+20 XP).', xp: 20 },
+  'azure-nook': { label: 'A small chest wedged behind a fallen shelf', note: 'Inside, wrapped in oilcloth: a pouch of old coin and a good whetstone (+20 XP).', xp: 20 }, // M49
   'pale-nook': { label: 'An iron-bound box under a mouldering sack', note: 'Under the sack: a purse of old coin and a twist of good blade-oil, left by whoever used this passage (+20 XP).', xp: 20 }, // M47
   'pale-cell': { label: 'Scratches on the cell wall', note: 'Tally marks, and under them, a hidden key-hole · a little drawer holds a waxed map of the cave (+15 XP).', xp: 15 },
   'azure-stone': { label: 'A loose stone in the armoury wall', note: 'Behind the loose stone: a coil of blue cord and three tide-coins (+15 XP).', xp: 15 },
@@ -229,7 +231,8 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
       if (ax === 'z') { box(darkWoodM, 0.05, H, len, c + inward * 0.03, 0.2, m); box(woodM, 0.1, 0.09, len, c + inward * 0.06, 0.2 + H, m); for (let u = a0 + 0.1; u < a1; u += 0.92) box(darkWoodM, 0.08, H, 0.08, c + inward * 0.07, 0.2, u); }
       else { box(darkWoodM, len, H, 0.05, m, 0.2, c + inward * 0.03); box(woodM, len, 0.09, 0.1, m, 0.2 + H, c + inward * 0.06); for (let u = a0 + 0.1; u < a1; u += 0.92) box(darkWoodM, 0.08, H, 0.08, u, 0.2, c + inward * 0.07); } };
     wains('z', -9, 1, -9.8, -9.9); wains('z', -9, 1, -7.3, -4.7); wains('z', -9, 1, -1.3, -0.3); wains('z', -9, 1, 2.3, 3.8);
-    wains('z', 9, -1, -7.3, -6.7); if (az) wains('z', 9, -1, 1.5, 3.8); else { wains('z', 9, -1, 1.5, 1.95); wains('z', 9, -1, 3.35, 3.8); } // M47: Pale's panelled-over doorway sits in the gap wains('x', -10, 1, -8.8, 8.8); wains('x', 4, -1, -8.8, -2.1); wains('x', 4, -1, 2.1, 8.8);
+    wains('z', 9, -1, -7.3, -6.7); wains('z', 9, -1, 1.5, 1.95); wains('z', 9, -1, 3.35, 3.8); // M47/M49: the panelled-over doorway sits in the gap (both keeps)
+    wains('x', -10, 1, -8.8, 8.8); wains('x', 4, -1, -8.8, -2.1); wains('x', 4, -1, 2.1, 8.8);
     // roof trusses: a wall post on a stone corbel and a diagonal brace under every beam end
     for (let k = 1; k * 2.4 < 14; k++) { const z = -10 + k * 2.4; for (const s of [-1, 1]) { if (s < 0 && (z < -7 || z > 1.5)) continue; const wx = s * 8.86; // (skip the west lancet and banner)
       box(stoneM, 0.34, 0.42, 0.5, wx, 6.9, z); box(darkWoodM, 0.22, 2.0, 0.24, s * 8.82, 7.3, z);
@@ -304,8 +307,16 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   if (!az) { box(darkWoodM, 1.8, 0.9, 0.8, -12, 0, -1.4); box(ironM, 0.2, 2.0, 1.4, -14.8, 0, 2); for (let k = 0; k < 3; k++) box(stoneM, 0.5, 0.5, 0.5, -14.4, 0, -1.4 + k * 0.6); block(-13, -11, -2, -0.9, 0); occ.push({ x0: -14.95, x1: -14.65, z0: 1.25, z1: 2.75, y0: 0, y1: 2.0 }); }
   else { box(darkWoodM, 1.8, 0.9, 0.8, -12, UP, -16.5); block(-13, -11, -17, -16, UP); }
   inter.push(az ? { id: 'secret', kind: 'secret', x: -8.0, z: -12.2, y: UP, r: 1.9 } : { id: 'secret', kind: 'secret', x: -8.0, z: 0.4, y: 0, r: 2.0 });
+  inter.push({ id: 'nook', kind: 'nook', x: 8.1, z: 2.65, y: 0, r: 1.4 });
+  if (az) { // M49 · Azure's passage: a small chest behind a fallen shelf, a coil of rope, a dead lamp on a ledge, a worn runner; low pieces only
+    inter.push({ id: 'azure-nook', kind: 'stash', x: 12.0, z: 1.2, y: 0, r: 1.3 });
+    box(darkWoodM, 0.7, 0.45, 0.5, 12.9, 0, 1.0); box(ironM, 0.72, 0.06, 0.52, 12.9, 0.42, 1.0); block(12.5, 13.3, 0.7, 1.3, 0);
+    { const sh = new THREE.BoxGeometry(1.5, 0.08, 0.35); sh.rotateZ(0.32); put(woodM, sh, 12.6, 0.62, 1.55); } // the fallen shelf, leaning on the chest
+    cyl(woodM, 0.3, 0.14, 10.6, 0, 3.25, 10); block(10.25, 10.95, 2.9, 3.6, 0); // coil of rope
+    box(stoneM, 0.4, 0.08, 0.3, 13.2, 1.6, 3.2); cyl(ironM, 0.06, 0.14, 13.2, 1.68, 3.2, 8);
+    box(rugM, 1.6, 0.03, 0.9, 11.4, 0, 2.3); }
   if (!az) { // M47 · the hidden passage: an iron-bound box under a sack, a stool, a dead candle on a ledge, old straw; low pieces, no camera blockers needed
-    inter.push({ id: 'nook', kind: 'nook', x: 8.1, z: 2.65, y: 0, r: 1.4 }, { id: 'pale-nook', kind: 'stash', x: 12.2, z: 2.2, y: 0, r: 1.3 });
+    inter.push({ id: 'pale-nook', kind: 'stash', x: 12.2, z: 2.2, y: 0, r: 1.3 });
     box(darkWoodM, 0.8, 0.5, 0.55, 12.85, 0, 2.2); for (const dz of [-0.2, 0.2]) box(ironM, 0.82, 0.52, 0.05, 12.85, 0, 2.2 + dz); box(clothM, 0.7, 0.16, 0.5, 12.85, 0.5, 2.25); block(12.4, 13.3, 1.85, 2.55, 0);
     cyl(woodM, 0.2, 0.45, 11.0, 0, 3.3, 10); block(10.75, 11.25, 3.05, 3.55, 0);
     box(stoneM, 0.4, 0.08, 0.3, 13.2, 1.6, 3.2); cyl(cloth2M, 0.04, 0.12, 13.2, 1.68, 3.2, 8);
@@ -425,7 +436,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
       for (let i = 0; i < 128; i += 4) { x.fillStyle = pal[2]; x.fillRect(i, 186, 2, 6); }
       const id2 = x.getImageData(0, 0, 128, 192), dd = id2.data; for (let i = 0; i < dd.length; i += 4) { const py = (i / 4 / 128) | 0; const wv = (py % 2 ? 0.93 : 1) * (0.94 + R() * 0.08); for (let k = 0; k < 3; k++) dd[i + k] *= wv; } x.putImageData(id2, 0, 0); }) });
     const tap = (w: number, h: number, x: number, y: number, z: number, ry: number) => { const p = new THREE.PlaneGeometry(w, h, 6, 1); const pa = p.attributes.position; for (let i = 0; i < pa.count; i++) pa.setZ(i, 0.04 * Math.sin(pa.getX(i) / w * Math.PI * 5)); put(tapM, p, x, y, z, ry); box(darkWoodM, w + 0.3, 0.07, 0.07, x + Math.sin(ry) * 0.05, y + h / 2, z + Math.cos(ry) * 0.05, ry); };
-    tap(2.0, 2.5, -8.9, 2.75, -6.0, Math.PI / 2); tap(1.9, 2.4, 8.9, az ? 2.75 : 3.55, 2.65, -Math.PI / 2); /* M47: Pale's hangs higher, over the hidden panel */ tap(1.9, 2.3, -6.7, 2.6, 9.9, Math.PI); if (!az) tap(2.0, 2.4, -8.9, UP + 2.2, -15.6, Math.PI / 2);
+    tap(2.0, 2.5, -8.9, 2.75, -6.0, Math.PI / 2); tap(1.9, 2.4, 8.9, 3.55, 2.65, -Math.PI / 2); /* M47/M49: hangs higher, over the hidden panel */ tap(1.9, 2.3, -6.7, 2.6, 9.9, Math.PI); if (!az) tap(2.0, 2.4, -8.9, UP + 2.2, -15.6, Math.PI / 2);
     // banners hanging from the gallery rail: swallow-tailed, alternating colours, on iron rods
     const sw = (() => { const s = new THREE.Shape(); s.moveTo(-0.45, 0); s.lineTo(0.45, 0); s.lineTo(0.45, -2.0); s.lineTo(0, -1.6); s.lineTo(-0.45, -2.0); s.lineTo(-0.45, 0); return s; })();
     [-6, -0.9, 4.2].forEach((bx, i) => { put(i % 2 ? cloth2M : clothM, new THREE.ShapeGeometry(sw), bx, UP - 0.32, -6.47); box(ironM, 1.1, 0.04, 0.04, bx, UP - 0.32, -6.47); const c2 = new THREE.PlaneGeometry(0.5, 0.5); put(i % 2 ? clothM : cloth2M, c2, bx, UP - 0.95, -6.46, 0); });

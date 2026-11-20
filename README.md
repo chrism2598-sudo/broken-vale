@@ -369,3 +369,13 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Combat feel: foes freeze briefly on contact (hit-stop), flinch and get knocked back, and glow and flicker before they swing. Hits throw a spark burst and give a small camera punch.
 - Pale Keep has a second hidden passage behind a wainscot panel under the great-hall tapestry, with a small stash. It is saved as `pale-nook` in `secrets`.
 - Notes: tools/m47-findings.md.
+
+### M48
+- Keeper/Warden hit effects, a qa-castle step for the Pale passage, a fix so stashes don't pay again after a reload, and a matte grass bank on the creek.
+
+### M49 (graphics pass, slice 1)
+- Foliage: each tree gets its own proportions, a second tint, gusting wind and leaf flutter, and darker soil under its crown.
+- Iron Dome: the drum windows were flat orange cut-outs. They are now leaded glass with firelight. The forge mouth now has a glowing interior and an anvil silhouette.
+- Coast: lighter, cooler fog so the sand, sea, cliffs and sky separate.
+- Azure Keep gets the same panelled hidden passage in its great hall (`azure-nook`, +10 XP) with a small chest stash (+20 XP). Covered by qa-castle step 21.
+- Notes: tools/m49-findings.md.

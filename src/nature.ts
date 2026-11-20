@@ -97,19 +97,22 @@ function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, aut
     sh.fragmentShader = 'uniform float uGlow;\nvarying float vAo; varying vec3 vTint;\n' + sh.fragmentShader;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uKH; varying float vAo; varying vec3 vTint;')
       .replace('#include <begin_vertex>', `vec3 transformed=vec3(position);
+  #define hr0(y,k) clamp((y)/(k),0.,1.)
   #ifdef USE_INSTANCING
   vec3 ip=instanceMatrix[3].xyz;
   #else
   vec3 ip=vec3(0.);
   #endif
   float hh=max(0.,position.y);
-  float sw=sin(uTime*1.3+ip.x*.13+ip.z*.11)*.5+sin(uTime*2.9+position.x*2.+position.z*1.7)*.18;
-  transformed.x+=sw*.025*hh; transformed.z+=sw*.018*hh;
+  float gust=.75+.45*sin(uTime*.37+ip.x*.021+ip.z*.017)*sin(uTime*.23+ip.z*.03); // M49 · slow gusts roll across the vale
+  float sw=(sin(uTime*1.3+ip.x*.13+ip.z*.11)*.5+sin(uTime*2.9+position.x*2.+position.z*1.7)*.18)*gust;
+  transformed.x+=sw*.03*hh; transformed.z+=sw*.022*hh; transformed.y+=sin(uTime*6.1+position.x*9.+position.z*7.)*.012*hr0(position.y,uKH)*gust; // leaf flutter at the crown edge
   // M22 · canopy depth: leaves low and near the trunk sit in the crown's own shade; outer/top leaves catch the light.
   float hr=clamp(position.y/uKH,0.,1.), rr=clamp(length(position.xz)/(uKH*.32),0.,1.);
   vAo=mix(.42,1.,smoothstep(.12,.95,hr*.62+rr*.5));
   float hs=fract(sin(dot(ip.xz,vec2(12.9898,78.233)))*43758.5453);
-  vTint=mix(vec3(.86,.95,.8),vec3(1.1,1.05,.88),hs);
+  float hs2=fract(sin(dot(ip.xz,vec2(39.35,11.13)))*24634.63);
+  vTint=mix(vec3(.86,.95,.8),vec3(1.1,1.05,.88),hs)*mix(vec3(.94,1.,1.02),vec3(1.04,1.,.9),hs2); // M49: a second hash: some crowns bluer-green, some warmer
   #ifndef USE_INSTANCING
   vTint=vec3(1.);
   #endif`)
@@ -189,6 +192,9 @@ function impostorMaterial(tex: THREE.Texture): THREE.MeshBasicMaterial {
   return m;
 }
 
+/** M49 · nearest tree bases (x, z, radius, strength) for the terrain shader: shaded, leaf-littered soil under each crown (zero draw calls). */
+export const TREE_BASE_N = 16; export const treeBases = { value: Array.from({ length: TREE_BASE_N }, () => new THREE.Vector4(0, 0, 0, 0)) };
+const hash2 = (x: number, z: number, k: number) => { const v = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
 export type TreeInst = { k: number; autumn: boolean; x: number; y: number; z: number; s: number; ry: number; near?: number };
 
 /** All placed trees with distance LOD: full meshes near the player (under a triangle budget), impostor cards beyond. */
@@ -224,13 +230,15 @@ export class TreeField {
     const nFull = new Map<object, number>(), nCard = new Map<object, number>();
     let tris = 0;
     for (const { g, t, d } of all) {
-      p.set(t.x, t.y, t.z); q.setFromAxisAngle(up, t.ry); s.setScalar(t.s); m4.compose(p, q, s);
+      // M49 · per-tree proportion: a little taller/squatter and wider/narrower, so a row of one kind does not read as clones
+      p.set(t.x, t.y, t.z); q.setFromAxisAngle(up, t.ry); s.set(t.s * (0.9 + 0.2 * hash2(t.x, t.z, 1)), t.s * (0.86 + 0.28 * hash2(t.x, t.z, 2)), t.s * (0.9 + 0.2 * hash2(t.x, t.z, 3))); m4.compose(p, q, s);
       if (d < (t.near ?? this.opts.nearR) && tris + g.tris <= this.opts.triBudget) {
         const i = nFull.get(g) ?? 0; for (const im of g.full) im.setMatrixAt(i, m4); nFull.set(g, i + 1); tris += g.tris;
       } else {
         const i = nCard.get(g) ?? 0; g.card.setMatrixAt(i, m4); nCard.set(g, i + 1);
       }
     }
+    for (let i = 0; i < TREE_BASE_N; i++) { const a = all[i]; if (a) treeBases.value[i].set(a.t.x, a.t.z, Math.max(1.2, a.g.kind.height * a.t.s * 0.3), 1); else treeBases.value[i].set(0, 0, 0, 0); }
     for (const g of this.groups.values()) {
       const nf = nFull.get(g) ?? 0, nc = nCard.get(g) ?? 0;
       // M33 · an instanced mesh with no instances still costs a draw call (and a shadow call): hide it instead

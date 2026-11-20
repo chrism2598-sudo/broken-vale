@@ -94,8 +94,8 @@ class Surf {
 
 export function makeCoast(high: boolean, t: { grass: GroundTex; pebble: GroundTex; rock: GroundTex; blocks: GroundTex }, waterNormals: THREE.Texture, env: THREE.Texture | null) {
   const scene = new THREE.Scene();
-  const HORL = new THREE.Color().setRGB(0.86, 0.72, 0.64, THREE.LinearSRGBColorSpace);
-  scene.fog = new THREE.FogExp2(HORL.clone(), 0.0042); // Lite used 0.005: the horizon washed out on phones
+  const HORL = new THREE.Color().setRGB(0.78, 0.69, 0.64, THREE.LinearSRGBColorSpace); // M49: a touch deeper, so sand, sea and sky separate
+  scene.fog = new THREE.FogExp2(HORL.clone(), 0.0032); // M49: 0.0042 still milked the cliffs and the sea on Lite // Lite used 0.005: the horizon washed out on phones
   if (env) { scene.environment = env; scene.environmentIntensity = 0.55; }
   const sun = new THREE.DirectionalLight('#ffd2a8', 3.0); sun.castShadow = true; sun.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
   Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 260 }); sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.04;

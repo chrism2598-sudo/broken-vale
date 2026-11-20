@@ -69,7 +69,7 @@ export function makeEchoGrove(high: boolean, rock?: { diff: THREE.Texture; nor: 
     const a = i * Math.PI * 2 / 5 + 0.3, x = Math.cos(a) * 10, z = Math.sin(a) * 10, y = heightAt(ECHO.x + x, ECHO.z + z) - g.position.y;
     const edge = { value: 0.25 };
     const mat: THREE.MeshStandardMaterial = high
-      ? new THREE.MeshPhysicalMaterial({ color: '#eef8f6', emissive: '#a6efe2', emissiveIntensity: 0.03, roughness: 0.06, metalness: 0, transmission: 0.72, thickness: 1.4, ior: 1.55, attenuationColor: new THREE.Color('#b8e6df'), attenuationDistance: 3.2, iridescence: 0.55, iridescenceIOR: 1.35, iridescenceThicknessRange: [180, 520], specularIntensity: 0.9, clearcoat: 0.4, clearcoatRoughness: 0.05, flatShading: true, envMapIntensity: 1.1 })
+      ? new THREE.MeshPhysicalMaterial({ color: '#eef8f6', emissive: '#a6efe2', emissiveIntensity: 0.03, roughness: 0.06, metalness: 0, transmission: 0.72, thickness: 1.4, ior: 1.55, attenuationColor: new THREE.Color('#b8e6df'), attenuationDistance: 3.2, iridescence: 0.55, iridescenceIOR: 1.35, iridescenceThicknessMinimum: 180, iridescenceThicknessMaximum: 520, specularIntensity: 0.9, clearcoat: 0.4, clearcoatRoughness: 0.05, flatShading: true, envMapIntensity: 1.1 })
       : new THREE.MeshStandardMaterial({ color: '#d6efeb', emissive: '#a6efe2', emissiveIntensity: 0.05, roughness: 0.16, metalness: 0.04, flatShading: true, envMapIntensity: 1.4 });
     edgeGlow(mat, edge);
     const core = new THREE.MeshBasicMaterial({ color: '#c8fff3', transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });

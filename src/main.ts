@@ -15,6 +15,7 @@ import { makeGrass } from './grass';
 import { FERN_SPOTS, makeLandmarks, keepFrame, KEEP_D, KEEP_W, KEEP_LOOK_PILLAR, walkY } from './landmarks';
 import { makeWarden, WARDEN, W_WAKE, W_SLEEP, W_MELEE, W_STRIKE_R, W_TELE, W_RECOVER, PLAYER_ATK_CD, HP_MAX, WARDEN_XP, RECOVERY_LINES, recoveryPoint } from './warden';
 import { makeWindShrine, RUNES, TABLET, TABLET_LINES, SOLVED_LINES, RUNE_GLYPHS, RUNE_LABELS, SHRINE_XP, WIND_BLESS, runesMatch } from './shrine';
+import { lsGet, lsSet, onSaveWarning, saveStatus, setSaveReadOnly } from './savestore';
 import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP, CHAPTER_TEASER } from './quest';
 import { addRimFill, styleHeroMaterial, heroKindFor, GRADE_GLSL } from './shading';
 import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
@@ -46,15 +47,16 @@ import { SQ_XP, sq, stage, sketched, sketchesLeft, sefaTale, dovTale, ressTale, 
 // ---------- quality ----------
 type Quality = 'high' | 'lite';
 const params = new URLSearchParams(location.search);
+if (params.get('perf') === '1') { if (params.get('perfrun')) setSaveReadOnly('perf'); void import('./perfhud').then((m) => m.startPerfHud({ ready: () => !!(window as unknown as { __vale?: { ready?: boolean } }).__vale?.ready, info: () => renderer.info.render, quality: () => quality, run: params.get('perfrun') })); } // M53/M54 · ?perf=1 overlay (lazy; nothing loads without the flag). A ?perfrun session never writes the save.
 // Phones/tablets default to Lite (incl. iPadOS, which reports as Macintosh with touch).
 const isPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) || (matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 900);
 document.body.classList.toggle('touch', isPhone || matchMedia('(pointer: coarse)').matches); // keyboard hints are hidden on touch
-let quality: Quality = (params.get('q') as Quality) || (localStorage.getItem('vale3d-quality') as Quality) || (isPhone ? 'lite' : 'high');
+let quality: Quality = (params.get('q') as Quality) || (lsGet('vale3d-quality') as Quality) || (isPhone ? 'lite' : 'high');
 if (quality !== 'high' && quality !== 'lite') quality = 'high';
 const HIGH = quality === 'high';
 const qBtn = document.getElementById('quality') as HTMLButtonElement;
 qBtn.textContent = `Quality: ${HIGH ? 'High' : 'Lite'}`;
-qBtn.onclick = () => { localStorage.setItem('vale3d-quality', HIGH ? 'lite' : 'high'); const u = new URL(location.href); u.searchParams.delete('q'); location.href = u.toString(); };
+qBtn.onclick = () => { lsSet('vale3d-quality', HIGH ? 'lite' : 'high'); const u = new URL(location.href); u.searchParams.delete('q'); location.href = u.toString(); };
 
 // ---------- renderer / scene ----------
 const app = document.getElementById('app')!;
@@ -66,7 +68,7 @@ renderer.toneMappingExposure = 0.92; const AGX_K = 1.0; // AgX reads ~1/5 stop d
 renderer.transmissionResolutionScale = 0.5; // Echo Grove crystal transmission pass at half res
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = HIGH ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap; // M54: three r187 removed PCFSoftShadowMap and already fell back to PCF on High (deprecation warning); same output
 app.appendChild(renderer.domElement);
 if (!HIGH) { const vg = document.createElement('div'); vg.id = 'vig'; vg.style.cssText = 'position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse 85% 75% at 50% 46%,rgba(0,0,0,0) 55%,rgba(8,6,4,.34) 100%)'; app.appendChild(vg); } // M22: Lite gets the same soft vignette High's post pass draws
 
@@ -154,7 +156,7 @@ async function main() {
       src.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh || Array.isArray(m.material)) return; const g = m.geometry.clone().applyMatrix4(m4.multiplyMatrices(root, m.matrixWorld)); const l = by.get(m.material) ?? []; l.push(g); by.set(m.material, l); }); }
     for (const [mat, gs] of by) { const g = mergeGeometries(gs); if (!g) continue; const mesh = new THREE.Mesh(g, mat); mesh.receiveShadow = true; scene.add(mesh); } }
   scene.add(landmarks.group);
-  let save = loadSave();
+  let save = loadSave(true); // M54: the one real load (recovery / quarantine / newer-version guard + warnings)
   const hpMax = () => HP_MAX + (save.hpUp ?? 0); // M20b-2: Sefa's heartstone adds a heart
   const plinthMat = new THREE.MeshStandardMaterial({ color: '#cfc3a8', roughness: 0.9 }); addRimFill(plinthMat, { fill: 0.2, rim: 0.2 });
   const shrine = makeWindShrine(rock, { runes: save.runes, solved: save.wind }); scene.add(shrine.group);
@@ -331,6 +333,7 @@ ${GRADE_GLSL}
   function toast(msg: string, secs = 3.2, danger = false) {
     if (/\+\d+ XP/.test(msg)) audio.chime(); else if (/^Hit/.test(msg)) audio.hit(); else if (danger) { if (msg.startsWith('⚠')) audio.warn(); else audio.hurt(); } toastEl.textContent = msg; toastEl.classList.add('on'); toastEl.classList.toggle('danger', danger); toastT = secs; }
   const persist = () => writeSave(save);
+  onSaveWarning((m) => toast('⚠ ' + m, 8, true)); // M54: save problems are always shown (load recovery, write failures, newer-version save)
   function talkWayfinder() {
     wayfinder.play('Wave');
     const n = sealCount(save);
@@ -1829,7 +1832,7 @@ ${GRADE_GLSL}
   document.getElementById('jclose')!.onclick = closeSheets; document.getElementById('mclose')!.onclick = closeSheets;
   // On-screen FPS readout (corner chip; tap it or press F to toggle; remembered).
   const fpsEl = document.getElementById('fps')!;
-  let fpsOn = params.has('fps') || localStorage.getItem('vale3d-fps') === '1';
+  let fpsOn = params.has('fps') || lsGet('vale3d-fps') === '1';
   const setFps = (on: boolean) => { fpsOn = on; fpsEl.classList.toggle('on', on); fpsEl.textContent = on ? '… fps' : 'FPS'; try { localStorage.setItem('vale3d-fps', on ? '1' : '0'); } catch { /* */ } };
   setFps(fpsOn);
   { const fb = document.getElementById('fpsmenu'); if (fb) { const lab = () => { fb.textContent = fpsOn ? 'Hide FPS / frame time' : 'Show FPS / frame time'; }; lab(); fb.addEventListener('click', () => { setFps(!fpsOn); lab(); }); } }
@@ -1866,7 +1869,7 @@ ${GRADE_GLSL}
   }
   // Fixed 60 Hz simulation + render interpolation. Frame dt comes from the vsync-aligned rAF timestamp (not from when the
   // callback happens to start), so irregular JS start latency on phones no longer turns into uneven per-frame motion.
-  let motionSmooth = (localStorage.getItem('vale3d-motion') ?? (isPhone ? 'smooth' : 'fast')) === 'smooth'; if (params.has('motion')) motionSmooth = params.get('motion') !== 'fast';
+  let motionSmooth = (lsGet('vale3d-motion') ?? (isPhone ? 'smooth' : 'fast')) === 'smooth'; if (params.has('motion')) motionSmooth = params.get('motion') !== 'fast';
   const motionBtn = document.getElementById('motion') as HTMLButtonElement | null;
   const setMotionLabel = () => { if (motionBtn) motionBtn.textContent = `Motion: ${motionSmooth ? 'Smooth (30 fps)' : 'Fast (60 fps)'}`; }; setMotionLabel();
   if (motionBtn) motionBtn.onclick = () => { motionSmooth = !motionSmooth; try { localStorage.setItem('vale3d-motion', motionSmooth ? 'smooth' : 'fast'); } catch { /* private mode */ } setMotionLabel(); lastTs = -1; };
@@ -2173,6 +2176,7 @@ ${GRADE_GLSL}
       const tops = [7, 16, 18, 20, 63, 65, 66, 69, 73].map((i) => { const t = scene.children[i]; if (!t) return null; const bb = new THREE.Box3().setFromObject(t); let n = 0; t.traverse(() => n++); return [i, t.type, t.name, n, bb.min.toArray().map((v) => Math.round(v)), bb.max.toArray().map((v) => Math.round(v))]; }); return { list: Object.entries(out).sort((a, b) => b[1] - a[1]).slice(0, 70), tops }; },
     shadowCasters() { const out: Record<string, number> = {}; const v = new THREE.Vector3(); scene.traverseVisible((o) => { const m = o as THREE.Mesh; if (!m.isMesh || !m.castShadow) return; o.getWorldPosition(v); const d = Math.hypot(v.x - state.px, v.z - state.pz); if (d > 36 && !(m.geometry.boundingSphere && m.geometry.boundingSphere.radius > 30)) return; let top: THREE.Object3D = o; while (top.parent && top.parent !== scene) top = top.parent; const k = 'top' + scene.children.indexOf(top) + ':' + ((m as THREE.InstancedMesh).isInstancedMesh ? 'inst' : m.geometry.type) + (m.geometry.boundingSphere ? '/r' + Math.round(m.geometry.boundingSphere.radius) : ''); out[k] = (out[k] || 0) + 1; }); return Object.entries(out).sort((a, b) => b[1] - a[1]); }, // M44 QA
     topInfo(i: number) { const t = scene.children[i]; const out: string[] = []; t.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Sprite).isSprite) { const mt = m.material as THREE.MeshStandardMaterial; out.push(`${o.name}|${m.isMesh ? m.geometry.type : 'Sprite'}|${mt?.color?.getHexString?.()}|${o.getWorldPosition(new THREE.Vector3()).toArray().map((v) => Math.round(v)).join(',')}`); } }); return out; }, // M44 QA
+    saveStatus: () => saveStatus(), saveNow: () => persist(), // M54 QA: save-store state + a forced write
     castlePeace() { for (const m of mobs) m.kill(); }, // M44 QA: probes without sentinels shoving the hero
     castleWalk(lx: number, lz: number, ly: number) { return !!castle && castle.walkable(castle.O.x + lx, castle.O.z + lz, ly); }, // M41 QA: is (local x,z,y) a floor the hero can stand on
     camInfo: () => ({ cam: camera.position.toArray().map((v) => +v.toFixed(2)), player: player.root.position.toArray().map((v) => +v.toFixed(2)), inCastleScene: player.root.parent === castle?.scene, vis: player.root.visible, st: { px: state.px, pz: state.pz, yaw: state.yaw, dist: state.dist } }),

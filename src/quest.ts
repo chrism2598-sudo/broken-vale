@@ -1,15 +1,17 @@
+import { readRawSave, writeRawSave, clearRawSave } from './savestore';
 import * as THREE from 'three';
 import { SEALS, heightAt, WAYFINDER, type SealDef } from './world';
 import { fill, type Profile } from './dialogue';
 
 /** Save format (localStorage 'vale3d-save'). */
 export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean; mirrors: number[]; beacon: boolean; echo: boolean; charted: boolean[]; cave: number; coast: number; sea: number; lamp: number; weapons?: string[]; weapon?: string; fog?: number[]; chests?: string[]; lore?: string[]; foes?: string[]; secrets?: string[]; views?: string[]; stashes?: string[]; whet?: number; tod?: number; day?: number; rk?: Record<string, number>; sq?: Record<string, number>; found?: string[]; hpUp?: number; fogV?: number; gone?: Record<string, number>; ressStair?: number; kit?: string[] };
-const KEY = 'vale3d-save';
 export const SEAL_XP = 25, QUEST_XP = 80;
 export const levelOf = (xp: number) => 1 + Math.floor(xp / 50);
 
-export function loadSave(): Save {
-  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.v === 1) return { v: 1, started: !!s.started, done: !!s.done, xp: Math.max(0, +s.xp || 0), seals: { ...s.seals }, runes: Array.isArray(s.runes) && s.runes.length === 3 ? s.runes.map((v: number) => ((v | 0) % 3 + 3) % 3) : [0, 0, 0], wind: !!s.wind, warden: !!s.warden, mirrors: Array.isArray(s.mirrors) && s.mirrors.length === 4 ? s.mirrors.map((v: number) => ((v | 0) % 4 + 4) % 4) : [0, 0, 0, 0], beacon: !!s.beacon, echo: !!s.echo, charted: Array.from({ length: 7 }, (_, i) => !!(Array.isArray(s.charted) && s.charted[i])), cave: Math.max(0, Math.min(4, (s.cave | 0))), coast: Math.max(0, Math.min(3, (s.coast | 0))), sea: Math.max(0, Math.min(5, (s.sea | 0))), lamp: (s.sea | 0) >= 5 ? Math.max(0, Math.min(2, (s.lamp | 0))) : 0, ...gear(s) }; } catch { /* corrupt → fresh */ }
+/** M54: the raw save comes from savestore (verified backup, recovery, quarantine, newer-version guard); this function repairs field types/ranges.
+ *  `effects` false = a side-effect-free peek (title "is there progress?" checks). */
+export function loadSave(effects = false): Save {
+  try { const s = readRawSave(effects) as any; if (s && s.v === 1) return { v: 1, started: !!s.started, done: !!s.done, xp: Math.max(0, +s.xp || 0), seals: { ...s.seals }, runes: Array.isArray(s.runes) && s.runes.length === 3 ? s.runes.map((v: number) => ((v | 0) % 3 + 3) % 3) : [0, 0, 0], wind: !!s.wind, warden: !!s.warden, mirrors: Array.isArray(s.mirrors) && s.mirrors.length === 4 ? s.mirrors.map((v: number) => ((v | 0) % 4 + 4) % 4) : [0, 0, 0, 0], beacon: !!s.beacon, echo: !!s.echo, charted: Array.from({ length: 7 }, (_, i) => !!(Array.isArray(s.charted) && s.charted[i])), cave: Math.max(0, Math.min(4, (s.cave | 0))), coast: Math.max(0, Math.min(3, (s.coast | 0))), sea: Math.max(0, Math.min(5, (s.sea | 0))), lamp: (s.sea | 0) >= 5 ? Math.max(0, Math.min(2, (s.lamp | 0))) : 0, ...gear(s) }; } catch { /* corrupt → fresh */ }
   return { v: 1, started: false, done: false, xp: 0, seals: {}, runes: [0, 0, 0], wind: false, warden: false, mirrors: [0, 0, 0, 0], beacon: false, echo: false, charted: [false, false, false, false, false, false, false], cave: 0, coast: 0, sea: 0, lamp: 0, weapons: ['rusty'], weapon: 'rusty' };
 }
 /** M19 · gear: old saves (pre-weapons) migrate to the Rusty Sword; explored-map fog is kept as 48 row bitmasks (main.ts seeds it when absent). */
@@ -34,8 +36,10 @@ function gear(s: { weapons?: unknown; weapon?: unknown; fog?: unknown }) {
   if (o.fogV === 2) ext.fogV = 2;
   return { weapons: w, weapon: cur, ...(fog ? { fog } : {}), ...ext };
 }
-export function writeSave(s: Save) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode */ } }
-export function clearSave() { try { localStorage.removeItem(KEY); } catch { /* */ } }
+/** M54: verified write (write-ahead + read-back + backup of the last good save); false when it could not be saved (the UI is warned). */
+export function writeSave(s: Save): boolean { return writeRawSave(s as unknown as Record<string, unknown>); }
+/** New Game (explicit, confirmed by the player). */
+export function clearSave() { clearRawSave(); }
 export const sealCount = (s: Save) => SEALS.filter((d) => s.seals[d.id]).length;
 
 /** Wayfinder lines (tokens: {name} {fullname} {child} {they}… plus {n}). Ported from the Page's quest text. */

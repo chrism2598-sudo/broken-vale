@@ -379,3 +379,10 @@ are saved in `vale3d-save`; Menu → Reset progress clears them. The HUD tracker
 - Coast: lighter, cooler fog so the sand, sea, cliffs and sky separate.
 - Azure Keep gets the same panelled hidden passage in its great hall (`azure-nook`, +10 XP) with a small chest stash (+20 XP). Covered by qa-castle step 21.
 - Notes: tools/m49-findings.md.
+
+### M50 (graphics pass, slice 2)
+- Near leaves: back faces let light through, each cluster gets its own shade, and the canopy shadow is lighter, so close bushes no longer read as black-and-green slabs.
+- Veilfall: the rock behind and beside the falls is darker and glossy with streaks running down it. The spray cloud at the foot is wider and lower.
+- Paths and banks: broad wear and damp patches, pale grit, a trodden dark-earth fringe where path meets grass, and tonal breakup on the dry gravel bars.
+- Cave: a little more warm fill light.
+- Notes: tools/m50-findings.md.

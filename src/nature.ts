@@ -94,8 +94,8 @@ function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, aut
   applyLeafAlpha(m);
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = foliageUniforms.uTime; sh.uniforms.uGlow = foliageUniforms.uGlow; sh.uniforms.uKH = { value: kh };
-    sh.fragmentShader = 'uniform float uGlow;\nvarying float vAo; varying vec3 vTint;\n' + sh.fragmentShader;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uKH; varying float vAo; varying vec3 vTint;')
+    sh.fragmentShader = 'uniform float uGlow;\nvarying float vAo; varying vec3 vTint; varying vec3 vLP;\n' + sh.fragmentShader;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uKH; varying float vAo; varying vec3 vTint; varying vec3 vLP;')
       .replace('#include <begin_vertex>', `vec3 transformed=vec3(position);
   #define hr0(y,k) clamp((y)/(k),0.,1.)
   #ifdef USE_INSTANCING
@@ -109,7 +109,7 @@ function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, aut
   transformed.x+=sw*.03*hh; transformed.z+=sw*.022*hh; transformed.y+=sin(uTime*6.1+position.x*9.+position.z*7.)*.012*hr0(position.y,uKH)*gust; // leaf flutter at the crown edge
   // M22 · canopy depth: leaves low and near the trunk sit in the crown's own shade; outer/top leaves catch the light.
   float hr=clamp(position.y/uKH,0.,1.), rr=clamp(length(position.xz)/(uKH*.32),0.,1.);
-  vAo=mix(.42,1.,smoothstep(.12,.95,hr*.62+rr*.5));
+  vAo=mix(.5,1.,smoothstep(.12,.95,hr*.62+rr*.5)); vLP=position; // M50: AO floor .42→.5 (near crowns were near-black slabs)
   float hs=fract(sin(dot(ip.xz,vec2(12.9898,78.233)))*43758.5453);
   float hs2=fract(sin(dot(ip.xz,vec2(39.35,11.13)))*24634.63);
   vTint=mix(vec3(.86,.95,.8),vec3(1.1,1.05,.88),hs)*mix(vec3(.94,1.,1.02),vec3(1.04,1.,.9),hs2); // M49: a second hash: some crowns bluer-green, some warmer
@@ -119,9 +119,12 @@ function makeFoliageMaterial(src: THREE.MeshStandardMaterial, leaf: boolean, aut
       .replace('#include <beginnormal_vertex>', 'vec3 objectNormal=normalize(normal+vec3(0.,.35,0.));');
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
 ${autumn ? 'float L=dot(diffuseColor.rgb,vec3(.3,.59,.11)); L=mix(.36,L,smoothstep(.12,.6,diffuseColor.a)); vec3 au=mix(vec3(.36,.07,.02),vec3(.78,.27,.04),smoothstep(.08,.45,L));au=mix(au,vec3(.90,.50,.08),smoothstep(.45,.85,L));diffuseColor.rgb=au*(.58+.42*L);' : ''}
-diffuseColor.rgb*=vTint*vAo;`)
+diffuseColor.rgb*=vTint*vAo;
+{ vec3 cq=floor(vLP*3.3); float lh=fract(sin(dot(cq,vec3(12.99,78.23,37.72)))*43758.55); // M50 · per-cluster shade/hue jitter: near crowns read as many sprigs, not one flat sheet
+  diffuseColor.rgb*=mix(vec3(.86,.9,.84),vec3(1.1,1.08,.94),lh); }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.05,.022,.004)' : 'vec3(.07,.1,.03)'}*uGlow*vAo;`)
+totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.05,.022,.004)' : 'vec3(.07,.1,.03)'}*uGlow*vAo;
+if(!gl_FrontFacing) totalEmissiveRadiance+=diffuseColor.rgb*${autumn ? 'vec3(.16,.08,.02)' : 'vec3(.14,.2,.06)'}*uGlow; // M50 · light through the leaf: back faces glow yellow-green instead of going black`)
       .replace('#include <alphatest_fragment>', leafAlpha());
   };
   m.customProgramCacheKey = () => (autumn ? 'leafA' : 'leafG') + (useA2C ? 'c' : '');

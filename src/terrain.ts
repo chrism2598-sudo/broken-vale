@@ -87,6 +87,10 @@ vec4 W4; float WETB; float BANKG; float SNOW; float RUT; float RCROWN; vec2 UVg;
   { // M30/M31 · the Pale road (bridge → Wing Gate): two worn cart ruts, darker and damp with standing puddles, a paler crown between
     cp*=1.-.5*RUT; cp=mix(cp,cp*vec3(1.08,1.1,1.02)+.02,RCROWN*.5);
     float pud=RUT*smoothstep(.62,.74,vn(p*.85+vec2(3.,7.))); cp=mix(cp,vec3(.15,.14,.12),pud*.65); }
+  // M50 · path breakup: the road/bank paths were one flat pale tone. Broad light/dark wear, damp darker patches, pale grit flecks
+  cp*=mix(.7,1.14,vn(p*.31))*mix(.88,1.08,vn(p*1.9+vec2(5.,2.)));
+  cp*=1.-.3*smoothstep(.55,.82,vn(p*.6+vec2(11.,4.)));
+  cp=mix(cp,cp*1.22+.025,smoothstep(.8,.88,vn(p*7.3))*.5);
   vec3 cb=texture2D(tBd,UVb).rgb*mix(1.,.55,smoothstep(1.,0.,dc-creekHalf(p.y)*.4));
   { // M41 · creek banks: a dark wet-mud lip at the waterline, earthy (not bleached grey) gravel above it, pebble flecks
     float bk=dc-creekHalf(p.y), wn=vn(p*1.3);
@@ -95,10 +99,12 @@ vec4 W4; float WETB; float BANKG; float SNOW; float RUT; float RCROWN; vec2 UVg;
     BANKG=(1.-smoothstep(3.,8.,bk))*smoothstep(-.6,.6,bk); cg=mix(cg,cg*vec3(.84,.9,.76),BANKG*.8); // M48 · the grass bank beside the creek read washed-out in sun: deeper, less yellow // M46 · dry bank gravel a touch darker and warmer
     cb=mix(cb,cb*vec3(.5,.46,.38),(1.-smoothstep(.0,1.1,abs(bk-.15+.6*(wn-.5))))*.75);
     cb=mix(cb,vec3(.29,.25,.18)*(.75+.5*vn(p*2.2)),smoothstep(.5,1.6,bk)*.55);
-    cb=mix(cb,cb*1.35+.03,smoothstep(.78,.86,vn(p*6.3))*smoothstep(-.2,.4,bk)*.6); }
+    cb=mix(cb,cb*1.35+.03,smoothstep(.78,.86,vn(p*6.3))*smoothstep(-.2,.4,bk)*.6);
+    cb*=mix(1.,mix(.74,1.1,vn(p*.45+vec2(2.,9.)))*mix(.9,1.06,vn(p*2.3)),1.-WETB); } // M50 · dry gravel bars: broad tonal breakup (they read as one flat grey sheet)
   // Snow caps: above ~44 m on gentler faces, ragged by noise.
   SNOW=smoothstep(44.,56.,alt+10.*(macro2-.5)+6.*(vn(p*.2)-.5))*smoothstep(.45,.75,vWN.y);
   diffuseColor.rgb*= cg*W4.x+cp*W4.y+cr*W4.z+cb*W4.w;
+  { float fr=W4.y*W4.x*4.; diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.74,.68,.56),clamp(fr,0.,1.)*.55*(.6+.4*vn(p*2.7))*(1.-SNOW)); } // M50 · trodden dark-earth fringe where path meets grass
   { // M49 · grounded trees: under each nearby crown the ground is shaded, damper and leaf-littered, darkest at the trunk
     float tb=0.; for (int i=0;i<${TREE_BASE_N};i++){ vec4 q=uTB[i]; if(q.w<.5) continue; float d=length(p-q.xy)/q.z; tb=max(tb,(1.-smoothstep(.15,1.,d+.25*(vn(p*1.7+q.xy)-.5)))*(.55+.45*(1.-smoothstep(0.,.35,d)))); }
     diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.62,.6,.5)*(.85+.3*vn(p*3.1)),tb*.75*(1.-SNOW)); }

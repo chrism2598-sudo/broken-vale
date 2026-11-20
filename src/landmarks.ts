@@ -670,6 +670,15 @@ function makeVeilfall(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): {
   const teal = new THREE.MeshStandardMaterial({ color: '#5f9a88', metalness: 0.5, roughness: 0.45 }); addRimFill(teal, { fill: 0.15, rim: 0.35 });
   const y0 = l.pad;
   const face = Math.atan2(SPAWN.x - l.x, SPAWN.z - l.z);
+  { // M50 · wet rock behind and beside the falls: darker, glossy, with streaks running down the face; dries off with distance from the sheet
+    const fx = l.x + Math.sin(face) * 10.5, fz = l.z + Math.cos(face) * 10.5, ax = Math.cos(face), az = -Math.sin(face);
+    const prev = rock.onBeforeCompile; rock.onBeforeCompile = (sh, r) => { prev.call(rock, sh, r); sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  { vec2 d = vTW.xz - vec2(${fx.toFixed(2)}, ${fz.toFixed(2)}); float lat = abs(dot(d, vec2(${ax.toFixed(4)}, ${az.toFixed(4)}))), dep = length(d);
+    float streak = .55 + .45 * tVn(vec2(vTW.x * 1.7 + vTW.z * 1.7, vTW.y * .15));
+    float wet = (1. - smoothstep(3.5, 9. + 3. * streak, lat)) * (1. - smoothstep(9., 17., dep)) * (1. - smoothstep(${(l.pad + 24).toFixed(1)}, ${(l.pad + 27).toFixed(1)}, vTW.y));
+    wet *= mix(.6, 1., streak);
+    diffuseColor.rgb *= 1. - .42 * wet; diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(.82, .95, .9), wet * .5); roughnessFactor = mix(roughnessFactor, .22, wet); }`); };
+    rock.customProgramCacheKey = () => 'tri4-veilwet'; }
   const blobs: [number, number, number, number, number, number][] = [[0, 9, -2, 15, 11, 13], [-4, 18, -4, 11, 9, 10], [5, 14, -6, 10, 10, 9], [9, 6, 4, 8, 7, 7], [-10, 6, 3, 9, 7, 8], [2, 24, -3, 9, 5, 8], [-6, 3, -12, 10, 6, 9]];
   for (const [x, y, z, sx, sy, sz] of blobs) {
     const gm = new THREE.IcosahedronGeometry(1, 4); const p = gm.attributes.position;
@@ -722,7 +731,7 @@ function makeVeilfall(l: Landmark, t: BuildTex, solids: Solid[], opts: LOpts): {
   foam.position.set(0, y0 + 0.3, 12.5); g.add(foam);
   g.position.set(l.x, 0, l.z); g.name = l.id;
   return { group: g, update: (time) => { fallMat.uniforms.uTime.value = time; foam.scale.setScalar(1 + Math.sin(time * 3) * 0.05); foam.rotation.y = time * 0.05; orb.scale.setScalar(1 + Math.sin(time * 1.7) * 0.08);
-    for (const sp of mist) { const k = sp.userData.k as number, f = (time * 0.25 + k / 6) % 1; sp.position.set(Math.sin(k * 2.1) * 2.5, y0 + 0.8 + f * 4, 12.5 + Math.cos(k * 1.7) * 1.5); sp.scale.setScalar(3 + f * 4); (sp.material as THREE.SpriteMaterial).opacity = 0.32 * Math.sin(f * Math.PI); } } };
+    for (const sp of mist) { const k = sp.userData.k as number, f = (time * 0.25 + k / 6) % 1; sp.position.set(Math.sin(k * 2.1) * 3.6 + Math.sin(time * 0.4 + k) * 0.6, y0 + 0.6 + f * 5.5, 12.2 + Math.cos(k * 1.7) * 2.2); sp.scale.setScalar(4.2 + f * 6.5); (sp.material as THREE.SpriteMaterial).opacity = 0.42 * Math.sin(f * Math.PI) * (1 - 0.35 * f); /* M50: a wider, lower spray cloud at the foot */ } } };
 }
 
 export type LOpts = { lights: boolean };

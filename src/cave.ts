@@ -157,7 +157,7 @@ export function makeCaveInterior(high: boolean, t: { rock: GroundTex; blocks: Gr
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#040302');
   scene.fog = new THREE.FogExp2('#0a0706', high ? 0.03 : 0.036);
   if (env) { scene.environment = env; scene.environmentIntensity = 0.07; }
-  scene.add(new THREE.HemisphereLight('#6d7d8c', '#2a1e14', 0.16));
+  scene.add(new THREE.HemisphereLight('#6d7d8c', '#3a2716', 0.23)); // M50 · a little more fill (warm torch bounce from the floor): the back walls fell to flat black on Lite
   const g = new THREE.Group(); g.position.set(CAVE_O.x, 0, CAVE_O.z); scene.add(g);
   let seed = 23; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const RX = 9.4, RZ = 12.9, RY = 6.6;

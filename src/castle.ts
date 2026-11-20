@@ -103,7 +103,7 @@ export function makeCastle(id: KeepId, high: boolean, t: { brick: GroundTex; san
   const O = CASTLE_O[id]; const az = id === 'azure';
   const scene = new THREE.Scene(); scene.background = new THREE.Color(az ? '#0b0f16' : '#0f0c0a');
   if (env) { scene.environment = env; scene.environmentIntensity = 0.3; }
-  scene.add(new THREE.HemisphereLight(az ? '#a9bcd6' : '#d6c3a6', '#3a2c20', 1.05));
+  scene.add(new THREE.HemisphereLight(az ? '#a9bcd6' : '#d6c3a6', az ? '#3a2c20' : '#4a3220', 0.96)); // M51: a touch less flat fill, warmer floor bounce (Pale)
   const g = new THREE.Group(); g.position.set(O.x, 0, O.z); scene.add(g);
   const { rooms, doors } = layout(id);
   // Materials (merged per material below).

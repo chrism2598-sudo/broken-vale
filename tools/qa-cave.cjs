@@ -1,3 +1,4 @@
+const __PORT=process.env.PORT||'8090';
 // M21b-2 QA: Listening Pools expansion — stick-walk every chamber (old grottoes + flooded grotto +
 // tide-crystal chamber), open the new chests, read the crystal tablet, walls hold, Tide-Wights
 // notice and can be beaten, camera stays inside passages. Uses deterministic sim / seaWalk.
@@ -14,7 +15,7 @@ const walk=(lx,lz,f=360)=>p.evaluate((lx,lz,f)=>window.__vale.seaWalk(lx,lz,f,1)
 const act=async()=>{await p.evaluate(()=>window.__vale.interact());};
 const pos=()=>p.evaluate(()=>{const s=window.__vale.camInfo();return {x:s.st.px-3000,z:s.st.pz-3000,y:s.player[1],chamber:window.__vale.sea().chamber,near:window.__vale.sea()&&null};}).then(async q=>{q.near=(await S()).chamber&&(await p.evaluate(()=>window.__vale.world().near));q.chamber=(await S()).chamber;q.y=(await S()).y;return q;});
 
-await p.goto('http://localhost:8090/?q=lite&shot=seal-open',{waitUntil:'load',timeout:180000});
+await p.goto('http://localhost:'+__PORT+'/?q=lite&shot=seal-open',{waitUntil:'load',timeout:180000});
 await ready();await sleep(2500);
 let s=await S();ok('in the Listening Pools',s.inSea===true,{inSea:s.inSea,loot:(s.loot||[]).map(x=>x.id),mobs:(s.mobs||[]).map(m=>m.id)});
 ok('two new chambers are registered',(s.loot||[]).some(x=>x.id==='sea-flood')&&(s.loot||[]).some(x=>x.id==='sea-crystal-chest')&&(s.loreFinds||[]).some(x=>x.id==='sea-crystal')&&(s.mobs||[]).length>=3, {loot:s.loot,lore:s.loreFinds,mobs:(s.mobs||[]).map(m=>m.id)});
@@ -78,7 +79,7 @@ ok('camera walks the flood passage without pops',jump<0.9,{jump:+jump.toFixed(3)
 ok('camera stays in the passage volume',outOf===0,{outOf,sample:rows.filter(r=>r.tight).slice(0,2)});
 
 // 6 · Tide-Wights: reload so foes are alive, fight one in the flood chamber
-await p.goto('http://localhost:8090/?q=lite&shot=seal-open',{waitUntil:'load',timeout:180000});await ready();await sleep(2500);
+await p.goto('http://localhost:'+__PORT+'/?q=lite&shot=seal-open',{waitUntil:'load',timeout:180000});await ready();await sleep(2500);
 s=await S();ok('three Tide-Wights on entry',(s.mobs||[]).filter(m=>m.alive).length===3,{mobs:s.mobs});
 // warp next to the crystal wight (further from the other two)
 const mw=(s.mobs||[]).find(m=>m.id==='sea-crystal-a');ok('crystal wight present',!!mw,{mw});

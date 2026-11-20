@@ -28,7 +28,7 @@ export const GRADE_GLSL = `#ifndef VALE_GRADE
 #define VALE_GRADE
 vec3 valeGrade(vec3 c){ c=max(c,vec3(0.)); float L=dot(c,vec3(.2126,.7152,.0722));
   c=max(mix(vec3(L),c,1.12),vec3(0.)); // saturation can push a channel below 0: clamp before the sqrt (NaN = black leaves)
-  vec3 g=sqrt(c); g=mix(g,g*g*(3.-2.*g),.18); c=g*g;
+  vec3 g=sqrt(c); g=mix(g,g*g*(3.-2.*g),.24); c=g*g; // M51: a touch more filmic contrast (the day read milky)
   float k=smoothstep(.02,.55,L); c*=mix(vec3(.97,1.,1.04),vec3(1.035,1.,.955),k);
   return c; }
 #endif`;

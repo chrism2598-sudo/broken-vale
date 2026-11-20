@@ -1,3 +1,4 @@
+const __PORT=process.env.PORT||'8090';
 // M20a QA: keep interiors — enter by the door, walk rooms, ramp to the gallery, climb the tower to the lookout (perch), battlements walk,
 // chests (XP, whetstone, new weapons), lore pages + Journal, secret rooms (Pale hearth, Azure tapestry), Hollow Sentinels (hit player, beatable),
 // persistence across reload, leaving by the door. Uses deterministic sim() stepping for movement.
@@ -11,7 +12,7 @@ const at=(x,z,y,f=Math.PI)=>p.evaluate((x,z,y,f)=>window.__vale.castleAt(x,z,y,f
 const walk=(sx,sy,n)=>p.evaluate((sx,sy,n)=>{window.__vale.sim(Array(n).fill(1/30),sx,sy);},sx,sy,n);
 const act=async()=>{await p.evaluate(()=>window.__vale.interact());};
 const settle=async(fn,ms=60000)=>{await p.waitForFunction(fn,{timeout:ms,polling:200});};
-await p.goto('http://localhost:8090/?q=lite&qa=1',{waitUntil:'load'});
+await p.goto('http://localhost:'+__PORT+'/?q=lite&qa=1',{waitUntil:'load'});
 await p.evaluate(()=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'Ilka',sex:'female'}));localStorage.setItem('vale3d-save',JSON.stringify({v:1,started:true,done:false,xp:0,seals:{},runes:[0,0,0],wind:false,warden:false,mirrors:[0,0,0,0],beacon:false,echo:false,charted:[false,false,false,false,false,false,false],cave:0,coast:0,sea:0,lamp:0}));});
 await p.reload({waitUntil:'load'});await ready();await sleep(1500);
 // 1 · the door

@@ -37,6 +37,6 @@ for (const [k,[x,z,y,f,yo,pt,d]] of Object.entries({'c-lib':[8.2,7.8,0,Math.PI+0
     const vis=[...document.querySelectorAll('body *')].filter(e=>{const s=getComputedStyle(e);if(s.display==='none'||s.visibility==='hidden'||+s.opacity===0)return false;if(!(s.position==='fixed'||s.position==='absolute'))return false;const r=e.getBoundingClientRect();return r.width>8&&r.height>8&&r.width<400&&e.id;});
     const R=vis.map(e=>({id:e.id,r:e.getBoundingClientRect()}));const ov=[];for(let i=0;i<R.length;i++)for(let j=i+1;j<R.length;j++){const A=R[i].r,B=R[j].r;if(vis[i].contains(vis[j])||vis[j].contains(vis[i]))continue;const w=Math.min(A.right,B.right)-Math.max(A.left,B.left),h=Math.min(A.bottom,B.bottom)-Math.max(A.top,B.top);if(w>4&&h>4)ov.push(R[i].id+'×'+R[j].id);}
     return {calls:Math.round((c.calls-a.calls)/2),tris:Math.round((c.tris-a.tris)/2),ov};});
-  await p.screenshot({path:`/workspace/vale3d/shots/m39-${process.env.TAG||"x"}-${n}.png`});console.log(n,JSON.stringify(info),JSON.stringify([...new Set(logs)].slice(0,8)));}catch(e){console.log(n,'CRASH',e.message.slice(0,200),JSON.stringify(logs.slice(0,5)));}
+  await p.screenshot({path:`${process.env.SHOTDIR||"/workspace/vale3d/shots"}/m39-${process.env.TAG||"x"}-${n}.png`});console.log(n,JSON.stringify(info),JSON.stringify([...new Set(logs)].slice(0,8)));}catch(e){console.log(n,'CRASH',e.message.slice(0,200),JSON.stringify(logs.slice(0,5)));}
   await p.close();}
  await b.close();})().catch(e=>{console.error(e);process.exit(1);});

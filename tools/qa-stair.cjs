@@ -1,3 +1,4 @@
+const __PORT=process.env.PORT||'8090';
 // M25 QA: Pale Keep's grand stair — walk from the meadow through the Wing Gate up the stair to the keep door and back down,
 // check foot heights (rock top 5.6, meadow ~1.2), the side walls hold, the cliff holds, and the camera never drops into the steps.
 const pc=require(process.env.PUPPETEER_CORE);const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -6,7 +7,7 @@ const W=(u,v)=>[LX+cf*u+sf*v, LZ-sf*u+cf*v], UV=(x,z)=>{const dx=x-LX,dz=z-LZ;re
 (async()=>{const b=await pc.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:900000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const q=process.env.Q||'lite';const p=await b.newPage();await p.setViewport({width:412,height:860,isMobile:true,hasTouch:true});const errs=[];p.on('pageerror',e=>errs.push(e.message));
 let fails=0;const ok=(n,c,v)=>{if(!c)fails++;console.log((c?'PASS ':'FAIL ')+n,JSON.stringify(v));};
-await p.goto(`http://localhost:8090/?q=${q}&qa=1`,{waitUntil:'load'});await p.evaluate(()=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'Ilka',sex:'female'}));});
+await p.goto(`http://localhost:${__PORT}/?q=${q}&qa=1`,{waitUntil:'load'});await p.evaluate(()=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'Ilka',sex:'female'}));});
 await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(1500);
 const H=()=>p.evaluate(()=>({h:window.__vale.hop(),c:window.__vale.camInfo()}));
 const go=async(u,v,face,yaw)=>{const [x,z]=W(u,v);await p.evaluate((x,z,f,y)=>{window.__vale.warp(x,z);window.__vale.view(f,y,0.15,6);window.__vale.sim(Array(10).fill(1/30),0,0);},x,z,face,yaw);};

@@ -1,3 +1,4 @@
+const __PORT=process.env.PORT||'8090';
 // M19 QA: combat buttons/keys (Attack combo, Heavy charge, Block/Parry, Dodge-roll, stamina, hit stop), Warden beatable with the new controls,
 // weapon pickups + swap + save persistence + old-save migration, no guide arrow by default (Guidance setting), Journal clues, Marr's map fog.
 const pc=require(process.env.PUPPETEER_CORE);const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -7,7 +8,7 @@ const log=(k,v)=>console.log(k,JSON.stringify(v));let fails=0;const ok=(name,c,v
 const C=()=>p.evaluate(()=>window.__vale.combat());const Q=()=>p.evaluate(()=>window.__vale.quest());const W=()=>p.evaluate(()=>window.__vale.warden());
 const ready=()=>p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});
 // 1 · old save (pre-M19, no weapons field) migrates to the Rusty Sword
-await p.goto('http://localhost:8090/?q=lite&qa=1',{waitUntil:'load'});
+await p.goto('http://localhost:'+__PORT+'/?q=lite&qa=1',{waitUntil:'load'});
 await p.evaluate(()=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'Ilka',sex:'female'}));localStorage.setItem('vale3d-save',JSON.stringify({v:1,started:true,done:false,xp:50,seals:{dawn:true},runes:[0,0,0],wind:false,warden:false,mirrors:[0,0,0,0],beacon:false,echo:false,charted:[true,false,false,false,false,false,false],cave:0,coast:0,sea:0,lamp:0}));localStorage.removeItem('vale3d-guidance');});
 await p.reload({waitUntil:'load'});await ready();await sleep(1500);
 let c=await C();ok('old save migrates to Rusty Sword',c.owned.join()==='rusty'&&c.weapon==='rusty'&&c.inHand.every(x=>x==='rusty'),{owned:c.owned,weapon:c.weapon,inHand:c.inHand});

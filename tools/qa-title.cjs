@@ -1,10 +1,11 @@
+const __PORT=process.env.PORT||'8090';
 // M18 QA: title screen (Continue / New Game confirm / Settings), sound toggle + volume, music regions + crossfade, footsteps.
 const puppeteer=require(process.env.PUPPETEER_CORE);const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:600000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader','--autoplay-policy=no-user-gesture-required']});
 const p=await b.newPage();await p.setViewport({width:412,height:860});const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 const log=(k,v)=>console.log(k,JSON.stringify(v));const V=(f,...a)=>p.evaluate(f,...a);const ready=()=>p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});
 const A=()=>V(()=>window.__vale.audio());const T=()=>V(()=>window.__vale.title());const Q=()=>V(()=>window.__vale.quest());
-await p.goto('http://localhost:8090/?q=lite',{waitUntil:'load'});await ready();await sleep(800);
+await p.goto('http://localhost:'+__PORT+'/?q=lite',{waitUntil:'load'});await ready();await sleep(800);
 log('first visit: creator, no title',{creator:await p.$eval('#create',e=>!e.hidden),title:(await T()).open});
 await p.click('#begin');await sleep(1500);log('after Begin: audio',await A());
 await p.reload({waitUntil:'load'});await ready();await sleep(1000);let t=await T();log('reload → title',t);
@@ -24,5 +25,5 @@ await p.click('#tnew');await sleep(300);log('New Game → confirm',{confirm:(awa
 await p.click('#tno');await sleep(200);log('Keep my save',{confirm:(await T()).confirm,started:(await Q()).save.started});
 await p.click('#tnew');await sleep(300);await Promise.all([p.waitForNavigation({timeout:120000}),p.click('#tyes')]);await ready();await sleep(800);
 log('Erase → creator, save cleared',{creator:await p.$eval('#create',e=>!e.hidden),title:(await T()).open,save:(await Q()).save.started,stored:await V(()=>localStorage.getItem('vale3d-save'))});
-for(const [shot,want] of [['coast-ress','coast'],['final-card','ending'],['lamp-after','coast']]){await p.goto(`http://localhost:8090/?q=lite&shot=${shot}`,{waitUntil:'load'});await ready();await sleep(1500);await p.mouse.click(200,300);await p.waitForFunction(w=>window.__vale.audio().region===w,{timeout:30000},want).catch(()=>{});const a=await A();log('region '+shot,{region:a.region,want,ok:a.region===want,ctx:a.ctx});}
+for(const [shot,want] of [['coast-ress','coast'],['final-card','ending'],['lamp-after','coast']]){await p.goto(`http://localhost:${__PORT}/?q=lite&shot=${shot}`,{waitUntil:'load'});await ready();await sleep(1500);await p.mouse.click(200,300);await p.waitForFunction(w=>window.__vale.audio().region===w,{timeout:30000},want).catch(()=>{});const a=await A();log('region '+shot,{region:a.region,want,ok:a.region===want,ctx:a.ctx});}
 log('errors',errs);await b.close();})().catch(e=>{console.log('ERR',e.message);process.exit(1)});

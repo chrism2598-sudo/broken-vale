@@ -1,8 +1,9 @@
+const __PORT=process.env.PORT||'8090';
 // Fast finale QA: starts at the coast with the Keeper beaten (preset lamp-reunion) and runs the M16 block from tools/qa-run.cjs.
 const puppeteer=require(process.env.PUPPETEER_CORE);const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:600000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const p=await b.newPage();await p.setViewport({width:412,height:860});const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
-await p.goto('http://localhost:8090/?q=lite&shot=lamp-reunion',{waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(2500);
+await p.goto('http://localhost:'+__PORT+'/?q=lite&shot=lamp-reunion',{waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(2500);
 const Q=()=>p.evaluate(()=>window.__vale.quest());const log=(k,v)=>console.log(k,JSON.stringify(v));const toastTxt=()=>p.$eval('#toast',e=>e.textContent);
 const closeDlg=async()=>{for(let i=0;i<5&&(await Q()).talking;i++){await p.keyboard.press('Space');await sleep(300);}};
 // M16 · the Lowtide Lamp: Ress → Enna reunion (tide released) → climb → glass at high water (no) → low water → cinematic → final card (+70 once) → credits → keep exploring (down)

@@ -1,3 +1,4 @@
+const __PORT=process.env.PORT||'8090';
 // M20b QA: feet on the ground (epilogue walk-surfaces, whole-vale scan) and the Jump (height, landing, bounds, solids, ceilings, pose).
 const pc=require(process.env.PUPPETEER_CORE||'puppeteer-core');const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let fails=0;const ok=(n,c,d)=>{console.log((c?'PASS ':'FAIL ')+n+(d!==undefined?' '+JSON.stringify(d):''));if(!c)fails++;};
@@ -5,7 +6,7 @@ let fails=0;const ok=(n,c,d)=>{console.log((c?'PASS ':'FAIL ')+n+(d!==undefined?
 const p=await b.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));await p.setViewport({width:412,height:860,isMobile:true,hasTouch:true});
 await p.evaluateOnNewDocument(()=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'Ilka',sex:'female'}));});
 const ready=()=>p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});
-const go=async q=>{await p.goto('http://localhost:8090/?'+q,{waitUntil:'load',timeout:120000});await ready();await sleep(2500);};
+const go=async q=>{await p.goto('http://localhost:'+__PORT+'/?'+q,{waitUntil:'load',timeout:120000});await ready();await sleep(2500);};
 const E=(f,...a)=>p.evaluate(f,...a);
 // ---- 1 · epilogue: Sunspire platform / causeways / stairs, feet exactly on the stone ----
 await go('q=lite&shot=epilogue');

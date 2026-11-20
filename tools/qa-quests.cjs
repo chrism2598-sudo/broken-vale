@@ -1,3 +1,4 @@
+const __PORT=process.env.PORT||'8090';
 // M20b-2 QA: side tales (Sefa, Dov, Ress), discovery → map, the Ashen Hollow fight + loot, the Old Barrow (gate, Ossric, vault), standables, save migration.
 const pc=require(process.env.PUPPETEER_CORE||'puppeteer-core');const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let fails=0;const ok=(n,c,d)=>{console.log((c?'PASS ':'FAIL ')+n+(d!==undefined?' '+JSON.stringify(d):''));if(!c)fails++;};
@@ -11,7 +12,7 @@ const act=async()=>{await E(()=>window.__vale.interact());await sim(2);return cl
 // an old (pre-M20b-2) save: started, coast reached, fog explored in the old 266×278 box, no side-tale fields
 const fog=Array(48).fill(0);for(let j=18;j<30;j++)fog[j]=0x00ffff00;
 const OLD={v:1,started:true,done:false,xp:120,seals:{dawn:true},runes:[0,0,0],wind:false,warden:false,mirrors:[0,0,0,0],beacon:false,echo:false,charted:[false,false,false,false,false,false,false],cave:4,coast:1,sea:0,lamp:0,weapons:['rusty','maul'],weapon:'maul',whet:4,fog,tod:0.45,day:0};
-await p.goto('http://localhost:8090/?q=lite&qa=1&tod=0.45',{waitUntil:'load',timeout:120000});
+await p.goto('http://localhost:'+__PORT+'/?q=lite&qa=1&tod=0.45',{waitUntil:'load',timeout:120000});
 await E((o)=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'Ilka',sex:'female'}));localStorage.setItem('vale3d-save',JSON.stringify(o));},OLD);
 await p.reload({waitUntil:'load'});await ready();await sleep(1500);await sim(40);
 let q=await Q();const bits=f=>f.reduce((n,v)=>{let x=v>>>0,c=0;while(x){c+=x&1;x>>>=1;}return n+c;},0);

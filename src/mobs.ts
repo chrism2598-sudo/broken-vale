@@ -21,11 +21,33 @@ const STATS: Record<MobLook, Required<Omit<MobOpts, 'ground' | 'look'>>> = {
   drowned: { hp: 5, speed: 1.9, notice: 10, windup: 0.9, dmg: 1, xp: 14, name: 'Tide-Wight' },
 };
 
+/** M52 · shared realism layer for every foe: a tiny procedural wear texture (scratches, pitting, cloth weave) drives roughness + bump on
+ *  armour / leather / robes, and one shared onBeforeCompile adds a cool fresnel rim that rises at night so silhouettes read against the dark.
+ *  Materials and shaders only: no geometry, draw-call or animation change. */
+export const mobFx = { night: { value: 0 } };
+let wearTex: THREE.CanvasTexture | null = null;
+function wear() {
+  if (wearTex) return wearTex; const N = 128, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d')!;
+  const im = x.createImageData(N, N); let sd = 7; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < N * N; i++) { const v = 150 + (r() - 0.5) * 60; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+  x.putImageData(im, 0, 0); x.globalAlpha = 0.5;
+  for (let i = 0; i < 70; i++) { const a = r() * Math.PI, l = 6 + r() * 26, px = r() * N, py = r() * N; x.strokeStyle = r() < 0.5 ? '#ffffff' : '#3a3a3a'; x.lineWidth = 0.6 + r(); x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke(); }
+  for (let i = 0; i < 90; i++) { x.fillStyle = r() < 0.6 ? '#2e2e2e' : '#e0e0e0'; x.beginPath(); x.arc(r() * N, r() * N, 0.6 + r() * 1.6, 0, 7); x.fill(); }
+  wearTex = new THREE.CanvasTexture(c); wearTex.wrapS = wearTex.wrapT = THREE.RepeatWrapping; wearTex.repeat.set(3, 3); wearTex.colorSpace = THREE.NoColorSpace; return wearTex;
+}
+function realize(m: THREE.MeshStandardMaterial, bump: number, rim: string) {
+  const t = wear(); m.roughnessMap = t; m.bumpMap = t; m.bumpScale = bump; const rc = new THREE.Color(rim);
+  m.onBeforeCompile = (sh) => { sh.uniforms.uMobNight = mobFx.night; sh.uniforms.uRim = { value: rc };
+    sh.fragmentShader = 'uniform float uMobNight; uniform vec3 uRim;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { float fr = pow(1.0 - clamp(dot(normal, normalize(-vViewPosition)), 0.0, 1.0), 3.0); totalEmissiveRadiance += uRim * fr * (0.05 + 1.0 * uMobNight); }`); };
+  m.customProgramCacheKey = () => 'mobrim'; m.needsUpdate = true; return m;
+}
 export function makeSentinel(id: string, x: number, z: number, y: number, face: number, tint = '#8d9196', opts: MobOpts = {}) {
   const look = opts.look ?? 'sentinel', S = { ...STATS[look], ...opts }; const HPM = S.hp, WINDUP = S.windup, SPEED = S.speed, NOTICE = S.notice, ground = opts.ground;
   const g = new THREE.Group(); g.position.set(x, ground ? ground(x, z) : y, z); g.rotation.y = face;
   const shade = look === 'shade', drowned = look === 'drowned', robe = shade || look === 'cultist' || look === 'zealot', big = look === 'brute' || look === 'zealot' || look === 'king';
   const plate = new THREE.MeshStandardMaterial({ color: shade ? '#1b1d2a' : drowned ? '#3d5a58' : tint, metalness: robe ? 0 : drowned ? 0.7 : 0.55, roughness: robe ? 0.9 : drowned ? 0.28 : 0.4, transparent: shade, opacity: shade ? 0.92 : 1 }), dark = new THREE.MeshStandardMaterial({ color: shade ? '#0c0d14' : drowned ? '#1a2a28' : '#2b2a2c', metalness: shade ? 0 : 0.6, roughness: drowned ? 0.4 : 0.6 });
+  realize(plate, robe ? 0.6 : 0.35, shade ? '#7a6cff' : drowned ? '#5fd6c0' : '#9fb6d8'); realize(dark, 0.5, shade ? '#5a4cc0' : '#7f93b0');
   const EYE = shade ? '#b7a6ff' : drowned ? '#4ee0c8' : look === 'brute' || robe || look === 'king' ? '#ffb15a' : look === 'barrow' ? '#9fe0b0' : '#7fd8ff'; const eyeM = new THREE.MeshBasicMaterial({ color: EYE });
   let homeX = x, homeZ = z;
   const add = (geo: THREE.BufferGeometry, m: THREE.Material, px: number, py: number, pz: number, parent: THREE.Object3D = g) => { const me = new THREE.Mesh(geo, m); me.position.set(px, py, pz); me.castShadow = true; parent.add(me); return me; };
@@ -104,7 +126,7 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
       armR.rotation.x = state === 'windup' ? -2.4 * Math.min(1, k * 1.6) : state === 'recover' ? THREE.MathUtils.lerp(0.9, 0, 1 - Math.max(0, t) / RECOVER) : 0;
       body.rotation.z = state === 'stagger' ? Math.sin(t * 30) * 0.08 : 0; body.rotation.x = (state === 'stagger' ? -0.15 : state === 'windup' ? 0.2 * Math.min(1, k * 1.4) : 0) - 0.4 * flinch * flinch; // M47: rear back into the wind-up; snap back on a hit
       armL.rotation.x = state === 'chase' || state === 'windup' ? -0.6 : 0;
-      ringM.opacity = state === 'windup' ? 0.25 + 0.55 * k : 0; ring.visible = ringM.opacity > 0; eyeM.color.set(state === 'windup' ? '#ff7a4a' : EYE);
+      ringM.opacity = state === 'windup' ? 0.25 + 0.55 * k : 0; ring.visible = ringM.opacity > 0; eyeM.color.set(state === 'windup' ? '#ff7a4a' : EYE).multiplyScalar(1 + 2.2 * mobFx.night.value + (state === 'windup' ? 1.5 : 0)); // M52: eyes burn brighter at night (bloom picks them up) and flare on the wind-up
       if (ground) g.position.y = ground(g.position.x, g.position.z) + (shade ? 0.14 + 0.07 * Math.sin((bob += dt) * 2.6) : 0); return out;
     },
   };

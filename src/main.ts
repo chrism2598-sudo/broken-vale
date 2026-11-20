@@ -30,7 +30,7 @@ import { ECHO, ECHO_RANGE, ECHO_XP, ECHO_SILENT, echoMemoryLines, MARR_MARKS, CH
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { dressEnna } from './enna';
 import { makeCastle, CHESTS, LORE, LECTERN_LORE, KEEP_NAME, VIEW_XP, PLATE, STASH, type Castle, type KeepId } from './castle';
-import { makeSentinel, MOB_HP, MOB_XP, type Mob } from './mobs';
+import { makeSentinel, MOB_HP, MOB_XP, mobFx as mobShade, type Mob } from './mobs';
 import { Combat, WEAPONS, WEAPON_ORDER, isWeapon, makeHolder, makePickup, ST_MAX, DODGE_T, DODGE_SPEED, type WeaponId, type Strike, type Pickup } from './combat';
 import { clueLines } from './clues';
 import { DAY_LEN, MORNING, skyAt, clockText, makeNightSky } from './daynight';
@@ -1148,20 +1148,20 @@ ${GRADE_GLSL}
     const key = todLocked ? k.toFixed(3) : `${k.toFixed(3)}|${tod.toFixed(4)}`; if (key === lightKey) return; lightKey = key; dawnK = k;
     if (todLocked) { // QA/shots without a time: the original fixed late-morning look (dawn blend only)
       nightK = 0; skyGlow = k;
-      sun.color.copy(DC.sun0).lerp(DC.sun1, k); sun.intensity = 2.6 + 0.35 * k; sunDir.copy(SUN_DIR).lerp(DAWN_DIR, k).normalize();
+      sun.color.copy(DC.sun0).lerp(DC.sun1, k); sun.intensity = 2.78 + 0.35 * k; /* M51: stronger key vs IBL fill for day contrast */ sunDir.copy(SUN_DIR).lerp(DAWN_DIR, k).normalize();
       hemi.color.copy(DC.hs0).lerp(DC.hs1, k); hemi.groundColor.copy(DC.hg0).lerp(DC.hg1, k); hemi.intensity = 0.25 + 0.3 * k;
       const fog = scene.fog as THREE.FogExp2; fog.color.copy(DC.fog0).lerp(DC.fog1, k); fog.density = fogD0 * (1 + 0.18 * k);
-      renderer.toneMappingExposure = AGX_K * (0.92 + 0.1 * k); scene.environmentIntensity = 0.85 - 0.3 * k; scene.backgroundIntensity = 0.95 - 0.4 * k;
+      renderer.toneMappingExposure = AGX_K * (0.92 + 0.1 * k); scene.environmentIntensity = 0.76 - 0.3 * k; scene.backgroundIntensity = 0.95 - 0.4 * k;
       water.setDawn(k); lantern.intensity = 0;
     } else {
       const sky = skyAt(tod, SUN_DIR), n = sky.night; nightK = n; moonV.copy(sky.moonDir); skyV.copy(sky.sunDir);
       const kp = Math.max(dawnCine ? k : 0, save.beacon ? (save.lamp >= 2 ? 0.08 : 0.3) : 0, sky.golden * 0.9); // M20b: once the vale is mended the day sky goes clear (no lingering brown dawn haze) skyGlow = Math.max(dawnCine ? k : 0, kp * (1 - n));
       sun.color.copy(DC.sun0).lerp(DC.sun1, kp);
       if (n > 0.5) { sun.color.copy(NC.sun); sun.intensity = 0.68 * THREE.MathUtils.smoothstep(n, 0.5, 0.95); sunDir.copy(sky.moonDir); }
-      else { sun.intensity = (2.6 + 0.35 * kp) * sky.sunFade; sunDir.copy(sky.sunDir); if (dawnCine) sunDir.lerp(DAWN_DIR, k).normalize(); }
+      else { sun.intensity = (2.78 + 0.35 * kp) * sky.sunFade; /* M51 */ sunDir.copy(sky.sunDir); if (dawnCine) sunDir.lerp(DAWN_DIR, k).normalize(); }
       hemi.color.copy(DC.hs0).lerp(DC.hs1, kp).lerp(NC.hs, n); hemi.groundColor.copy(DC.hg0).lerp(DC.hg1, kp).lerp(NC.hg, n); hemi.intensity = THREE.MathUtils.lerp(0.25 + 0.3 * kp, 1.18, n);
       const fog = scene.fog as THREE.FogExp2; fog.color.copy(DC.fog0).lerp(DC.fog1, kp).lerp(NC.fog, n); fog.density = fogD0 * (1 + 0.18 * kp) * (1 + 0.3 * n);
-      renderer.toneMappingExposure = AGX_K * (0.92 + 0.1 * kp + 0.22 * n); scene.environmentIntensity = (0.85 - 0.3 * kp) * (1 - 0.8 * n); scene.backgroundIntensity = (0.95 - 0.4 * kp) * (1 - 0.97 * n);
+      renderer.toneMappingExposure = AGX_K * (0.92 + 0.1 * kp + 0.22 * n); scene.environmentIntensity = (0.76 + 0.09 * n - 0.3 * kp) * (1 - 0.8 * n); /* M51: less flat IBL by day, night unchanged */ scene.backgroundIntensity = (0.95 - 0.4 * kp) * (1 - 0.97 * n);
       water.setDawn(kp * (1 - n)); lantern.intensity = 5 * THREE.MathUtils.smoothstep(n, 0.3, 0.8); foliageUniforms.uGlow.value = 1 - 0.85 * n; foliageUniforms.uLit.value.setRGB(1, 1, 1).lerp(NC.hs, n * 0.25).multiplyScalar(1 - 0.72 * n);
       dawnSky.sun.copy(dawnCine || save.beacon && save.lamp < 2 && kp <= 0.3 ? DAWN_DIR : sky.sunDir);
     }
@@ -1217,11 +1217,19 @@ ${GRADE_GLSL}
   let kick = 0, sparkT = 0; const kickDir = new THREE.Vector3(), SPN = 18, sparkVel = new Float32Array(SPN * 3);
   const sparkTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d')!; const g = x.createRadialGradient(16, 16, 0, 16, 16, 16); g.addColorStop(0, 'rgba(255,255,240,1)'); g.addColorStop(0.35, 'rgba(255,200,120,0.8)'); g.addColorStop(1, 'rgba(255,140,60,0)'); x.fillStyle = g; x.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(c); })();
   const sparkGeo = new THREE.BufferGeometry(); sparkGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SPN * 3), 3));
-  const sparkM = new THREE.PointsMaterial({ map: sparkTex, size: 0.2, color: '#ffd08a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const sparkM = new THREE.PointsMaterial({ map: sparkTex, size: 0.14, color: '#ffc47a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const sparks = new THREE.Points(sparkGeo, sparkM); sparks.frustumCulled = false; sparks.visible = false; sparks.renderOrder = 5;
   const flashS = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTex, color: '#fff0d0', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); flashS.visible = false; flashS.renderOrder = 5;
   for (const o of [sparks, flashS]) o.layers.set(1); // the transparent-effects layer (skips the AO pass)
+  // M52 · a soft dust puff kicked up at the struck foe's feet (normal-blended soft sprites that swell and fade; one Points draw while alive)
+  const DSN = 10, dustVel = new Float32Array(DSN * 3), dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(DSN * 3), 3)); let dustT = 0;
+  const dustTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(0.5, 'rgba(255,255,255,0.22)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+  const dustM = new THREE.PointsMaterial({ map: dustTex, size: 0.9, color: '#a8998a', transparent: true, opacity: 0, depthWrite: false });
+  const dust = new THREE.Points(dustGeo, dustM); dust.frustumCulled = false; dust.visible = false; dust.renderOrder = 4; dust.layers.set(1);
   function impactFx(x: number, y: number, z: number, heavy: boolean) {
+    { const par = player.root.parent; if (par && dust.parent !== par) par.add(dust); const da = dustGeo.attributes.position as THREE.BufferAttribute, fy = player.root.position.y + 0.15;
+      for (let i = 0; i < DSN; i++) { const a = Math.random() * Math.PI * 2, sp = 0.6 + Math.random() * (heavy ? 1.4 : 0.8); da.setXYZ(i, x + Math.cos(a) * 0.2, fy, z + Math.sin(a) * 0.2); dustVel[i * 3] = Math.cos(a) * sp; dustVel[i * 3 + 1] = 0.25 + Math.random() * 0.45; dustVel[i * 3 + 2] = Math.sin(a) * sp; }
+      da.needsUpdate = true; dustT = heavy ? 0.85 : 0.6; dust.visible = true; }
     kick = heavy ? 0.3 : 0.17; kickDir.set(x - camera.position.x, y - camera.position.y, z - camera.position.z).normalize();
     const par = player.root.parent; if (par && sparks.parent !== par) { par.add(sparks); par.add(flashS); }
     const pa = sparkGeo.attributes.position as THREE.BufferAttribute, hx = (x + state.px) / 2, hz = (z + state.pz) / 2;
@@ -1229,6 +1237,8 @@ ${GRADE_GLSL}
     pa.needsUpdate = true; sparkT = 0.34; sparks.visible = true; flashS.visible = true; flashS.position.set(hx, y, hz); flashS.scale.setScalar(heavy ? 1.7 : 1.15);
   }
   function tickFx(dt: number) {
+    if (dustT > 0) { dustT -= dt; const da = dustGeo.attributes.position as THREE.BufferAttribute; for (let i = 0; i < DSN; i++) { dustVel[i * 3] *= 1 - 2.5 * dt; dustVel[i * 3 + 2] *= 1 - 2.5 * dt; da.setXYZ(i, da.getX(i) + dustVel[i * 3] * dt, da.getY(i) + dustVel[i * 3 + 1] * dt, da.getZ(i) + dustVel[i * 3 + 2] * dt); } da.needsUpdate = true;
+      const k = Math.max(0, dustT / 0.85); dustM.opacity = Math.min(1, k * 2.2) * 0.7; dustM.size = 0.9 + (1 - k) * 1.1; if (dustT <= 0) dust.visible = false; }
     if (sparkT <= 0) return; sparkT -= dt; const pa = sparkGeo.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < SPN; i++) { sparkVel[i * 3 + 1] -= 14 * dt; pa.setXYZ(i, pa.getX(i) + sparkVel[i * 3] * dt, pa.getY(i) + sparkVel[i * 3 + 1] * dt, pa.getZ(i) + sparkVel[i * 3 + 2] * dt); } pa.needsUpdate = true;
     sparkM.opacity = Math.max(0, sparkT / 0.34); (flashS.material as THREE.SpriteMaterial).opacity = Math.max(0, (sparkT - 0.22) / 0.12);
@@ -1738,6 +1748,10 @@ ${GRADE_GLSL}
     audio.setRegion(regionNow());
     if (!talking && !lift && !cine && !dawnCine && !lampCine && !fading && !paused && !airborne && state.speed > 0.5) { stepAcc += state.speed * lastDt; const stride = state.speed > 3 ? 1.35 : 0.78; if (stepAcc >= stride) { stepAcc -= stride; audio.step(surfaceNow(), state.speed > 3); } } else stepAcc = 0.5;
   }
+  const FLN = 48, flyHome = new Float32Array(FLN * 2).fill(1e5), flyGeo = new THREE.BufferGeometry(); flyGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(FLN * 3), 3));
+  const flyTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d')!; const g = x.createRadialGradient(16, 16, 0, 16, 16, 16); g.addColorStop(0, 'rgba(255,255,220,1)'); g.addColorStop(0.25, 'rgba(220,255,150,0.55)'); g.addColorStop(1, 'rgba(160,220,90,0)'); x.fillStyle = g; x.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(c); })();
+  const flyM = new THREE.PointsMaterial({ map: flyTex, size: 0.3, color: '#d8ff9a', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+  const fly = new THREE.Points(flyGeo, flyM); fly.frustumCulled = false; fly.visible = false; fly.layers.set(1);
   function tick(t: number, gy: number) {
     tickSound();
     // Sun shadow frustum follows the player (fitted).
@@ -1749,6 +1763,15 @@ ${GRADE_GLSL}
     sun.position.copy(sun.target.position).addScaledVector(sunDir, 120);
     dawnSky.mesh.position.copy(camera.position); dawnSky.set(Math.max(0, skyGlow), t);
     nightSky.mesh.position.copy(camera.position); nightSky.set(nightK, moonV, t); lantern.position.set(state.px - Math.sin(state.yaw) * 0.6, gy + 2.3, state.pz - Math.cos(state.yaw) * 0.6);
+    mobShade.night.value = Math.max(nightK, inKeep || inCastle || inCave || inBarrow ? 0.45 : 0); // M52: foe rim + eye glow
+    { // M52 · meadow fireflies at night: one instanced Points cloud drifting around the player, outdoors only
+      const out = nightK > 0.25 && !(inCave || inCoast || inSea || inKeep || inCastle || inBarrow || onIsland || !!lift); fly.visible = out;
+      if (out) { if (fly.parent !== scene) scene.add(fly); const pa = flyGeo.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < FLN; i++) { let fx = flyHome[i * 2], fz = flyHome[i * 2 + 1]; const dx = fx - state.px, dz = fz - state.pz;
+          if (Math.abs(dx) > 18 || Math.abs(dz) > 18) { fx = flyHome[i * 2] = state.px + (Math.random() - 0.5) * 34; fz = flyHome[i * 2 + 1] = state.pz + (Math.random() - 0.5) * 34; }
+          const ph = i * 1.7, wx = fx + Math.sin(t * 0.37 + ph) * 1.2, wz = fz + Math.cos(t * 0.29 + ph * 1.3) * 1.2;
+          pa.setXYZ(i, wx, heightAt(wx, wz) + 0.5 + 0.9 * (0.5 + 0.5 * Math.sin(t * 0.5 + ph * 2.1)), wz); }
+        pa.needsUpdate = true; flyM.opacity = Math.min(1, (nightK - 0.25) * 2.5) * (0.55 + 0.45 * Math.sin(t * 2.3)); } }
     const aloft = onIsland || !!lift; grassField.mesh.visible = !aloft; grassFar.mesh.visible = HIGH && !aloft;
     if (onIsland) { const L = toLocal(state.px, state.pz); island.treesNear(L.x, L.z); } else island.treesNear(1e4, 1e4);
     updraft.update(t, lastDt); reedTick(t); hollow.update(t, lastDt); grove.update(t, lastDt); grove.near(inCave || inCoast || inSea || inKeep || inCastle || inBarrow || aqLevel >= 2 ? 1e9 : Math.hypot(camera.position.x - ECHO.x, camera.position.z - ECHO.z)); updraft.setActive(save.done);
@@ -2346,7 +2369,7 @@ void main() {`).replace('vec3 outgoingLight = albedo;', `float wE = min(vWU.x, 1
     return { mesh: w as THREE.Object3D, update: (t: number) => { u.time.value = t * 0.6; }, setDawn: (k: number) => { u.uDawn.value = k; } };
   }
   normals.repeat.set(1, 1);
-  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#21424a', roughness: 0.06, metalness: 0.0, normalMap: normals, normalScale: new THREE.Vector2(0.35, 0.35), transparent: true, opacity: 0.88, envMapIntensity: 1.3 }));
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#21424a', roughness: 0.06, metalness: 0.0, normalMap: normals, normalScale: new THREE.Vector2(0.4, 0.4), transparent: true, opacity: 0.88, envMapIntensity: 1.3 }));
   m.rotation.x = -Math.PI / 2; m.position.y = WATER_Y;
   const wmat = m.material as THREE.MeshStandardMaterial, c0 = new THREE.Color('#21424a'), c1 = new THREE.Color('#5a3a3c');
   // M30 · shallow edges and flow (Lite): toward the banks the water thins and shows a silty green-brown bed; soft flow streaks drift downstream
@@ -2360,8 +2383,17 @@ float wN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); re
       .replace('#include <color_fragment>', `#include <color_fragment>
   float wE = min(vWU.x, 1. - vWU.x) * 2.; float shal = 1. - smoothstep(.22, .62, wE + (wN(vWU * vec2(3., 6.)) - .5) * .15);
   float fl = smoothstep(.62, .9, wN(vec2(vWU.x * 7., vWU.y * 2.2 + uWT * .35))) * (1. - shal * .6);
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.27, .31, .22), shal * .75) + fl * .07;
+  diffuseColor.rgb = mix(diffuseColor.rgb * mix(.82, 1., smoothstep(.0, .5, 1. - wE)), vec3(.27, .31, .22), shal * .75) + fl * .07; // M51: deeper channel centre
   diffuseColor.a *= mix(1., .4, shal) * smoothstep(.0, .16, wE + (wN(vWU * vec2(9., 14.)) - .5) * .12); // M41: the film thins out onto the bank instead of ending in a ruled edge`)
+      .replace('#include <normal_fragment_maps>', `#ifdef USE_NORMALMAP_TANGENTSPACE
+  // M51 · two ripple scales crossing at different speeds/directions (one texture, no extra draw): the single scrolling map read as a sliding sheet
+  vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;
+  vec3 mapN2 = texture2D( normalMap, vNormalMapUv * .37 + vec2( uWT * -.011, uWT * .019 ) ).xyz * 2.0 - 1.0;
+  mapN = vec3( mapN.xy + mapN2.xy * .75, mapN.z * mapN2.z ); mapN.xy *= normalScale * mix( 1., .45, shal );
+  normal = normalize( tbn * mapN );
+#else
+#include <normal_fragment_maps>
+#endif`)
       .replace('vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;', 'vec3 outgoingLight = totalDiffuse + totalSpecular * mix(1., .35, shal) + totalEmissiveRadiance; // M41: shallows over the bed stop mirroring the bright sky (the milky sheet)'); };
   return { mesh: m as THREE.Object3D, update: (t: number) => { normals.offset.set(t * 0.01, -t * 0.05); wT.value = t; }, setDawn: (k: number) => { wmat.color.copy(c0).lerp(c1, k); wmat.emissive.setRGB(0.16 * k, 0.07 * k, 0.04 * k); } };
 }

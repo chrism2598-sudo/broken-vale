@@ -1,10 +1,11 @@
+const __PORT=process.env.PORT||'8090';
 // M26 QA: the opening path — climb the ridge stair, cross the quarry stream on the stepping stones,
 // and cross the three-pier bridge on its deck (never dropping into the water).
 const pc=require(process.env.PUPPETEER_CORE);const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{const b=await pc.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:900000,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const q=process.env.Q||'lite';const p=await b.newPage();await p.setViewport({width:412,height:860,isMobile:true,hasTouch:true});const errs=[];p.on('pageerror',e=>errs.push(e.message));
 let fails=0;const ok=(n,c,v)=>{if(!c)fails++;console.log((c?'PASS ':'FAIL ')+n,JSON.stringify(v));};
-await p.goto(`http://localhost:8090/?q=${q}&qa=1`,{waitUntil:'load'});await p.evaluate(()=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'Ilka',sex:'female'}));});
+await p.goto(`http://localhost:${__PORT}/?q=${q}&qa=1`,{waitUntil:'load'});await p.evaluate(()=>{localStorage.setItem('vale3d-hero',JSON.stringify({name:'Ilka',sex:'female'}));});
 await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(1500);
 // walk from (x0,z0) toward (x1,z1): heading h = atan2(dx,dz), camera behind
 const run=async(x0,z0,x1,z1,n)=>{const h=Math.atan2(x1-x0,z1-z0);await p.evaluate((x,z,h)=>{window.__vale.warp(x,z);window.__vale.view(h,h-Math.PI,0.15,6);window.__vale.sim(Array(10).fill(1/30),0,0);},x0,z0,h);

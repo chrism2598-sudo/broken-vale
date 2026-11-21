@@ -13,20 +13,20 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
   rusty: { id: 'rusty', name: 'Rusty Sword', short: 'Sword', icon: '🗡', where: 'Enna’s old blade, from the start',
     desc: 'Quick three-cut combo · heavy is a wide cleave.', dmg: 1, heavy: 2.2, reach: 1, swing: 0.36, combo: 3, stagger: 0, keeperMul: 1, heavyCost: 30, style: 0, heavyMove: 'cleave' },
   spear: { id: 'spear', name: 'Ashwood Spear', short: 'Spear', icon: '🔱', where: 'Wedged in the rocks below the Veilfall',
-    desc: 'Long reach, two thrusts · heavy is a running lunge.', dmg: 1, heavy: 2.2, reach: 1.45, swing: 0.42, combo: 2, stagger: 0.2, keeperMul: 1, heavyCost: 28, style: 1, heavyMove: 'lunge' },
+    desc: 'Long reach, two thrusts · heavy is a running lunge.', dmg: 1.15, heavy: 2.2, reach: 1.45, swing: 0.42, combo: 2, stagger: 0.4, keeperMul: 1, heavyCost: 28, style: 1, heavyMove: 'lunge' },
   maul: { id: 'maul', name: 'Smith’s Maul', short: 'Maul', icon: '🔨', where: 'By the forge door of the Iron Dome',
     desc: 'Slow and brutal · every hit staggers · heavy is a ground slam.', dmg: 2, heavy: 4, reach: 0.95, swing: 0.72, combo: 2, stagger: 1.1, keeperMul: 1, heavyCost: 40, style: 2, heavyMove: 'slam' },
   tide: { id: 'tide', name: 'Tide-blade', short: 'Tide', icon: '🌊', where: 'In a side pool of the Listening Pools',
     desc: 'Sea-glass edge · bites the Keeper (×1.5) · heavy throws a wave.', dmg: 1.5, heavy: 3, reach: 1.15, swing: 0.34, combo: 3, stagger: 0.3, keeperMul: 1.5, heavyCost: 30, style: 0, heavyMove: 'wave' },
   knight: { id: 'knight', name: 'Knight’s Longsword', short: 'Long', icon: '⚔', where: 'Sealed behind the hearth of Pale Keep',
-    desc: 'Bright steel, three long cuts · heavy is a sweeping cleave.', dmg: 1.4, heavy: 3, reach: 1.15, swing: 0.4, combo: 3, stagger: 0.25, keeperMul: 1, heavyCost: 30, style: 0, heavyMove: 'cleave' },
+    desc: 'Bright, quick steel · three fast cuts · the cheapest heavy, a sweeping cleave.', dmg: 1.4, heavy: 3, reach: 1.15, swing: 0.36, combo: 3, stagger: 0.25, keeperMul: 1, heavyCost: 24, style: 0, heavyMove: 'cleave' },
   halberd: { id: 'halberd', name: 'Azure Halberd', short: 'Halb', icon: '🪓', where: 'Hidden in the solar of Azure Keep',
-    desc: 'Longest reach · every hit staggers · heavy is a driving lunge.', dmg: 1.3, heavy: 3.2, reach: 1.55, swing: 0.5, combo: 2, stagger: 0.9, keeperMul: 1, heavyCost: 34, style: 1, heavyMove: 'lunge' },
+    desc: 'Longest reach · every hit staggers · heavy is a driving lunge.', dmg: 1.4, heavy: 3.2, reach: 1.75, swing: 0.5, combo: 2, stagger: 0.9, keeperMul: 1, heavyCost: 34, style: 1, heavyMove: 'lunge' },
   // M20b-2 · side-quest rewards
   ember: { id: 'ember', name: 'Emberbrand', short: 'Ember', icon: '🔥', where: 'Forged by Dov Hask from barrow star-iron',
-    desc: 'Dome-forged star-iron, still warm · hardest-hitting blade · heavy is a burning cleave.', dmg: 1.8, heavy: 3.8, reach: 1.1, swing: 0.4, combo: 3, stagger: 0.45, keeperMul: 1.2, heavyCost: 32, style: 0, heavyMove: 'cleave' },
+    desc: 'Dome-forged star-iron, still warm · hardest-hitting, heavier swings · heavy is a burning cleave that drinks stamina.', dmg: 1.8, heavy: 3.8, reach: 1.1, swing: 0.44, combo: 3, stagger: 0.45, keeperMul: 1.2, heavyCost: 38, style: 0, heavyMove: 'cleave' },
   harpoon: { id: 'harpoon', name: 'Teo’s Harpoon', short: 'Harp', icon: '🎣', where: 'Ress’s brother’s, given at the Tidewrack Coast',
-    desc: 'Barbed whale-iron on driftwood · long, quick thrusts · heavy is a lunging skewer.', dmg: 1.3, heavy: 3.0, reach: 1.6, swing: 0.36, combo: 3, stagger: 0.35, keeperMul: 1.3, heavyCost: 26, style: 1, heavyMove: 'lunge' },
+    desc: 'Barbed whale-iron on driftwood · long, quick thrusts · heavy is a lunging skewer.', dmg: 1.3, heavy: 3.0, reach: 1.5, swing: 0.36, combo: 3, stagger: 0.35, keeperMul: 1.3, heavyCost: 26, style: 1, heavyMove: 'lunge' },
 };
 export const isWeapon = (s: unknown): s is WeaponId => typeof s === 'string' && s in WEAPONS;
 

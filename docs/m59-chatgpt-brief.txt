@@ -1,0 +1,43 @@
+THE BROKEN VALE - M59 BRIEF (combat readability + opening polish)
+Status: release candidate tagged locally as release-M59 (commit c21394f, bundle index-zXPa7RLt.js). C S approved it at 8:39 PM; deploy follows now that every gate passed. Production is M58 until the deploy. Rollback point: release-M54.
+Gates on the release commit (all PASS, 0 failures, run one at a time): 13 suites, full qa-run, qa-save, rollback M59 -> release-M54 -> M59, shaders, draw calls (identical to M58 at all 5 audit views: 358/350/308/400/160), perfrun (headless estimate only), perf HUD, diag smoke, M57 diag, qa-onboard, new-player run (follow-prompts and novice), readability audit.
+Note: the box rebooted during the gates (about 8:23 PM). Gates finished before the reboot were kept, because the cleaned commit rebuilds to the byte-identical bundle (same sha256). Every gate from shaders onward was re-run after the reboot.
+
+WHAT WAS WRONG (measured on M58)
+- Wind-ups were telegraphed only on the foe. In 8 of 8 arenas, no touch button showed which control answers a wind-up.
+- In the Sea Cave the threat pill said "Warden" and showed nothing for the Tide-Wights. The keep, coast and island could also show a stale Warden pill.
+- No screen feedback for a blocked blow, or for an action that failed for lack of stamina.
+- For about 4 s after a fight, the action button drew over the tip banner. On a 360x740 phone the tip covered up to 44% of the hero.
+- Standing by a seal facing away from it, the camera clipped through the crystal (5 of 5 test angles).
+
+WHAT CHANGED (existing systems only)
+1. Wind-up cue, game-wide: when a foe in striking range winds up (husks, cultists, shades, sentinels, barrow foes and the King, Tide-Wights, the Warden strike, the Keeper), the Roll and Block buttons get an amber ring and the threat pill goes to alert. CSS only: no new meshes or draw calls.
+2. The Sea Cave shows a proper Tide-Wight pill (name, HP, hearts). The pill is hidden in scenes it doesn't belong to.
+3. Feedback: a short cool-grey edge flash on a block, and the stamina bar shakes when an action fails for lack of stamina. The M58 hurt and parry flashes are unchanged.
+4. While the action button is showing, the tip banner sits above it. On short phones (800 px tall or less) the tip is smaller.
+5. Seal camera: when a seal stands between the camera and the player, the camera tilts up smoothly until it sees over the crystal. Distance, yaw and movement are unchanged.
+6. Coaching stays opening-only (the M58 rules, unchanged). No new or repeated tutorial prompts.
+- Unchanged: graphics and detail, Lite adaptive resolution, Smooth 30, world, landmarks, NPC lines, story, enemy stats and timings, save format, M11 movement.
+
+BEFORE -> AFTER (internal scripted runs in EMULATED headless Chrome; not real phones, not player data)
+- 8-arena audit: pill or boss bar 7/8 -> 8/8; correct label 7/8 -> 8/8; alert during wind-up 7/8 -> 8/8; control cue during wind-up 0/8 -> 8/8; correct pill when hit 5/6 -> 6/6; hurt flash 6/6 -> 6/6. (Warden and Keeper blows never landed in the test, so those two are n/a for the hit checks.)
+- Block flash: none -> yes. Stamina-fail shake: no -> yes.
+- Tip vs action button overlap: 11,000-13,700 px2 -> 0 at 412x915, 448x827 and 360x740. The tip never overlaps the joystick or the combat buttons.
+- Tip cover of the hero at 360x740: max 44% -> 35%, typical 33% -> 26%. Unchanged at the two larger sizes (max 35% and 39%).
+- Seal camera through the crystal: 5/5 angles -> 0/5 (confirmed by screenshot).
+- Combined image: docs/m59-before-after.png.
+
+REMAINING CONCERNS
+- REAL-DEVICE PERFORMANCE OF THE OPENING ENCOUNTER IS STILL OUTSTANDING. Nothing here was measured on a real phone, and emulation results must not be read as a pass.
+- On a phone, the wind-up ring has only been seen in emulation. Whether a real player notices it in time is unknown.
+- When the camera lifts at a seal, the view looks down more steeply for a moment, until you walk past the seal.
+- On short phones the tip still covers part of the hero's legs (about a quarter). It is smaller, but it doesn't move off the hero.
+
+READINESS
+READY TO DEPLOY. Rollback: release-M54 (saves unchanged, no new fields). After deploy, test the opening fight's performance on a real phone.
+
+DECISIONS (C S, 8:39 PM)
+1. Deploy only if every gate passes: they all passed.
+2. Keep the amber wind-up ring game-wide, no setting: kept.
+3. Keep the seal camera lift as-is: kept, no more camera work.
+4. Remove the ~88 MB of test screenshots from the unpushed m59 history: done. Evidence was copied to /workspace/vale3d/logs/m59-evidence/ (outside the repo). The cleaned commit's code tree is identical to the gated RC 653f4d1.

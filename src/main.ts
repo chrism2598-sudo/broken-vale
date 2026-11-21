@@ -19,7 +19,7 @@ import { FERN_SPOTS, makeLandmarks, keepFrame, KEEP_D, KEEP_W, KEEP_LOOK_PILLAR,
 import { makeWarden, WARDEN, W_WAKE, W_SLEEP, W_MELEE, W_STRIKE_R, W_TELE, W_RECOVER, PLAYER_ATK_CD, HP_MAX, WARDEN_XP, RECOVERY_LINES, recoveryPoint } from './warden';
 import { makeWindShrine, RUNES, TABLET, TABLET_LINES, SOLVED_LINES, RUNE_GLYPHS, RUNE_LABELS, SHRINE_XP, WIND_BLESS, runesMatch } from './shrine';
 import { lsGet, lsSet, onSaveWarning, saveStatus, setSaveReadOnly } from './savestore';
-import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP, CHAPTER_TEASER } from './quest';
+import { SealObject, loadSave, writeSave, clearSave, sealCount, levelOf, levelBonus, nextLevelXp, LV_CAP, fillLines, WAYFINDER_LINES, SEAL_XP, QUEST_XP, CHAPTER_TEASER } from './quest';
 import { addRimFill, styleHeroMaterial, heroKindFor, GRADE_GLSL } from './shading';
 import { LINES, say, fill, SURNAME, type Sex, type Profile } from './dialogue';
 import { bakeKinds, instanceKind, foliageUniforms, kindTris, TreeField, configureFoliage, type Kind, type TreeInst } from './nature';
@@ -389,7 +389,7 @@ ${GRADE_GLSL}
     if (o.claimed) return;
     const lv = levelOf(save.xp); o.claim(); save.seals[o.def.id] = true; save.xp += SEAL_XP; persist();
     const n = sealCount(save);
-    toast(`${o.def.name} claimed · +${SEAL_XP} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''} · ${n}/4`, 4);
+    toast(`${o.def.name} claimed · +${SEAL_XP} XP · ${n}/4${n === 1 ? '' /* the opening coach tip covers seal 1 */ : n < 4 ? ` · ${4 - n} seal${n < 3 ? 's' : ''} left — clues in your Journal` : ' · the Wayfinder waits'}`, 4.5); void lv; // M60 · level-ups get their own banner
     if (n === 4 && !save.done) finaleDelay = 1.4;
     if (n === 1) coach.event('sealClaimed');
   }
@@ -852,7 +852,7 @@ ${GRADE_GLSL}
   const castles: Partial<Record<KeepId, Castle>> = {}, castleMobs: Partial<Record<KeepId, Mob[]>> = {};
   let inCastle = false, castle: Castle | null = null, perch: { id: KeepId; kind: 'roof' | 'top'; y: number } | null = null, mobs: Mob[] = [], calmT = 0;
   const sList = (k: 'chests' | 'lore' | 'foes' | 'secrets' | 'views') => (save[k] ??= []);
-  const whetMul = () => 1 + 0.15 * (save.whet ?? 0);
+  const whetMul = () => 1 + 0.15 * (save.whet ?? 0) + levelBonus(save.xp); // M60 · whetstones + level bonus (all melee paths use this)
   let woodSet: GroundTex | null = null;
   async function ensureCastle(id: KeepId) {
     const have = castles[id]; if (have) return have; caveLoading = true; const tx = await ruinTex();
@@ -1352,8 +1352,9 @@ ${GRADE_GLSL}
   for (const [id, k] of [['b-atk', 'attack'], ['b-hvy', 'heavy'], ['b-blk', 'block'], ['b-dge', 'roll'], ['b-jmp', 'jump']] as const) document.getElementById(id)!.insertAdjacentHTML('afterbegin', ICONS[k]);
   function syncWeaponUi() {
     wpnBtn.innerHTML = ICONS[cb.weapon.id] + `<small>${cb.weapon.short}</small>`; const o = owned(); wpnBtn.dataset.n = String(o.length);
-    wpick.innerHTML = '<div class="wh">Weapons · tap to equip</div>' + WEAPON_ORDER.map((id) => { const w = WEAPONS[id], have = o.includes(id);
-      return `<button data-w="${id}" class="${id === cb.weapon.id ? 'on' : ''}" ${have ? '' : 'disabled'}>${ICONS[id]}<span><b>${have ? w.name : '? Unfound'}</b><i>${have ? w.desc : 'Rumour: ' + w.where}</i>${have ? `<em>Dmg ${w.dmg} · Heavy ${w.heavy} · Reach ${w.reach.toFixed(2)}×</em>` : ''}</span></button>`; }).join('');
+    const lb = Math.round(levelBonus(save.xp) * 100), wb = 15 * (save.whet ?? 0);
+    wpick.innerHTML = `<div class="wh">Weapons · tap to equip<br><small>Your blows +${lb + wb}% (level +${lb}% · whetstones +${wb}%)</small></div>` + WEAPON_ORDER.map((id) => { const w = WEAPONS[id], have = o.includes(id);
+      return `<button data-w="${id}" class="${id === cb.weapon.id ? 'on' : ''}" ${have ? '' : 'disabled'}>${ICONS[id]}<span><b>${have ? w.name : '? Unfound'}</b><i>${have ? w.desc : 'Rumour: ' + w.where}</i>${have ? `<em>Dmg ${w.dmg} · ${w.swing <= 0.36 ? 'fast' : w.swing <= 0.44 ? 'medium' : 'slow'} · Reach ${w.reach.toFixed(2)}× · ${w.stagger >= 0.8 ? 'staggers' : w.stagger >= 0.3 ? 'some stagger' : 'no stagger'} · Heavy ${w.heavy} (${w.heavyCost} stamina)</em>` : ''}</span></button>`; }).join('');
   }
   syncWeaponUi();
   wpnBtn.addEventListener('click', (e) => { e.stopPropagation(); wpick.hidden = !wpick.hidden; });
@@ -1502,12 +1503,22 @@ ${GRADE_GLSL}
     return { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z };
   }
   let openingCls = false;
+  // M60 · level-up banner: fires once whenever XP crosses a level boundary, from any source
+  let shownLv = levelOf(save.xp), lvT: ReturnType<typeof setTimeout> | null = null; const lvEl = document.getElementById('lvup')!;
+  function checkLevel() {
+    const lv = levelOf(save.xp); if (lv <= shownLv) { shownLv = lv; return; } shownLv = lv;
+    const b = Math.round(levelBonus(save.xp) * 100);
+    lvEl.innerHTML = `<b>Level ${lv}</b><span>${lv <= LV_CAP ? `blows +${b}%${lv === LV_CAP ? ' (max)' : ''}` : `blows +${b}% (max)`}${lv < LV_CAP ? ` · next at ${nextLevelXp(save.xp)} XP` : ''}</span>`;
+    lvEl.classList.remove('on'); void lvEl.offsetWidth; lvEl.classList.add('on'); audio.chime(); lvCount++;
+    if (lvT) clearTimeout(lvT); lvT = setTimeout(() => lvEl.classList.remove('on'), 3200);
+  }
+  let lvCount = 0;
   function updateHud(dt: number) {
-    hudT -= dt; if (hudT > 0) return; hudT = 0.15;
+    hudT -= dt; if (hudT > 0) return; hudT = 0.15; checkLevel();
     const n = sealCount(save);
     qline.textContent = !save.started ? 'Speak with the Wayfinder' : !save.done ? (n < 4 ? `The Four Seals · ${n}/4` : 'All four seals held — return to the Wayfinder') : !save.beacon ? (onIsland ? `The Unspent Morning · mirrors ${aligned()}/4` : save.wind ? 'The Unspent Morning · ride the Updraft' : 'The Unspent Morning · needs the Wind Shrine blessing') : ['Morning-Bearer · the Wayfinder has word of Enna', 'Enna’s Trail · the collapsed stair by Pale Keep', 'Enna’s Trail · light the braziers as the river runs', 'Enna’s Trail · the sealed door stands open', 'Enna’s Trail · the water-road runs to the sea'][save.cave];
     if (save.cave >= 4 && save.coast >= 1) qline.textContent = save.lamp >= 2 ? 'The End · The Broken Vale, mended · explore freely' : save.lamp === 1 ? `The Lowtide Lamp · set the glass when the tide turns${inCoast && coast ? ` · tide ${coast.tidePhase}` : ''}` : save.sea >= 5 ? 'Chapter II · Enna waits at the Lowtide Lamp' : save.sea >= 4 ? 'Chapter II · The Drowned Keeper — the seal is open' : save.sea >= 3 ? 'Chapter II · The Drowned Keeper — the round seal waits' : save.sea >= 2 ? 'Enna’s Trail · the packet by the round seal' : save.coast >= 3 ? `Enna’s Trail · the Listening Pools${inSea && sea ? ` · tide ${sea.tidePhase}` : ''}` : save.coast >= 2 ? 'Enna’s Trail · the causeway to the sea cave' : `Enna’s Trail · Tidewrack Coast${inCoast && coast ? ` · tide ${coast.tidePhase}` : ''}`;
-    qstats.textContent = `Lv ${levelOf(save.xp)} · ${save.xp} XP · ${SEALS.map((d) => (save.seals[d.id] ? '◆' : '◇')).join('')}${todLocked ? '' : ` · ${nightK > 0.5 ? '☾' : '☀'} ${clockText(tod)}`}`;
+    qstats.textContent = `Lv ${levelOf(save.xp)} · ${levelOf(save.xp) < LV_CAP ? `${save.xp}/${nextLevelXp(save.xp)}` : save.xp} XP · ${SEALS.map((d) => (save.seals[d.id] ? '◆' : '◇')).join('')}${todLocked ? '' : ` · ${nightK > 0.5 ? '☾' : '☀'} ${clockText(tod)}`}`;
     const tgt = objective();
     const away = inCave || inCoast || inSea || inKeep || inCastle || inBarrow, hx = away ? STAIR.x : state.px, hz = away ? STAIR.z : state.pz;
     const dx = tgt.x - state.px, dz = tgt.z - state.pz, dist = Math.hypot(dx, dz);
@@ -2266,7 +2277,7 @@ ${GRADE_GLSL}
     hurt(n = 1) { playerHp = Math.max(1, playerHp - n); },
     ctl: () => ({ calm: ctlCalm, t: +ctlT.toFixed(2), label: ctlLbl, hostile: hostileNear() }),
     /** M20b-2 QA: side tales, discoveries, the camp, the barrow, standables. */
-    quests: () => { const b = barrow; return { sq: { ...(save.sq ?? {}) }, found: [...(save.found ?? [])], views: [...(save.views ?? [])], hpUp: save.hpUp ?? 0, hpMax: hpMax(), hp: playerHp, xp: save.xp, whet: save.whet ?? 0, weapons: owned(), weapon: cb.weapon.id, fogV: save.fogV ?? 0, gone: { ...(save.gone ?? {}) }, campClear: campClear(), day: save.day ?? 0,
+    quests: () => { const b = barrow; return { level: levelOf(save.xp), power: +whetMul().toFixed(3), lvBanner: lvEl.classList.contains('on') ? lvEl.textContent : '', lvCount, sq: { ...(save.sq ?? {}) }, found: [...(save.found ?? [])], views: [...(save.views ?? [])], hpUp: save.hpUp ?? 0, hpMax: hpMax(), hp: playerHp, xp: save.xp, whet: save.whet ?? 0, weapons: owned(), weapon: cb.weapon.id, fogV: save.fogV ?? 0, gone: { ...(save.gone ?? {}) }, campClear: campClear(), day: save.day ?? 0,
       inBarrow, vale: vale(), perch: !!perch, lift: !!lift, todLocked, talking, near: nearestInteract()?.label ?? null, px: +state.px.toFixed(2), pz: +state.pz.toFixed(2), foot: +player.root.position.y.toFixed(3), air: airborne, stands: STANDS.length, locs: LOCS.length,
       barrow: b ? { gate: b.gateOpen, hall: b.hallMobs.map((m) => m.alive), king: { alive: b.king.alive, hp: +b.king.hp.toFixed(2), state: b.king.state, x: +(b.king.x - BAR_O.x).toFixed(2), z: +(b.king.z - BAR_O.z).toFixed(2) }, risen: b.risen.map((m) => m.alive), lx: +(state.px - BAR_O.x).toFixed(2), lz: +(state.pz - BAR_O.z).toFixed(2) } : null }; },
     talkTo(w: 'sefa' | 'dov' | 'ress') { if (w === 'sefa') talkSefa(); else if (w === 'dov') talkDov(); else talkRess(); return dtxt.textContent; },

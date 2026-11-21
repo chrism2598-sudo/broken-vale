@@ -1,0 +1,76 @@
+THE BROKEN VALE - M60 BRIEF (progression and rewards)
+Status: release candidate tagged locally as release-M60 (commit 1512ea0, bundle index-0kZfz36t.js). NOT deployed. Production is still M59. Rollback point: release-M54.
+
+WHAT THE AUDIT FOUND (docs/m60-audit.md; computed from the shipping code, plus an emulated run)
+- Levels did nothing. Level = XP/50 was display-only: no stat, heart or damage depended on it. A level-up was a " · Level N" suffix on a toast.
+- So every chest, stash, lookout, secret and discovery (about 50 of roughly 60 reward sources pay XP only) had no mechanical value.
+- Seals 2-4 paid +25 XP and a counter, no more than a stash. After seal 1 nothing said what was next.
+- Weapon overlap:
+  - The Knight's Longsword was strictly beaten by the Tide-blade and the Harpoon, and outclassed by Emberbrand.
+  - The Spear did less damage per second than the starting sword.
+  - The Halberd said "longest reach" but the Harpoon reached further.
+  - The weapon picker hid speed, stagger and stamina cost.
+- The end screen showed "xp/580", a total last updated in M16. Thorough players see something like "1900/580".
+- Main-path levels: Level 3 after four seals, Level 7 at the end of Chapter I, Level 12 at the end. A thorough player reaches Level 35-45.
+
+WHAT CHANGED (existing systems only; no new currency, crafting, skill tree, content or save field)
+1. Levels give power: blows +4% per level, up to Level 13 (+48%). It adds to whetstones (+15% each). It is derived from XP, so old saves get it automatically. The opening fight is unchanged (Level 1 = x1.00).
+2. Level-up banner with a chime, from any XP source, e.g. "Level 2 - blows +4% - next at 100 XP". It is never shown on load and doesn't overlap the controls, the tip or the toast.
+3. Progress you can read:
+   - HUD: "Lv 5 - 230/250 XP".
+   - Journal header: the bonus and the next level.
+   - Weapon picker: total blow bonus (level + whetstones), plus speed, reach, stagger and heavy stamina cost per weapon.
+4. Seals: +50 XP each (a level). From seal 2 on, the toast says "2/4 - 2 seals left - clues in your Journal". The opening coach tip covers seal 1.
+5. Weapon roles (stat tuning only):
+   - Spear: a bit more damage and stagger.
+   - Knight: faster, with the cheapest heavy.
+   - Ember: still the hardest hitter, but slower and stamina-hungry.
+   - Halberd: truly the longest reach, every hit staggers.
+   - Harpoon: slightly shorter reach, still quick with a Keeper bonus.
+   - Rusty Sword, Maul and Tide-blade unchanged.
+6. The end screen shows "Level N - X XP".
+- Unchanged: story, dialogue, world, art, enemies, controls, opening coach rules, movement, graphics, adaptive resolution, Smooth 30, save format.
+
+BEFORE -> AFTER (internal scripted runs / computed; EMULATED headless Chrome, not player data)
+- M60 progression checks (tools/m60-progress.cjs): 5/21 on M59 -> 21/21 on the RC.
+- A real Rusty-sword cut on a husk: Level 1 1.00 -> 1.00; Level 5 1.00 -> 1.16.
+- Blow strength at 700 XP + 2 whetstones: x1.30 -> x1.78. The maximum goes from x1.60 to x2.08.
+- Main-path level at the end of Chapter I / at the end: 7/12 -> 9/14.
+- Non-starter weapons strictly beaten by another: Spear, Knight -> none.
+- Spear light DPS 2.65 -> 3.04 (Rusty 2.99). Longest reach: Halberd 1.75 (it was the Harpoon at 1.60).
+- Old high-XP save (1900 XP, 4 whetstones): loads at Level 39, blow strength x2.08, and no new save fields are written.
+- Before/after image (untracked): /workspace/vale3d/logs/m60/m60-before-after.png
+
+GATES (exact RC commit 1512ea0, bundle index-0kZfz36t.js, one at a time)
+- All 13 suites PASS; full qa-run PASS (0 failures).
+- Shaders, perfrun (headless estimate only), perf HUD, diag smoke and M57 diag: PASS.
+- Draw calls identical to M59 at all 5 views (358/350/308/400/160).
+- qa-onboard and new-player runs (follow-prompts and novice): PASS.
+- Readability: every row 8/8 (hit checks 6/6), seal-camera clips 0/5.
+- New m60-progress check: 21/21.
+- qa-save: 145/145 PASS (rerun). Rollback M60 -> release-M54 -> M60: 20/20 PASS (rerun). release-M54 was rebuilt to its original bundle, index-Dan1OPQt.js.
+
+TEST-HARNESS CRASH INVESTIGATION
+- In the first chained run, qa-save and rollback stopped with environment errors, not test failures:
+  - qa-save: 126 checks passed and none failed, then the browser frame detached.
+  - rollback: it timed out loading the first page (240 s), before any check.
+- At the time the shared box had only 2.2-3.4 GB free. My visible processes totaled about 5 GB of the 12+ GB in use, so most of the pressure came from outside them.
+- Both local servers stayed healthy (HTTP 200, correct bundles). The same bundle booted fine through the 13 suites, qa-run and the other gates.
+- Rerun one at a time on the same commit, with the harnesses unchanged: qa-save 145/145 (started at 3.8 GB free, lowest 2.1 GB); rollback 20/20 (started at 7.7 GB, lowest 3.9 GB).
+- Conclusion: an environment problem (low memory), not a game or save defect.
+
+REMAINING CONCERNS
+- REAL-PHONE TEST OF THE OPENING 2-HUSK FIGHT IS STILL OUTSTANDING: frame pacing, and whether the wind-up/hit indicators are noticeable and usable. Emulated runs are not a substitute.
+- Late game gets easier: up to x2.08 blow strength for a thorough player (x1.60 before).
+- Roaming foes still give XP daily. Grinding is possible but slow, and the Level 13 cap bounds it.
+- Weapon tuning is computed, not play-tested. Ember players will notice slower swings; Harpoon players will notice slightly less reach.
+- At seal 1, the toast, the level-up banner and the coach tip show together for about 3 s. They don't overlap, but it's busy.
+
+READINESS
+Ready to deploy on your approval. Rollback: release-M54 (saves unchanged, no new fields). After deploy, run the real-phone test of the opening 2-husk fight.
+
+DECISIONS NEEDED
+1. Approve deploying M60?
+2. Is +4% per level, capped at Level 13 (+48%), the right strength? Option: +3% capped at +36%, which makes the late game less easy.
+3. Keep the weapon re-tuning (Ember slower, Harpoon shorter reach), or keep existing weapons untouched and only strengthen the weak ones?
+4. Roaming foes come back once per in-game day, and each kill pays XP again. Keep that now that levels matter (the Level 13 cap bounds grinding), or let each roaming foe pay XP only once ever, like keep sentinels and sea-cave foes?

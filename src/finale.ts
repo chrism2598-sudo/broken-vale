@@ -45,7 +45,7 @@ export const FINAL_REWARD = `+${LAMP_XP} XP · Seam-Binder · Enna’s pen`;
 
 export function finalStats(s: Save, level: number): string {
   const charted = s.charted.filter(Boolean).length, extras = [s.wind ? 'Wind Shrine ✓' : 'Wind Shrine —', s.warden ? 'Vale Warden ✓' : 'Vale Warden —', s.echo ? 'Echo Grove ✓' : 'Echo Grove —', `Map ${charted}/${MARR_MARKS.length}`];
-  return `Level ${level} · ${s.xp}/${MAX_XP} XP · ${extras.join(' · ')}`;
+  return `Level ${level} · ${s.xp} XP · ${extras.join(' · ')}`; // M60 · MAX_XP was stale (side content pays far more)
 }
 
 export const CREDITS = [

@@ -5,8 +5,12 @@ import { fill, type Profile } from './dialogue';
 
 /** Save format (localStorage 'vale3d-save'). */
 export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean; mirrors: number[]; beacon: boolean; echo: boolean; charted: boolean[]; cave: number; coast: number; sea: number; lamp: number; weapons?: string[]; weapon?: string; fog?: number[]; chests?: string[]; lore?: string[]; foes?: string[]; secrets?: string[]; views?: string[]; stashes?: string[]; whet?: number; tod?: number; day?: number; rk?: Record<string, number>; sq?: Record<string, number>; found?: string[]; hpUp?: number; fogV?: number; gone?: Record<string, number>; ressStair?: number; kit?: string[] };
-export const SEAL_XP = 25, QUEST_XP = 80;
+export const SEAL_XP = 50, QUEST_XP = 80; // M60 · a seal is worth a full level (was 25)
 export const levelOf = (xp: number) => 1 + Math.floor(xp / 50);
+/** M60 · levels give power: +3 % blows per level above 1, capped at Level 13 (+36 %; C S 12:37 AM, was +4 %). Derived from XP — no save field. */
+export const LV_STEP = 0.03, LV_CAP = 13;
+export const levelBonus = (xp: number) => LV_STEP * Math.min(levelOf(xp) - 1, LV_CAP - 1);
+export const nextLevelXp = (xp: number) => levelOf(xp) * 50;
 
 /** M54: the raw save comes from savestore (verified backup, recovery, quarantine, newer-version guard); this function repairs field types/ranges.
  *  `effects` false = a side-effect-free peek (title "is there progress?" checks). */

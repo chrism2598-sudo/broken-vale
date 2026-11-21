@@ -3,7 +3,7 @@ import { LANDMARKS, SEALS, WAYFINDER, SHRINE, heightAt, creekX, creekHalf, pathM
 import { WARDEN } from './warden';
 import { UPDRAFT, MIRRORS } from './beacon';
 import { ISLAND_POS } from './island';
-import { sealCount, levelOf, type Save } from './quest';
+import { sealCount, levelOf, levelBonus, nextLevelXp, LV_CAP, type Save } from './quest';
 import { fill, type Profile } from './dialogue';
 import { MARR_MARKS, CHART_DONE, ECHO } from './echo';
 import { STAIR, CAVE_XP } from './cave';
@@ -76,7 +76,7 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
   const sections = s.beacon ? [trail, quest, chart, keeps, pages, shrine, warden, echo, beacon, lore] : [quest, chart, keeps, pages, shrine, warden, echo, beacon, lore];
   return {
     title: fill('Field notes — {fullname}', p),
-    sub: fill(`{Name}, 17 · Enna’s {child} · Level ${levelOf(s.xp)} · ${s.xp} XP`, p),
+    sub: fill(`{Name}, 17 · Enna’s {child} · Level ${levelOf(s.xp)} · ${s.xp} XP · blows +${Math.round(levelBonus(s.xp) * 100)}% from level${levelOf(s.xp) < LV_CAP ? ` · next level at ${nextLevelXp(s.xp)} XP` : ' (max)'}`, p),
     sections,
   };
 }

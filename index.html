@@ -157,7 +157,11 @@ body.calm #action{pointer-events:none;right:max(8px,env(safe-area-inset-right))!
 #wpick button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;margin:3px 0;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(214,186,120,.25);color:inherit;font:inherit}
 #wpick button.on{border-color:#e8c46a;background:rgba(232,196,106,.16)}#wpick button:disabled{opacity:.45}
 #wpick svg{width:30px;height:30px;flex:none}#wpick span{display:flex;flex-direction:column}#wpick i{font-size:11.5px;opacity:.85}#wpick em{font-size:11px;font-style:normal;color:#bfe3d9}
-body:not(.guided) #carrow,body:not(.guided) #warrow,body:not(.guided) #wdarrow{display:none}
+body:not(.guided):not(.opening) #carrow,body:not(.guided) #warrow,body:not(.guided) #wdarrow{display:none}
+#coach{position:fixed;z-index:15;left:50%;bottom:calc(252px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(8px);width:max-content;max-width:min(560px,88vw);padding:10px 16px;border-radius:12px;background:rgba(10,30,34,.88);color:#f4ead2;border:1px solid rgba(232,212,160,.85);font-size:16px;line-height:1.35;text-align:center;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+#coach.on{opacity:1;transform:translateX(-50%)}body.titled #coach,body.creating #coach,body.cine #coach,body.talking #coach{display:none}
+.cpulse{animation:cpulse .9s ease-in-out infinite!important}@keyframes cpulse{50%{transform:scale(1.14);box-shadow:0 0 0 4px rgba(255,246,220,.85),0 0 22px rgba(255,246,220,.75)}}
+#fx{position:fixed;inset:0;z-index:13;pointer-events:none;opacity:0}#fx.hurt{background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(150,20,10,.55) 100%);animation:fxo .45s ease-out}#fx.parry{background:radial-gradient(ellipse at center,rgba(255,250,235,.32),rgba(255,250,235,0) 70%);animation:fxo .3s ease-out}@keyframes fxo{0%{opacity:1}100%{opacity:0}}
 body.talking #cbt,body.sheet #cbt,body.creating #cbt,body.titled #cbt{display:none}body.cine #cbt{opacity:0;pointer-events:none}body.talking #wpick,body.sheet #wpick,body.cine #wpick{display:none}
 @media (min-width:760px){#cbt{transform:scale(.9);transform-origin:right bottom}}
 </style>
@@ -214,6 +218,7 @@ body.talking #cbt,body.sheet #cbt,body.creating #cbt,body.titled #cbt{display:no
 <button id="action" hidden>Action</button>
 <div id="cbt"><button id="b-atk" class="cb big" aria-label="Attack (K)"><small>Attack</small></button><button id="b-hvy" class="cb" aria-label="Heavy, hold to charge (L)"><small>Heavy</small></button><button id="b-blk" class="cb" aria-label="Block or parry (Q)"><small>Block</small></button><button id="b-dge" class="cb" aria-label="Dodge roll (C)"><small>Roll</small></button><button id="b-jmp" class="cb" aria-label="Jump (Space)"><small>Jump</small></button><button id="b-wpn" class="cb wpn" aria-label="Weapon (X)"></button><div id="stam" class="full" aria-label="Stamina"><i id="stfill"></i></div></div>
 <div id="wpick" hidden></div>
+<div id="coach" role="status" aria-live="polite"></div><div id="fx"></div>
 <button id="fps" aria-label="Toggle FPS readout">FPS</button>
 <div id="loading">Loading the Vale…</div>
 <script type="module" src="/src/main.ts"></script>

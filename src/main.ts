@@ -45,6 +45,7 @@ import { pathX, trackMask, openingBusy, STREAM, POOL, ORCHARD, HAZEL, RSTAIR } f
 import { LANDMARKS, SEALS, heightAt, normalAt, pathMask, trailMask, creekX, creekHalf, rng, SPAWN, WAYFINDER, SHRINE, WATER_Y, smoothstep, OUTPOSTS, outpostPad, onTrail, trailAt } from './world';
 import { makeOutposts, STANDS, standY, standPush, inStand, O as OP, type Loc } from './outposts';
 import { makeBarrow, BAR_O, type Barrow } from './barrow';
+import { makeCoach } from './coach';
 import { SQ_XP, sq, stage, sketched, sketchesLeft, sefaTale, dovTale, ressTale, makeLocs, sideJournal } from './sidequests';
 
 // ---------- quality ----------
@@ -204,6 +205,13 @@ async function main() {
   // M19 · weapons in hand (both rigs carry the equipped weapon in the old sword socket) and the combat state.
   const holders = [makeHolder(heroes.female.root), makeHolder(heroes.male.root)];
   const cb = new Combat();
+  // M58 · opening coach (one-time context tips) + hurt/parry screen feedback. Every incoming blow reports its outcome here.
+  const coachEl = document.getElementById('coach')!, fxEl = document.getElementById('fx')!; let pulsed: HTMLElement | null = null;
+  const isTouch = () => document.body.classList.contains('touch');
+  const coach = makeCoach(coachEl, (id) => { pulsed?.classList.remove('cpulse'); pulsed = id ? document.getElementById(id) : null; pulsed?.classList.add('cpulse'); });
+  coach.sync(!!save.started, sealCount(save));
+  const fx = (k: 'hurt' | 'parry') => { fxEl.className = ''; void fxEl.offsetWidth; fxEl.className = k; };
+  { const inc = cb.incoming.bind(cb); cb.incoming = (u = false) => { const r = inc(u); coach.event(r, { touch: isTouch() }); if (r === 'parried') fx('parry'); return r; }; }
   const owned = (): WeaponId[] => (save.weapons ?? ['rusty']).filter(isWeapon);
   const equip = (id: WeaponId) => { cb.weapon = WEAPONS[id]; for (const h of holders) h.set(id); };
   equip(isWeapon(save.weapon) && owned().includes(save.weapon) ? save.weapon : 'rusty');
@@ -351,7 +359,7 @@ ${GRADE_GLSL}
       return openDialog('Wayfinder', fillLines(save.cave >= 4 ? CAVE_LINES.found : CAVE_LINES.remind, profile));
     }
     if (save.done) return openDialog('Wayfinder', fillLines([WAYFINDER_LINES.after[0], save.beacon ? WAYFINDER_BEACON.done : WAYFINDER_BEACON.open, WAYFINDER_LINES.after[1]], profile));
-    if (!save.started) { save.started = true; persist(); toast('Quest: The Four Seals'); return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.start, profile)); }
+    if (!save.started) { save.started = true; persist(); toast('Quest: The Four Seals'); return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.start, profile), () => coach.event('questStart', { name: objective().name.split(' · ')[0] })); }
     if (n < 4) return openDialog('Wayfinder', fillLines(WAYFINDER_LINES.progress, profile, { n }));
     startFinale();
   }
@@ -383,6 +391,7 @@ ${GRADE_GLSL}
     const n = sealCount(save);
     toast(`${o.def.name} claimed · +${SEAL_XP} XP${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''} · ${n}/4`, 4);
     if (n === 4 && !save.done) finaleDelay = 1.4;
+    if (n === 1) coach.event('sealClaimed');
   }
   let finaleDelay = -1;
   type Inter = { label: string; act: () => void; x?: number; z?: number; combat?: boolean };
@@ -400,11 +409,23 @@ ${GRADE_GLSL}
   }
   function tickControls(dt: number) {
     if (hostileNear() || cb.act || cb.blocking || cb.charge > 0 || playerHp < ctlHp) ctlT = 4; // damage, a swing/block/roll, or a foe within ~12 m
+    if (ctlHp >= 0 && playerHp < ctlHp) fx('hurt'); // M58: a red-edged flash on every hit taken
     ctlHp = playerHp; ctlT = Math.max(0, ctlT - dt);
     const calm = ctlT <= 0; if (calm !== ctlCalm) { ctlCalm = calm; document.body.classList.toggle('calm', calm); }
     const it = calm ? nearestInteract() : null, lbl = it && !it.combat ? (/^Talk/.test(it.label) ? 'Talk' : 'Use') : 'Attack';
     if (lbl !== ctlLbl) { ctlLbl = lbl; atkBtn.querySelector('small')!.textContent = lbl; atkBtn.classList.toggle('use', lbl !== 'Attack'); }
     const idle = calm && !it; if (idle !== ctlIdle) { ctlIdle = idle; atkBtn.classList.toggle('idle', idle); } // M22: no foe and nothing to use — a quiet stone button, not a lit ATTACK
+  }
+  function windingNear(): boolean { // a foe within striking distance is winding up (any arena)
+    const w = (m: Mob | null | undefined) => !!m && m.winding && Math.hypot(m.x - state.px, m.z - state.pz) < 5;
+    if (inBarrow) return w(nearestBarMob(5)); if (inCastle) return w(nearestMob()); if (inSea) return w(nearestSeaMob(5)); if (inKeep) return false;
+    return vale() && w(nearestRoamer(5));
+  }
+  function tickCoach(dt: number) {
+    const busy = talking || !!cine || !!dawnCine || !!lampCine || fading || creating || !chapterEl.hidden || !!lift;
+    let pickNear = false; if (!busy && vale()) for (const k of PICK) if (k.p.group.visible && Math.hypot(state.px - k.x, state.pz - k.z) < 30) pickNear = true;
+    coach.tick({ dt, touch: isTouch(), busy, started: !!save.started, seals: sealCount(save), px: state.px, pz: state.pz, yaw: state.yaw, near: nearestInteract()?.label ?? null,
+      hostile: hostileNear(), winding: windingNear(), rolling: cb.rolling, stamina: cb.stamina, hp: playerHp, landed: cb.counts.landed, pickNear });
   }
   function nearestInteract(): Inter | null {
     if (lift || dawnCine) return null;
@@ -1466,6 +1487,7 @@ ${GRADE_GLSL}
     if (save.lamp >= 2) return { name: 'The End · free roam · Enna by the crossing', x: ENNA_V.x, z: ENNA_V.z };
     return { name: 'Wayfinder', x: WAYFINDER.x, z: WAYFINDER.z };
   }
+  let openingCls = false;
   function updateHud(dt: number) {
     hudT -= dt; if (hudT > 0) return; hudT = 0.15;
     const n = sealCount(save);
@@ -1479,7 +1501,8 @@ ${GRADE_GLSL}
     const sx = dx * rx + dz * rz, sy = dx * fx + dz * fz;
     carrow.style.transform = `rotate(${(Math.atan2(-sy, sx) * 180 / Math.PI).toFixed(0)}deg)`;
     const free = save.beacon && save.cave >= 4 && save.sea >= 5 && save.lamp >= 2 && !onIsland && !inCave && !inCoast && !inSea && !inKeep && !inCastle && !inBarrow;
-    ctext.textContent = free && (dist < 6 || !guidance) ? 'Explore freely' : guidance ? `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}` : `✎ ${tgt.name} · clues in Journal`;
+    const opening = !save.done && sealCount(save) === 0; if (opening !== openingCls) { openingCls = opening; document.body.classList.toggle('opening', opening); } // M58: arrow + distance until the first seal
+    ctext.textContent = free && (dist < 6 || !guidance) ? 'Explore freely' : guidance || opening ? `${tgt.name} · ${dist < 10 ? 'here' : Math.round(dist) + ' m'}` : `✎ ${tgt.name} · clues in Journal`;
     // Optional Wind Shrine locator line.
     { const ws = { x: (RUNES[0].x + RUNES[2].x) / 2, z: RUNES[0].z }; const ddx = ws.x - hx, ddz = ws.z - hz, dd = Math.hypot(ddx, ddz);
       const wx = ddx * rx + ddz * rz, wy = ddx * fx + ddz * fz;
@@ -1656,7 +1679,7 @@ ${GRADE_GLSL}
     player.setSpeed(cb.act ? 0 : state.speed, cb.hitStop > 0 ? dt * 0.08 : dt); // hit stop: the swing freezes for a few frames
     for (const k of PICK) if (k.p.group.visible) k.p.update(t); if (seaPick?.p.group.visible) seaPick.p.update(t);
     if (inCastle && castle) tickMobs(dt); if (inSea && sea) tickSeaMobs(dt); tickBarrow(dt); tickDiscover(dt);
-    tickRoam(dt, t); tickControls(dt);
+    tickRoam(dt, t); tickControls(dt); tickCoach(dt);
     // Wayfinder looks at Ilka when near.
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 9) { const want = Math.atan2(state.px - WAYFINDER.x, state.pz - WAYFINDER.z); let d = want - wayfinder.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); wayfinder.root.rotation.y += d * Math.min(1, dt * 3); }

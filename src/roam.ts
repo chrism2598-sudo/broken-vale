@@ -39,6 +39,7 @@ export const GROUPS: GroupDef[] = [
   { id: 'n-east', night: true, x: 86, z: -12, mobs: ['shade', 'shade'], r: 14 },
   { id: 'd-veil', night: false, x: -96, z: -58, mobs: ['husk', 'husk'], r: 10 },
   { id: 'd-south', night: false, x: 4, z: 96, mobs: ['husk', 'husk'], r: 10 },
+  { id: 'd-dome', night: false, x: 8, z: 38, mobs: ['husk', 'husk'], r: 6 }, // M58 · a gentle first fight on the walk to the nearest seal (Forge Heart)
   // M20b-2 · Ashen Hollow: a cultist camp that holds its ground day and night; once broken it stays empty for a few days (main: save.gone)
   { id: 'ashen', night: false, camp: true, x: -122, z: 148, mobs: ['cultist', 'cultist', 'zealot', 'cultist'], r: 7 },
 ];

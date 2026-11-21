@@ -1,0 +1,49 @@
+THE BROKEN VALE: OUTSIDE EVALUATION BRIEF (M57)
+
+CONTEXT
+The Broken Vale is a solo-developed 3D action RPG built with Three.js (r187), TypeScript and Vite. It runs in the phone browser. The target device is a Pixel 9 class phone (Mali-G715 GPU, 448x827 CSS px at 2.25x). The goal is a stable 60 fps in "Fast" motion mode, with a consistent 30 fps "Smooth" fallback. 1% lows and p95 frame time matter more than average fps. Phones use a "Lite" preset: pixel ratio up to 1.25, no post-processing, 1024 shadow map, instanced grass, alpha-tested foliage, distance LOD for tiny props. The previous milestone (M56) added adaptive render resolution to Lite in Fast mode only. It holds pixel ratio 1.25 while frames are on time and steps down 0.1 at a time to a floor of 0.8 when p95 slips past 20 ms. It steps back up only after 4 s with at most 1% missed frames. Constraints: no reduction of environmental detail, no graphics changes without approval, backward-compatible saves, a verified rollback build.
+
+Labels: CONFIRMED means measured on the phone or headless. HYPOTHESIS means inferred. The phone exposes no GPU timer queries, so any GPU or fill-rate claim is indirect evidence.
+
+PHASE 1: A DRAW-CALL SPIKE
+An earlier phone run of the under-bridge benchmark showed 307 draw calls per frame on average (359 max, 599k triangles). The run before it showed 195.
+CONFIRMED: re-running with the same save and camera path gave 195 average, 251 max and 512k triangles, the same as the older build. Headless runs of three builds across fresh, mid-game and end-game saves gave 190 to 214. The camera start point was identical.
+CONFIRMED: save state is worth about +20 draws. Extra simulated game time and starting cold had no effect. Turning off distance LOD raised draws to 235 average (293 max) and triangles to 581k. That is the only lever found that moves toward 307.
+Phone breakdown per frame (main pass + shadow pass): buildings/landmarks 24+16, small props 26+12, hero 17+18, alpha-tested foliage 32+2, glow/particles 23+0, characters 18+0, other 7.
+HYPOTHESIS: in the 307 run, distance LOD wasn't hiding small props, possibly together with extra characters or effects in view. Only a partial explanation; that build logged no camera or world state. Treated as a bounded one-off; new diagnostics will catch a recurrence.
+
+PHASE 2: ADAPTIVE RESOLUTION ON THE PHONE (60 s runs)
+CONFIRMED, meadow, Fast mode, two rounds each. With adaptive off at a fixed 1.25: 46.7 and 45.3 fps, 1% low 14.1 and 13.3, p95 50 ms, 488 and 524 frames over 33 ms, 94 and 115 frames over 50 ms. With production adaptive: 56.4 and 56.1 fps, 1% low 20.0 and 19.8, p95 33 ms, 171 and 193 frames over 33 ms, 6 and 11 over 50 ms. It spent 41 to 45 s of each 60 s at the 0.8 floor. An experimental emergency rule (3 frames over 50 ms within 1 s jumps 2 levels down) gave 56.4 and 55.5 fps, 1% low about 19.5, and 175 and 228 frames over 33 ms. It adds nothing. Thermal drift between rounds was 0.3 to 1.4 fps. CPU frame time is about 10 ms, so the remaining cost is probably GPU or fill-rate bound (indirect evidence).
+CONFIRMED, under the bridge: 57.6 fps, 1% low 24.4, p95 16.8 ms, p99 33.4 ms. The controller dropped to 0.8 within 18 s and stayed there for 37 s, stepping up only once. That's because the step-up rule needs p99 at or under 20 ms, and 2 to 4% of frames were still missing the budget.
+CONFIRMED, castle interior: 59.9 fps, 1% low about 50, p95 16.8 ms, 83 draws, no resolution changes.
+CONFIRMED, Smooth mode (30 fps): 29.7 and 29.9 fps, p95 33.4 ms. One 100 ms stall in run 1, where the main thread spent 92 ms in render submit. There were no focus, visibility or WebGL events nearby, and it did not recur on the identical run 2. The code never pre-compiles shaders.
+HYPOTHESIS: the stall was a first-use shader compile or texture upload.
+
+RECOMMENDATIONS (all pending approval)
+1. Keep the M56 adaptive resolution. Don't adopt the emergency rule.
+2. Optionally A/B a looser step-up rule (for example p98 at or under 20 ms, or p95 at or under 17.5 ms held for 8 s) behind a diagnostic switch first, watching for visible pumping.
+3. Optionally pre-warm shaders at load (renderer.compile) to remove first-use stalls, at some cost in load time.
+4. Open areas remain GPU or fill-limited at the 0.8 floor. Further gains need targeted rendering work or a lower floor, and both need visual sign-off.
+
+GAMEPLAY REVIEW (based on code and QA inspection, without long hands-on play)
+Two chapters and two bosses; an open vale with keeps, a cave, a coast and a sea cave; 8 weapons, combos, parry, dodge-roll and stamina; four foe families; XP, levels and 6 side quests; procedural music. A first playthrough is roughly 2 to 3 hours (an estimate).
+Scores out of 10: core loop 5, combat 5, exploration 6, progression 4, quest and narrative delivery 5, phone UI/UX 5, onboarding 5, content length 4, audio 5, polish 6, distinctiveness 5. Overall 5.
+Major weaknesses: a thin loop and progression with little replay pull; low enemy and encounter variety compared with the combat systems; short length; dense phone HUD text and lightly taught combat inputs; open areas still GPU-limited (30 fps Smooth is the honest phone default); no outside playtest data yet.
+
+ROADMAP (gameplay first, each milestone gated by full regression tests)
+M58: first 10 minutes and onboarding. Instrument the opening and teach existing moves in context. Target: outside testers reach the first seal in under 10 minutes unaided and use parry and roll.
+M59: combat readability and encounters.
+M60: progression and rewards.
+M61: phone UI/UX. Legible HUD and clearer journal and map.
+M62: pacing review and a Chapter III design proposal for approval before any build.
+
+COMMERCIAL ASSESSMENT
+As is, it's a strong free web demo or portfolio piece, not a viable paid phone app. The suggested path is a free web or itch.io release of Chapters I to II to gather players and wishlists, then a premium release ($5 to $10) on Steam or as a wrapped mobile app after a third chapter, deeper combat and progression, and stable 60 fps on mid-range phones. Realistic earnings without marketing are small (hundreds to low thousands of dollars). The differentiator is a handmade mythic world that plays instantly in a phone browser, with a parent-and-child story.
+
+QUESTIONS FOR THE EVALUATOR
+1. Given CPU about 10 ms but p95 about 33 ms at pixel ratio 0.8 on a Mali-G715, what are the most likely GPU costs in a Three.js scene with alpha-tested foliage, instanced grass and a 1024 shadow map, and how would you confirm them without GPU timers?
+2. Is our step-up rule (at most 1% missed frames for 4 s) too conservative for a resolution controller, and what rule would you use to avoid visible pumping?
+3. Is the 307 draw-call one-off adequately bounded by the evidence, or is there another explanation we should test?
+4. Which single gameplay improvement would most raise retention in the first 10 minutes of a phone action RPG like this?
+5. Is a free web release followed by a premium Steam or mobile release the right commercial path, and what content or quality bar should come first?
+6. Do the category scores look fair for a two-chapter browser RPG, and which weakness would you rank first?

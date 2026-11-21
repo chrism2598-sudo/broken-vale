@@ -1444,6 +1444,9 @@ ${GRADE_GLSL}
   const menuBtn = document.getElementById('menubtn')!, menuEl = document.getElementById('menu')!, resetBtn = document.getElementById('reset')!;
   const setMenu = (on: boolean) => { menuEl.hidden = !on; menuBtn.setAttribute('aria-expanded', String(on)); };
   menuBtn.onclick = () => setMenu(!!menuEl.hidden);
+  // M61 · a tap elsewhere closes the menu / weapon picker (the tap still does its own job); a tap on a sheet's dimmed backdrop closes the sheet
+  document.addEventListener('pointerdown', (e) => { const t = e.target as HTMLElement; if (!menuEl.hidden && !t.closest('#menu,#menubtn')) setMenu(false); if (!wpick.hidden && !t.closest('#wpick,#b-wpn')) wpick.hidden = true; }, true);
+  for (const sh of document.querySelectorAll<HTMLElement>('.sheet')) sh.addEventListener('click', (e) => { if (e.target === sh) sh.querySelector<HTMLElement>('.close')?.click(); });
   let resetArm = 0;
   resetBtn.onclick = () => {
     if (performance.now() - resetArm < 3500) { clearSave(); location.reload(); return; }

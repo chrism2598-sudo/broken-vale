@@ -1,0 +1,74 @@
+BROKEN VALE - M61 PHONE UI/UX - RC BRIEF
+Status: RC READY. Not deployed. Awaiting C S approval.
+
+SCOPE
+Targeted fixes to existing phone UI. No new HUD elements, mechanics, content, text or save fields.
+M56 adaptive resolution, Smooth 30, M11 movement, combat balance, progression: unchanged.
+Files: index.html (one CSS block), src/coach.ts (seal-1 tip timing), src/main.ts (tap-outside close).
+
+AUDIT FINDINGS (release-M60, measured)
+- 6 tap targets under 44 px: Menu 40, FPS 32, sheet Close 40 (x3), volume slider 16.
+- Text down to 9.2 px (weapon picker); quest stats and combat pill 11 px.
+- Seal-1 claim: toast + level banner + coach tip all at once for 3.2 s.
+  Coach covered 34-38% of the hero, banner up to 16% (31% landscape).
+- Toast/banner squeezed to half width; coach 2 px past screen edge at 360/375.
+- Weapon picker overlapped Jump by 18 px; in landscape it was 60 px tall (1 row).
+- Menu stayed open over Jump/Attack until Menu tapped again.
+- Journal Close scrolled off-screen; no backdrop tap to close sheets.
+
+CHANGES
+1. All targets >= 44 px (Menu, FPS, Close, slider hit area, quest card).
+2. 12 px text floor. Hearts 15 px in the combat pill.
+3. Seal-1 coach tip waits 4.6 s until toast + banner clear. Text unchanged.
+4. Toast/banner sized to text, moved above the hero; banner stacks under toast.
+5. Coach fits the screen. Landscape: coach low between stick and buttons.
+6. Picker ends above the buttons; landscape picker shows 3+ rows.
+7. Tap elsewhere closes menu/picker. Backdrop tap closes sheets.
+   Journal Close pinned while scrolling.
+
+KEY MEASUREMENTS (before -> after, 360x740 / 375x667 / 390x844 / 412x915 / 844x390)
+- Targets < 44 px: 6 -> 0 at all five sizes.
+- Smallest text: 9.2 -> 12 px at all sizes. Runs < 12 px: 35 -> 0 (22 -> 0 landscape).
+- Seal-1 hero covered: 34-38% -> 0% (portrait), 31% -> 0% (landscape).
+- Seal-1 message overlaps: landscape 12,630 px2 -> 0.
+- Picker over controls: 972 px2 -> 0. Landscape rows 0 -> 3.
+- Journal Close at end of scroll: off-screen -> reachable (all sizes).
+- Combat: no HUD over the hero; all 6 buttons + stick reachable, unchanged sizes
+  (Attack 84, Roll/Block/Heavy 62, Jump/Weapon 54, stick 122 px).
+
+GATES (RC commit; one at a time, memory-guarded)
+- 13 suites: 12 PASS first run; title env crash ("frame got detached") -> solo rerun PASS.
+- qa-run: env boot timeout at first page load -> solo rerun PASS (0 FAIL).
+- qa-save PASS. Rollback M61 -> release-M54 -> M61 PASS.
+- Shaders, draws, perfrun, perf HUD, M57 diag: PASS.
+- Diag smoke: env timeout at ~1 fps (meadow step 14/15); the pixelRatio error
+  followed from the missing results. Solo rerun PASS. Not M61 code.
+- Onboard: FAIL 1, expected. Test checked the old stacked seal-1 tip timing.
+  Updated to require no tip at claim + tip by 4.7 s. PASS. No game change.
+- Newplayer x2, readability, m60-progress 21/21: PASS.
+- New m61 UI test (5 viewports): PASS (M60 baseline fails 116 checks).
+- RC 0800bd0 = 7724ccd + onboard test only; dist byte-identical.
+
+TRADE-OFFS / CONCERNS
+- Coach tip still covers ~34-37% of the hero at the seal once it appears (M59 spot, not moved).
+- Landscape picker covers the hero while open (transient; closes on outside tap).
+- Menu still covers Jump while open, but now closes on any outside tap.
+- First-timers see the seal-1 coach tip 4.6 s later.
+- Seal 2-4 toasts in landscape wrap to 2-3 lines; may touch the banner edge (seal 1 measured clear).
+
+NOT TESTED ON A REAL DEVICE
+- All M61 evidence is emulated headless Chrome (SwiftShader, touch emulation).
+- Not checked: thumb reach, notch/home-bar safe areas, browser toolbar resize,
+  outdoor readability, real touch adjustment, on-device fonts.
+- Still outstanding: real-phone opening 2-husk fight (frame pacing + wind-up cue).
+  Never substituted with emulation. Report separately when done.
+
+DECISIONS NEEDED
+1. Approve M61 RC for deploy (zip ready).
+2. OK to keep the coach tip's M59 position (covers part of the hero at the seal)?
+3. Real-phone test of the opening fight: who/when.
+
+PATHS
+Zip: /workspace/vale3d-m61-release.zip
+Docs: docs/m61-audit.md, m61-spec.md, m61-report.md
+Evidence (untracked): /workspace/vale3d/logs/m61/ (m61-before-after.png, before/after json+md, final/, rerun/)

@@ -20,7 +20,7 @@ export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
   const finish = (s: Step) => { if (!done.has(s)) { done.add(s); persist(); } };
   let cur: { id: Step; text: string; t: number; min: number; pulse: string | null } | null = null;
   let moved = 0, turned = 0, lastX = NaN, lastZ = NaN, lastYaw = NaN, moveT = 0, atkT = 0, landed0 = -1, windShown = 0, wasWinding = false, rolledIn = false, hpAtWind = 0, parryTries = 0, hp0 = -1;
-  let queued: { id: Step; text: string; secs: number } | null = null, shownAt: Record<string, number> = {}, clock = 0;
+  let queued: { id: Step; text: string; secs: number; wait?: number } | null = null, shownAt: Record<string, number> = {}, clock = 0;
   const show = (id: Step, text: string, secs: number, pulseId: string | null = null, min = 1.2) => {
     if (cur && cur.id === id) { cur.t = Math.max(cur.t, secs); if (cur.text !== text) { cur.text = text; el.textContent = text; } return; }
     cur = { id, text, t: secs, min, pulse: pulseId }; el.textContent = text; el.classList.add('on'); pulse(pulseId); shownAt[id] = clock;
@@ -39,7 +39,8 @@ export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
     event(e: CoachEvent, ctx?: { touch?: boolean; name?: string }) {
       const tap = ctx?.touch ?? true;
       if (e === 'questStart') { finish('talk'); show('seal', `First seal: the ${ctx?.name ?? 'nearest seal'} — follow the arrow at the top. It is only a short walk.`, 8); finish('seal'); return; }
-      if (e === 'sealClaimed') { finish('seal'); if (!done.has('claim')) { finish('claim'); show('claim', 'Seal 1 of 4! The other three are yours to find — Menu ▸ Journal holds the clues (or switch the guidance arrow on in Settings).', 10); } return; }
+      // M61 · the claim tip waits until the seal toast (4.5 s) and level-up banner have cleared, so the three never stack
+      if (e === 'sealClaimed') { finish('seal'); if (!done.has('claim')) { finish('claim'); hide(); queued = { id: 'claim', text: 'Seal 1 of 4! The other three are yours to find — Menu ▸ Journal holds the clues (or switch the guidance arrow on in Settings).', secs: 10, wait: 4.6 }; } return; }
       if (e === 'dodged') { if (cur?.id === 'dodge') hide(); finish('dodge'); once('rolled', ROLLED, 3.5); return; }
       if (e === 'parried') { if (cur?.id === 'parry') hide(); finish('parry'); once('parried', 'Parried! It reels — strike now. Parries also refill stamina.', 4); return; }
       if (e === 'blocked' && !done.has('parry') && done.has('dodge')) { show('parry', `A little early — that was a plain block. ${tap ? 'Tap' : 'Press'} Block right as the blow lands to parry.`, 3.5, 'b-blk'); return; }
@@ -48,7 +49,8 @@ export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
       clock += c.dt;
       if (c.busy) { if (cur) { el.classList.remove('on'); } return; } else if (cur && !el.classList.contains('on')) el.classList.add('on');
       if (cur) { cur.t -= c.dt; if (cur.t <= 0) hide(); }
-      if (!cur && queued) { const q = queued; queued = null; show(q.id, q.text, q.secs); }
+      if (queued?.wait) queued.wait = Math.max(0, queued.wait - c.dt);
+      if (!cur && queued && !queued.wait) { const q = queued; queued = null; show(q.id, q.text, q.secs); }
       // movement + look
       if (!Number.isNaN(lastX)) moved += Math.hypot(c.px - lastX, c.pz - lastZ); lastX = c.px; lastZ = c.pz;
       if (!Number.isNaN(lastYaw)) { let d = c.yaw - lastYaw; d = Math.atan2(Math.sin(d), Math.cos(d)); turned += Math.abs(d); } lastYaw = c.yaw;
@@ -82,7 +84,7 @@ export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
         if (!done.has('talk')) show('talk', /^Talk/.test(c.near ?? '') ? (c.touch ? 'Tap the gold Talk button to speak with the Wayfinder.' : 'Press E (or tap the gold button) to speak with the Wayfinder.') : 'The Wayfinder waits by the camp — follow the arrow at the top and walk up to him.', 2);
         return;
       }
-      if (c.seals <= 1 && c.pickNear && !done.has('pick') && !cur) { finish('pick'); show('pick', 'Something glints nearby — a weapon? Look for the light and walk up to it.', 6); }
+      if (c.seals <= 1 && c.pickNear && !done.has('pick') && !cur && !queued) { finish('pick'); show('pick', 'Something glints nearby — a weapon? Look for the light and walk up to it.', 6); }
     },
   };
   return api;

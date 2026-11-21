@@ -38,7 +38,10 @@ ok('reload with 0 seals: arrow still shown',s.started&&s.arrow&&/ m$/.test(s.cte
 // 6 · claim the first seal → claim tip, arrow reverts to the setting (off)
 const near=await p.evaluate(()=>{const q=window.__vale.quest(),c=window.__vale.camInfo().st;return q.seals.filter(s=>!s.claimed).sort((a,b)=>Math.hypot(a.x-c.px,a.z-c.pz)-Math.hypot(b.x-c.px,b.z-c.pz))[0];});
 await p.evaluate((x,z)=>{window.__vale.warp(x+1.6,z+1.6);window.__vale.sim(Array(6).fill(1/30),0,0);window.__vale.interact();window.__vale.sim(Array(10).fill(1/30),0,0);},near.x,near.z);s=await st(p);
-ok('first seal claimed → "Seal 1 of 4" tip',Object.keys(s.seals).length===1&&/Seal 1 of 4/.test(s.coach),s);
+// M61 · the claim tip waits 4.6 s for the claim toast + level-up banner to clear (never three messages at once)
+ok('first seal claimed → no coach tip on top of the claim toast/banner',Object.keys(s.seals).length===1&&!/Seal 1 of 4/.test(s.coach),s);
+await p.evaluate(()=>window.__vale.sim(Array(140).fill(1/30),0,0));s=await st(p);
+ok('… then the "Seal 1 of 4" tip by +4.7 s',/Seal 1 of 4/.test(s.coach),s);
 await p.evaluate(()=>window.__vale.sim(Array(6).fill(1/30),0,0));s=await st(p);
 ok('after the first seal: arrow follows the setting (off) → Journal clues',!s.arrow&&/clues in Journal/.test(s.ctext)&&s.guid!=='on',s);
 // 7 · returning player with a seal: no tips at all, every tip marked done

@@ -1,0 +1,49 @@
+THE BROKEN VALE - M58 BRIEF (first ten minutes / onboarding)
+Status: release candidate, every gate passed, tagged locally as release-M58. NOT deployed. Production is still M56. Rollback point: release-M54.
+
+WHAT WE FOUND (measured on the M56 production build)
+- The Guidance arrow is off by default. A new player's compass says "Wayfinder - clues in Journal" at spawn and "Forge Heart - clues in Journal" after the quest starts, with no arrow or distance.
+- Phones show no control hints. The keyboard hint line is hidden on touch and nothing replaces it.
+- The compass's first seal is the nearest one, the Forge Heart, 54 m from the Wayfinder. In the daytime start there are no foes on that walk, so a new player claims a seal without ever seeing a wind-up, a roll or a parry.
+- Combat feedback existed, but nothing said which button answers a wind-up.
+
+WHAT CHANGED (targeted; existing systems only)
+1. Opening coach. Short one-time tips that react to what is happening, never pause the game, and are worded for touch or keyboard:
+   - Calm order: walk and look; walk to the Wayfinder and tap Talk; "First seal: <compass target>, follow the arrow"; "Seal 1 of 4", then where the clues for the other three live.
+   - Combat: when foes are near, "tap Attack" (the button pulses). On the first wind-ups, "Wind-up - tap Roll!" (Roll pulses). After a successful roll, later wind-ups say "tap Block just as it strikes" (Block pulses).
+   - Follow-ups for: rolled clear (the cue and the stamina cost), blocked too early, parried, the first hit (hearts), low stamina. A weapon pickup close to the first seal gets a one-time "something glints nearby" tip.
+   - Lessons stop after 3-4 wind-ups. Progress lives in its own browser key, not the save; saves holding a seal skip all tips.
+2. Opening guide arrow. The arrow and distance show until the first seal is claimed. After that the player's own Guidance setting applies again (default off, Journal clues), so the exploration design for the other seals is unchanged.
+3. A gentle first fight: one new daytime group of 2 Wayside Husks (the weakest existing foe) on the walk to the Forge Heart.
+4. Phone feedback: a short dark-red edge flash on every hit taken and a soft white flash on a parry.
+- Unchanged: world art, landmarks, NPC lines, story, weapons, XP, save format, M11 movement, graphics, adaptive resolution, Smooth.
+
+TESTED (exact commit e448b95, production bundle index-VkvUynn4.js, run one at a time)
+- 13 regression suites: all pass.
+- Full qa-run: pass, 0 failures, peak Chrome 2.8 GB, server healthy.
+- qa-save: pass. Rollback M58 -> release-M54 -> M58: pass, no double rewards.
+- Shaders: pass. Perfrun: pass (headless estimate only). Perf HUD, diag smoke, M57 diag: pass.
+- New qa-onboard: 15/15 pass.
+- Draw-call audit: hub 358, under-bridge 400 and hall 160 are unchanged. Track 308 vs 300: the new husks are in view. Night-hub 350 vs 368: the extra group shifts where the night shades spawn. Both differences reproduce against the M56 build and come from roaming foes, not rendering. While the husks live, the camp view has ~40-50 more draw calls (like the night foes already seen near camp).
+
+BEFORE / AFTER (INTERNAL scripted runs in headless Chrome, phone viewport; NOT player validation, no outside testers)
+- Direction to the first objective on screen: before none; after arrow + metres from the first second.
+- Control hints on a phone: before none; after a move/look tip, Talk, Attack, Roll and Block prompts with pulsing buttons.
+- Combat met before the first seal: before 0 wind-ups, 0 rolls, 0 parries. After: a 5-6 s fight. The bot that follows the prompts made 1 successful roll and 1 parry and took 2 hits. A novice who ignores the prompts took 2 of 3 hearts, with no defeat.
+- Time to the first seal (game seconds): before 12.6 s best case (only if the player already knew the way). After 17-19 s including the fight. Estimated wall time with dialogue reading: 24 s before vs 28-30 s after. Well inside the 10-minute target.
+- Early reward: the Maul pickup is 21 m from the first seal (an existing weapon). Its tip showed in one of two runs.
+
+REMAINING CONCERNS
+- No real-player data. Reaction-time realism is guessed: the bot reacts 0.35 s after a wind-up starts, and the husk wind-up is 0.95 s.
+- The first seal now comes very fast. It is clear, but it may feel small. Nothing yet carries a player from the first seal to the second, beyond the Journal and an optional Guidance arrow.
+- The camera can clip into the seal crystal from some angles (existing).
+- The tip banner can cover the hero's legs on short phones.
+- Extra draw calls at camp while the husks are alive; untested on a real phone.
+
+READINESS
+Ready to deploy if the husk group is accepted as in scope. Rollback: release-M54. Check the opening on a real phone after deploy.
+
+QUESTIONS
+1. Keep the opening guide arrow only until seal 1, or until seal 2?
+2. Is a 2-husk group on the camp-to-Forge path acceptable as a gameplay addition, or should the first fight use an existing group?
+3. Should M59 (combat readability) build on these prompts, or should the coach stay opening-only?

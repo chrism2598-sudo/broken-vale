@@ -210,8 +210,8 @@ async function main() {
   const isTouch = () => document.body.classList.contains('touch');
   const coach = makeCoach(coachEl, (id) => { pulsed?.classList.remove('cpulse'); pulsed = id ? document.getElementById(id) : null; pulsed?.classList.add('cpulse'); });
   coach.sync(!!save.started, sealCount(save));
-  const fx = (k: 'hurt' | 'parry') => { fxEl.className = ''; void fxEl.offsetWidth; fxEl.className = k; };
-  { const inc = cb.incoming.bind(cb); cb.incoming = (u = false) => { const r = inc(u); coach.event(r, { touch: isTouch() }); if (r === 'parried') fx('parry'); return r; }; }
+  const fx = (k: 'hurt' | 'parry' | 'block') => { fxEl.className = ''; void fxEl.offsetWidth; fxEl.className = k; };
+  { const inc = cb.incoming.bind(cb); cb.incoming = (u = false) => { const r = inc(u); coach.event(r, { touch: isTouch() }); if (r === 'parried') fx('parry'); else if (r === 'blocked') fx('block'); return r; }; }
   const owned = (): WeaponId[] => (save.weapons ?? ['rusty']).filter(isWeapon);
   const equip = (id: WeaponId) => { cb.weapon = WEAPONS[id]; for (const h of holders) h.set(id); };
   equip(isWeapon(save.weapon) && owned().includes(save.weapon) ? save.weapon : 'rusty');
@@ -704,7 +704,7 @@ ${GRADE_GLSL}
       document.getElementById('chtease')!.textContent = SEA_LINES.card.tease; document.getElementById('chxp')!.textContent = `+${SEA_XP} XP · Level ${levelOf(save.xp)} · The round seal waits`; chapterEl.hidden = false; });
   }
   // ---------- M13 · The Drowned Keeper ----------
-  let inKeep = false, keep: Keeper | null = null, kHud = '', kPull = 0, olPull = 0;
+  let inKeep = false, keep: Keeper | null = null, kHud = '', kPull = 0, olPull = 0, sealLift = 0;
   const kev: KeeperEvent[] = [];
   function openSeal() {
     if (!sea || save.sea >= 4) return; save.sea = 4; persist(); sea.setOpen(true); hudT = 0; shake = 0.25; camFocus = { x: sea.sealPos.x, z: sea.sealPos.z, t: 4 };
@@ -1375,7 +1375,21 @@ ${GRADE_GLSL}
     if (cb.act && cb.act !== lastAct) onActStart(); lastAct = cb.act;
   }
   let stShown = -1;
+  // M59 · game-wide wind-up read: any foe close enough to land its blow is winding up (every arena, bosses included)
+  let windNow = false, failPrev = 0; const cbtEl = document.getElementById('cbt')!;
+  function foeWinding(): boolean {
+    const near = (m: Mob, r = 4.6) => m.alive && m.winding && Math.hypot(m.x - state.px, m.z - state.pz) < r;
+    if (inBarrow) return barMobs().some((m) => near(m, barrow && m === barrow.king ? 5.6 : 4.6));
+    if (inCastle) return !!castle && mobs.some((m) => near(m) && Math.abs(m.y - castle!.y) < 1.5);
+    if (inSea) return seaMobs.some((m) => near(m));
+    if (inKeep) return !!keep && keep.active && save.sea < 5 && keep.state === 'windup'; // the spout under you: roll or parry
+    if (!vale()) return false;
+    if (!save.warden && wd.awake && wd.phase === 1 && Math.hypot(state.px - wd.sx, state.pz - wd.sz) < W_STRIKE_R) return true;
+    return roam.live().some((m) => near(m));
+  }
   function combatHud() {
+    const w = foeWinding(); if (w !== windNow) { windNow = w; cbtEl.classList.toggle('warn', w); if (!combatEl.hidden) combatEl.classList.toggle('alert', w || (vale() && wd.phase === 1 && !save.warden)); }
+    if (cb.lastFail > failPrev + 0.5) { stBar.classList.remove('fail'); void stBar.offsetWidth; stBar.classList.add('fail'); } failPrev = cb.lastFail; // M59: a refused roll/heavy/jump shakes the stamina bar
     const k = cb.stamina / ST_MAX, v = Math.round(k * 100); if (v !== stShown) { stShown = v; stFill.style.width = `${v}%`; }
     stBar.classList.toggle('full', k > 0.995 && !cb.blocking); stBar.classList.toggle('low', k < 0.25 || cb.lastFail > 0);
     document.body.classList.toggle('blocking', cb.blocking); document.getElementById('b-hvy')!.style.setProperty('--ch', cb.chargeK.toFixed(2));
@@ -1512,10 +1526,13 @@ ${GRADE_GLSL}
       wdArrow.style.transform = `rotate(${(Math.atan2(-wy, wx) * 180 / Math.PI).toFixed(0)}deg)`; wdArrow.style.visibility = save.warden ? 'hidden' : 'visible';
       wdText.textContent = save.warden ? "Warden dormant · Warden's Crest" : `Vale Warden (optional)${guidance ? ` · ${dd < 12 ? 'here' : Math.round(dd) + ' m'}` : ''}`;
       if (inBarrow) { const m = nearestBarMob(16), kingUp = !!barrow && barrow.king.alive && barrow.king.state !== 'idle', show = !kingUp && (barEngaged() || playerHp < hpMax()); combatEl.hidden = !show; // the boss bar carries the hearts while Ossric fights
-        if (show) { hpEl.textContent = '♥'.repeat(Math.max(0, playerHp)) + '♡'.repeat(Math.max(0, hpMax() - playerHp)); foeLbl.textContent = m?.name ?? 'The barrow'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(Math.max(0, m.maxHp - Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', !!m?.winding); } }
+        if (show) { hpEl.textContent = '♥'.repeat(Math.max(0, playerHp)) + '♡'.repeat(Math.max(0, hpMax() - playerHp)); foeLbl.textContent = m?.name ?? 'The barrow'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(Math.max(0, m.maxHp - Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', windNow); } }
       else if (inCastle) { const m = nearestMob(), show = mobEngaged() || playerHp < hpMax(); combatEl.hidden = !show;
-        if (show) { hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(hpMax() - playerHp); foeLbl.textContent = 'Sentinel'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(MOB_HP - Math.max(0, Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', !!m?.winding); } }
-      else if (vale() && (roam.engaged() || (playerHp < hpMax() && !wd.awake))) { const m = nearestRoamer(16); combatEl.hidden = false; hpEl.textContent = '♥'.repeat(Math.max(0, playerHp)) + '♡'.repeat(Math.max(0, hpMax() - playerHp)); foeLbl.textContent = m?.name ?? 'Night'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(Math.max(0, m.maxHp - Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', !!m?.winding); }
+        if (show) { hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(hpMax() - playerHp); foeLbl.textContent = 'Sentinel'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(MOB_HP - Math.max(0, Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', windNow); } }
+      else if (inSea) { const m = nearestSeaMob(16), show = (!!m && m.state !== 'idle') || playerHp < hpMax(); combatEl.hidden = !show; // M59: the Tide-Wights get their own pill (was the Warden's)
+        if (show) { hpEl.textContent = '♥'.repeat(Math.max(0, playerHp)) + '♡'.repeat(Math.max(0, hpMax() - playerHp)); foeLbl.textContent = m?.name ?? 'Sea cave'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(Math.max(0, m.maxHp - Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', windNow); } }
+      else if (vale() && (roam.engaged() || (playerHp < hpMax() && !wd.awake))) { const m = nearestRoamer(16); combatEl.hidden = false; hpEl.textContent = '♥'.repeat(Math.max(0, playerHp)) + '♡'.repeat(Math.max(0, hpMax() - playerHp)); foeLbl.textContent = m?.name ?? 'Night'; whpEl.textContent = m && m.state !== 'idle' ? '■'.repeat(Math.max(0, Math.ceil(m.hp))) + '□'.repeat(Math.max(0, m.maxHp - Math.ceil(m.hp))) : '—'; combatEl.classList.toggle('alert', windNow); }
+      else if (!vale()) combatEl.hidden = true; // M59: keep / coast / cave / island never show the Warden's pill (the Keeper's bar carries the hearts)
       else { const show = !save.warden && (wd.awake || playerHp < hpMax());
       combatEl.hidden = !show; if (show) { foeLbl.textContent = 'Warden'; hpEl.textContent = '♥'.repeat(playerHp) + '♡'.repeat(hpMax() - playerHp); whpEl.textContent = '■'.repeat(Math.ceil(wd.hp)) + '□'.repeat(W_HP - Math.ceil(wd.hp)); combatEl.classList.toggle('alert', wd.phase === 1); } } }
     { const showK = inKeep && !!keep && save.sea < 5 && keep.active, kb = inBarrow && !!barrow && barrow.king.alive && barrow.king.state !== 'idle'; bossEl.hidden = !showK && !kb;
@@ -1696,7 +1713,10 @@ ${GRADE_GLSL}
     { const want = inKeep && keep && innerHeight > innerWidth && Math.hypot(state.px - keep.center.x, state.pz - keep.center.z) < 10.5 ? 1 : 0; kPull = snapCam ? want : kPull + (want - kPull) * damp(2.2, dt); }
     { const want = inSea && sea && sea.inTight(state.px, state.pz) ? 1 : 0; seaPull = snapCam ? want : seaPull + (want - seaPull) * damp(2.6, dt); }
     { const want = vale() && Math.hypot(state.px - OP.crown.x, state.pz - OP.crown.z) < 6.5 ? 1 : 0; olPull = snapCam ? want : olPull + (want - olPull) * damp(1.6, dt); } // M22: open the vista on the outlook
-    const pitchK = state.pitch + 0.06 * kPull + 0.12 * seaPull + 0.1 * olPull, distK = state.dist + 3.2 * kPull - 2.2 * seaPull + 4.0 * olPull;
+    { let need = 0; // M59 · seals: when a plinth/crystal stands between the camera and the player, lift the camera so its sight line clears the crystal (it used to clip through it)
+      if (vale() && !onIsland) { const bx = Math.sin(state.yaw), bz = Math.cos(state.yaw); for (const o of seals) { const ox = o.def.x - state.px, oz = o.def.z - state.pz, u = ox * bx + oz * bz; if (u <= 0.3 || u > state.dist + 1.6) continue; if (Math.abs(ox * bz - oz * bx) < 1.7) need = Math.max(need, Math.min(1.0, Math.atan2(1.9, u) + 0.05)); } }
+      sealLift = snapCam ? need : sealLift + (need - sealLift) * damp(6, dt); }
+    const pitchK = Math.max(state.pitch, sealLift) + 0.06 * kPull + 0.12 * seaPull + 0.1 * olPull, distK = state.dist + 3.2 * kPull - 2.2 * seaPull + 4.0 * olPull;
     const cp = Math.cos(pitchK), sp = Math.sin(pitchK);
     const back = backV.set(Math.sin(state.yaw) * cp, sp, Math.cos(state.yaw) * cp);
     const right = rightV.set(Math.cos(state.yaw), 0, -Math.sin(state.yaw));

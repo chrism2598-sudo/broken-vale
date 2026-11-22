@@ -16,7 +16,7 @@ export function buildJournal(s: Save, p: Profile, onIsland: boolean): { title: s
   const quest: JSection = { h: 'The Four Seals', items: [] };
   quest.items.push({ t: !s.started ? 'Talk to the Wayfinder by the meadow crossing to begin.' : s.done ? 'Complete — the seals burn again. You are a Vale Walker.' : n >= 4 ? 'All four seals held — return to the Wayfinder.' : `Seek the ancient seals (${n}/4).`, done: s.done });
   for (const d of SEALS) quest.items.push({ t: s.seals[d.id] ? `${d.name} — found` : `${d.name} — missing · ${CLUES[d.id]}`, done: !!s.seals[d.id] });
-  const shrine: JSection = { h: 'Wind Shrine (optional)', items: [{ t: s.wind ? 'Awake · Windward Blessing quickens your step (+35 XP).' : 'Three carved runes; the tablet waits by the old crossing.', done: s.wind }] };
+  const shrine: JSection = { h: 'Wind Shrine (needed for the Beacon)', items: [{ t: s.wind ? 'Awake · Windward Blessing quickens your step (+35 XP).' : 'Three carved runes; the tablet waits by the old crossing.', done: s.wind }] };
   const warden: JSection = { h: 'Vale Warden (optional)', items: [{ t: s.warden ? 'Dormant on the Iron Dome approach · Warden’s Crest claimed (+40 XP).' : 'Clockwork guard on the Iron Dome approach. When its arms rise, step out of the bright ring before it strikes.', done: s.warden }] };
   const aligned = s.mirrors.filter((v, i) => v === MIRRORS[i].solve).length;
   const beacon: JSection = { h: 'The Hollow Beacon', items: [] };

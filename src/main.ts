@@ -445,7 +445,9 @@ ${GRADE_GLSL}
     { const e = edgeInteract(); if (e) return e; }
     const dW = Math.hypot(state.px - WAYFINDER.x, state.pz - WAYFINDER.z);
     if (dW < 3.8) return { label: !save.started ? 'Talk · begin quest' : save.beacon && save.cave === 0 ? 'Talk · word of Enna' : save.done ? 'Talk' : `Talk · seals ${sealCount(save)}/4`, act: talkWayfinder };
-    for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return { label: `Claim ${o.def.name}`, act: () => claimSeal(o), x: o.def.x, z: o.def.z };
+    for (const o of seals) if (!o.claimed && Math.hypot(state.px - o.def.x, state.pz - o.def.z) < 3.2) return roam.guarded(o.def.id) // M63 · seals 2–4: the guards on the approach must fall first
+      ? { label: `Guarded · ${o.def.name}`, act: () => toast(`Its guards still stand · defeat them to claim the ${o.def.name}`, 3), x: o.def.x, z: o.def.z }
+      : { label: `Claim ${o.def.name}`, act: () => claimSeal(o), x: o.def.x, z: o.def.z };
     if (Math.hypot(state.px - TABLET.x, state.pz - TABLET.z) < 2.8) return { label: 'Read Wind Tablet', act: () => openDialog('Wind Shrine', TABLET_LINES), x: TABLET.x, z: TABLET.z };
     if (Math.hypot(state.px - ECHO.x, state.pz - ECHO.z) < ECHO_RANGE) return { label: save.echo ? 'Echo Grove · recall the Memory' : echoT >= 0 ? 'Echo Grove · the crystal trees remember…' : sealCount(save) < 1 ? 'Echo Grove · silent' : 'Echo Grove hums · listen', act: useEcho, x: ECHO.x, z: ECHO.z };
     if (Math.hypot(state.px - UPDRAFT.x, state.pz - UPDRAFT.z) < 4.6) return { label: !save.done ? 'Updraft · dormant' : !save.wind ? 'Updraft · locked — needs Wind Shrine blessing' : 'Ride the Updraft ↑', act: useUpdraft, x: UPDRAFT.x, z: UPDRAFT.z };
@@ -1040,7 +1042,7 @@ ${GRADE_GLSL}
     cb.landed(sk); shake = Math.max(shake, sk.heavy ? 0.25 : 0.1); audio.hit(); mobFx(m, sk);
     if (m.hit(sk.dmg, sk.stagger, state.px, state.pz)) { const lv = levelOf(save.xp); save.xp += m.xp; const g = roam.groupOf(m); let extra = '';
       if (roam.allDead(g) && g.def.camp) { (save.gone ??= {})[g.def.id] = save.day ?? 0; extra = ' · the Ashen Hollow falls quiet — their strongbox is unguarded'; }
-      else if (roam.allDead(g)) { (save.rk ??= {})[g.def.id] = save.day ?? 0; extra = g.def.night ? ' · the shades here are gone for tonight' : ' · the road is clear for today'; }
+      else if (roam.allDead(g)) { (save.rk ??= {})[g.def.id] = save.day ?? 0; extra = g.def.guard ? ' · its guards have fallen — the seal is yours to claim' : g.def.night ? ' · the shades here are gone for tonight' : ' · the road is clear for today'; }
       persist(); hudT = 0; toast(`${m.name} falls · +${m.xp} XP${extra}${levelOf(save.xp) > lv ? ` · Level ${levelOf(save.xp)}` : ''}`, 3); return; }
     toast(sk.stagger >= 0.8 ? `Staggered! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}` : `Hit! ${m.name} ${Math.ceil(m.hp)}/${m.maxHp}`, 1.3);
   }
@@ -1051,7 +1053,8 @@ ${GRADE_GLSL}
   }
   function tickRoam(dt: number, t: number) {
     roamDown = Math.max(0, roamDown - dt); const out = vale() && !todLocked; // QA/shots without a time: no roamers
-    const hits = roam.tick(dt, t, state.px, state.pz, player.root.position.y, nightK, out, roamDown > 0 || fading || talking || !canFight(), (id) => id === 'ashen' ? campClear() : (save.rk?.[id] ?? -99) >= (save.day ?? 0));
+    roam.setTier(sealCount(save), !!save.beacon); // M63 · foe tier follows the seals (and Chapter II)
+    const hits = roam.tick(dt, t, state.px, state.pz, player.root.position.y, nightK, out, roamDown > 0 || fading || talking || !canFight(), (id) => id === 'ashen' ? campClear() : id.startsWith('g-') ? (!!save.seals[id.slice(2)] || sealCount(save) === 0 || (save.rk?.[id] ?? -99) >= (save.day ?? 0)) : (save.rk?.[id] ?? -99) >= (save.day ?? 0));
     if (out) { if (roam.engaged()) roamCalm = 0; else if (!wd.awake) { roamCalm += dt; if (roamCalm > 6 && playerHp < hpMax()) { playerHp = hpMax(); hudT = 0; } } }
     for (const m of hits) { roamSwings++;
       const res = cb.incoming(false);
@@ -2277,6 +2280,9 @@ ${GRADE_GLSL}
     /** M20b QA: press Jump / read the hop state. */
     jump() { jumpReq = true; },
     heal() { playerHp = hpMax(); },
+    /** M63 QA: fell the present seal guards (recorded as cleared for today, as a real win would be) and read the foe tier. */
+    guardsClear(seal?: string) { const ids = roam.clearGuards(seal); for (const id of ids) (save.rk ??= {})[id] = save.day ?? 0; persist(); return ids; },
+    foeTier: () => ({ tier: roam.tier, guardTier: roam.guardTier, guards: roam.groups.filter((g) => g.def.guard).map((g) => ({ id: g.def.id, seal: g.def.guard, x: g.def.x, z: g.def.z, present: g.present, alive: g.mobs.filter((m) => m.alive).map((m) => m.look), hp: g.mobs.filter((m) => m.alive).map((m) => m.maxHp) })), sample: roam.groups.filter((g) => !g.def.guard).map((g) => ({ id: g.def.id, mobs: g.mobs.map((m) => ({ look: m.look, maxHp: m.maxHp, windup: +m.windup.toFixed(3), speed: +m.speed.toFixed(3), notice: +m.notice.toFixed(3) })) })) }),
     hurt(n = 1) { playerHp = Math.max(1, playerHp - n); },
     ctl: () => ({ calm: ctlCalm, t: +ctlT.toFixed(2), label: ctlLbl, hostile: hostileNear() }),
     /** M20b-2 QA: side tales, discoveries, the camp, the barrow, standables. */

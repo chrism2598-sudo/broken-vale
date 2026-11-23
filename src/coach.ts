@@ -12,6 +12,8 @@ const KEY = 'vale3d-coach';
 const ROLLED = 'Rolled clear! The glow and the raised arm are your cue. Rolls cost stamina — the bar above the buttons.';
 type Step = 'move' | 'talk' | 'seal' | 'attack' | 'dodge' | 'rolled' | 'parry' | 'parried' | 'stamina' | 'hurt' | 'claim' | 'pick';
 const ALL: Step[] = ['move', 'talk', 'seal', 'attack', 'dodge', 'rolled', 'parry', 'parried', 'stamina', 'hurt', 'claim', 'pick'];
+/** M63 · taught after the first seal (the first guard fight), not in the opening two-husk fight. */
+export const LATE: Step[] = ['parry', 'parried', 'stamina'];
 
 export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
   let done = new Set<Step>();
@@ -20,6 +22,7 @@ export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
   const finish = (s: Step) => { if (!done.has(s)) { done.add(s); persist(); } };
   let cur: { id: Step; text: string; t: number; min: number; pulse: string | null } | null = null;
   let moved = 0, turned = 0, lastX = NaN, lastZ = NaN, lastYaw = NaN, moveT = 0, atkT = 0, landed0 = -1, windShown = 0, wasWinding = false, rolledIn = false, hpAtWind = 0, parryTries = 0, hp0 = -1;
+  let seals = 0; // M63 · last seen seal count (gates the LATE tips)
   let queued: { id: Step; text: string; secs: number; wait?: number } | null = null, shownAt: Record<string, number> = {}, clock = 0;
   const show = (id: Step, text: string, secs: number, pulseId: string | null = null, min = 1.2) => {
     if (cur && cur.id === id) { cur.t = Math.max(cur.t, secs); if (cur.text !== text) { cur.text = text; el.textContent = text; } return; }
@@ -32,7 +35,8 @@ export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
     /** Fresh game → start over; a player who already holds a seal never sees the opening tips. */
     sync(started: boolean, seals: number) {
       if (!started && seals === 0) { done = new Set(); persist(); }
-      else if (seals > 0) { done = new Set(ALL); persist(); }
+      // M63 · a returning player with exactly one seal may still be owed the LATE tips (kept if already seen)
+      else if (seals > 0) { done = new Set(seals >= 2 ? ALL : [...ALL.filter((s) => !LATE.includes(s)), ...[...done].filter((s) => LATE.includes(s))]); persist(); }
     },
     get on() { return !!cur; }, get id() { return cur?.id ?? null; }, get text() { return cur?.text ?? ''; },
     done: () => [...done],
@@ -43,10 +47,10 @@ export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
       if (e === 'sealClaimed') { finish('seal'); if (!done.has('claim')) { finish('claim'); hide(); queued = { id: 'claim', text: 'Seal 1 of 4! The other three are yours to find — Menu ▸ Journal holds the clues (or switch the guidance arrow on in Settings).', secs: 10, wait: 4.6 }; } return; }
       if (e === 'dodged') { if (cur?.id === 'dodge') hide(); finish('dodge'); once('rolled', ROLLED, 3.5); return; }
       if (e === 'parried') { if (cur?.id === 'parry') hide(); finish('parry'); once('parried', 'Parried! It reels — strike now. Parries also refill stamina.', 4); return; }
-      if (e === 'blocked' && !done.has('parry') && done.has('dodge')) { show('parry', `A little early — that was a plain block. ${tap ? 'Tap' : 'Press'} Block right as the blow lands to parry.`, 3.5, 'b-blk'); return; }
+      if (e === 'blocked' && !done.has('parry') && done.has('dodge') && seals >= 1) { show('parry', `A little early — that was a plain block. ${tap ? 'Tap' : 'Press'} Block right as the blow lands to parry.`, 3.5, 'b-blk'); return; }
     },
     tick(c: CoachCtx) {
-      clock += c.dt;
+      clock += c.dt; seals = c.seals;
       if (c.busy) { if (cur) { el.classList.remove('on'); } return; } else if (cur && !el.classList.contains('on')) el.classList.add('on');
       if (cur) { cur.t -= c.dt; if (cur.t <= 0) hide(); }
       if (queued?.wait) queued.wait = Math.max(0, queued.wait - c.dt);
@@ -67,10 +71,10 @@ export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
       if (!c.winding && wasWinding) { if (rolledIn && c.hp >= hpAtWind && !done.has('dodge')) { if (cur?.id === 'dodge') hide(); finish('dodge'); once('rolled', ROLLED, 3.5); } rolledIn = false; }
       if (c.winding && !wasWinding) { hpAtWind = c.hp; rolledIn = c.rolling;
         if (!done.has('dodge')) { windShown++; show('dodge', c.touch ? '⚠ Wind-up — tap Roll!' : '⚠ Wind-up — press C to roll!', 1.6, 'b-dge', 0.4); if (windShown >= 3) finish('dodge'); }
-        else if (!done.has('parry')) { parryTries++; show('parry', c.touch ? '⚠ Wind-up — tap Block just as it strikes!' : '⚠ Wind-up — press Q just as it strikes!', 1.6, 'b-blk', 0.4); if (parryTries >= 4) finish('parry'); }
+        else if (!done.has('parry') && c.seals >= 1) { parryTries++; show('parry', c.touch ? '⚠ Wind-up — tap Block just as it strikes!' : '⚠ Wind-up — press Q just as it strikes!', 1.6, 'b-blk', 0.4); if (parryTries >= 4) finish('parry'); }
       }
       wasWinding = c.winding;
-      if (fight && c.stamina < 25) once('stamina', `Stamina low — the bar above the buttons. Ease off rolling and blocking for a moment and it refills.`, 4.5);
+      if (fight && c.stamina < 25 && c.seals >= 1) once('stamina', `Stamina low — the bar above the buttons. Ease off rolling and blocking for a moment and it refills.`, 4.5);
       if (fight && cur && (cur.id === 'move' || cur.id === 'talk' || cur.id === 'pick' || cur.id === 'seal' || cur.id === 'claim')) hide();
       if (fight) return;
       // calm: the opening steps

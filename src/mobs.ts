@@ -43,7 +43,7 @@ function realize(m: THREE.MeshStandardMaterial, bump: number, rim: string) {
   m.customProgramCacheKey = () => 'mobrim'; m.needsUpdate = true; return m;
 }
 export function makeSentinel(id: string, x: number, z: number, y: number, face: number, tint = '#8d9196', opts: MobOpts = {}) {
-  const look = opts.look ?? 'sentinel', S = { ...STATS[look], ...opts }; const HPM = S.hp, WINDUP = S.windup, SPEED = S.speed, NOTICE = S.notice, ground = opts.ground;
+  const look = opts.look ?? 'sentinel', S = { ...STATS[look], ...opts }; let HPM = S.hp, WINDUP = S.windup, SPEED = S.speed, NOTICE = S.notice; const ground = opts.ground; // M63 · let: roaming foes can be re-tuned (tune) before a respawn
   const g = new THREE.Group(); g.position.set(x, ground ? ground(x, z) : y, z); g.rotation.y = face;
   const shade = look === 'shade', drowned = look === 'drowned', robe = shade || look === 'cultist' || look === 'zealot', big = look === 'brute' || look === 'zealot' || look === 'king';
   const plate = new THREE.MeshStandardMaterial({ color: shade ? '#1b1d2a' : drowned ? '#3d5a58' : tint, metalness: robe ? 0 : drowned ? 0.7 : 0.55, roughness: robe ? 0.9 : drowned ? 0.28 : 0.4, transparent: shade, opacity: shade ? 0.92 : 1 }), dark = new THREE.MeshStandardMaterial({ color: shade ? '#0c0d14' : drowned ? '#1a2a28' : '#2b2a2c', metalness: shade ? 0 : 0.6, roughness: drowned ? 0.4 : 0.6 });
@@ -84,7 +84,10 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
   let bob = 0, hp = HPM, state: 'idle' | 'chase' | 'windup' | 'recover' | 'stagger' | 'dead' = 'idle', t = 0, flash = 0, deadT = 0; void sword;
   let flinch = 0, kbx = 0, kbz = 0, stopT = 0; // M47 · hit reaction: a short lean-back flinch and a knockback slide away from the blow
   const m = {
-    id, group: g, look, maxHp: HPM, dmg: S.dmg, xp: S.xp, name: S.name,
+    id, group: g, look, get maxHp() { return HPM; }, dmg: S.dmg, xp: S.xp, name: S.name,
+    /** M63 · difficulty step: scale from the base stats (k = 1 → base). Takes effect on the next respawn/reset (hp) and at once for wind-up/speed/notice. */
+    tune(k: { hp: number; windup: number; speed: number; notice: number }) { HPM = Math.max(1, Math.round(S.hp * k.hp)); WINDUP = S.windup * k.windup; SPEED = S.speed * k.speed; NOTICE = S.notice * k.notice; },
+    get windup() { return WINDUP; }, get speed() { return SPEED; }, get notice() { return NOTICE; },
     setHome(hx: number, hz: number) { homeX = hx; homeZ = hz; },
     /** Bring a dead (or wandering) mob back fresh at a spot (roaming-group respawn). */
     respawn(rx: number, rz: number) { hp = HPM; state = 'idle'; t = 0; deadT = 0; flash = 0; homeX = rx; homeZ = rz; g.position.set(rx, ground ? ground(rx, rz) : y, rz); g.visible = true; body.rotation.set(0, 0, 0); body.position.y = 0; ringM.opacity = 0; },

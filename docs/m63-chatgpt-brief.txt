@@ -1,0 +1,53 @@
+BROKEN VALE - M63 SEAL GUARDS, DIFFICULTY CURVE, TIP SPACING
+Status: implemented, tested, verified (internal, emulated only).
+Tagged locally as release-M63. Not yet deployed.
+No outside playtesting has happened. Nothing here is player data.
+Authority: C S, Nov 23 7:56 AM, "Just keep building I can't test now".
+
+BUILD
+- RC code commit a3d9ce6. Prod bundle index-D3kfSYa6.js, diag index-BtZr9L1Z.js.
+- Release zip ready: /workspace/vale3d-m63-release.zip.
+- Rollback point release-M54 preserved. Previous release M62.1.
+
+WHAT CHANGED
+1. Seal guards. After the first seal, each unclaimed seal gets a small
+   group of existing foes on its approach, outside the campfire ring.
+   The seal says "Guarded" until they fall.
+   Seal 2: Sentinel + Husk. Seal 3: + Sentinel. Seal 4: + Gloam Brute.
+2. Difficulty curve. Roaming foes get tougher as seals are claimed:
+   HP +10 percent, wind-up 3 percent faster, speed +4 percent per seal,
+   one more step in Chapter II, max 5 steps. The opening is unchanged.
+   Damage is unchanged (whole hearts).
+3. Coach tips spread out. The first fight teaches Attack and Roll.
+   Block, parry and stamina tips wait for the first guard fight.
+Kept: Wind Shrine Journal label. Not changed: Wayfinder dialogue and
+the HUD "(optional)" shrine label.
+
+DIFFICULTY BEFORE AND AFTER (computed, 1.00 = the opening)
+- After seal 1: 0.97 before, 1.07 after
+- After seal 4: 0.87 before, 1.22 after
+- Chapter II: 0.83 before, 1.24 after
+- Ending, main path: 0.74 before, 1.10 after
+- Ending, thorough player: 0.51 before, 0.77 after
+Before, the game only got easier. Now it rises gently, then eases.
+
+GATES (exact RC commit, one at a time)
+- All 13 suites, full playthrough, shaders: PASS.
+- Save 145/145 and rollback 20/20: PASS on solo rerun. The first runs hit
+  low-memory environment errors on the shared box, not game defects.
+- Draw calls identical to M62.1 at all 5 views. Perf HUD, perfrun,
+  diag smoke, M57 diag: PASS.
+- Onboarding, new-player runs, readability, M60 progress 21/21,
+  Wind Shrine label 19/19, new M63 test 27/27: PASS.
+- A guard group in view adds about 18 draw calls, only near its seal.
+
+RISKS
+- Guard fights and the new curve are computed and emulated only.
+  Real players may find seal 4 hard or still too easy.
+- Foe damage, Chapter II foes, healing and stagger changes deferred.
+
+DECISIONS NEEDED FROM C S
+1. Deploy release-M63 to the live site (yes / no)?
+2. Run the closed playtest on M63 (with guards), not M62.1 (yes / no)?
+3. Wayfinder "optional trial" line and HUD "(optional)" shrine label:
+   change or keep?

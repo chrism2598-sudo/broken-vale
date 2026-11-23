@@ -13,7 +13,7 @@ const blockerOn = (ax: number, az: number, bx: number, bz: number) => {
 const blockedAt = (x: number, z: number) => { for (const s of STANDS) if (inStand(s, x, z, 0.25) && s.top > heightAt(x, z) + 0.3) return true; return false; };
 import { makeSentinel, type Mob, type MobLook } from './mobs';
 import { flameTex, makeFlame } from './cave';
-import { heightAt, WATER_Y } from './world';
+import { heightAt, WATER_Y, SEALS, WAYFINDER } from './world';
 
 /** M20b · open-world threats and safe rests.
  *  Roaming groups patrol roads and woods; night groups (Gloam Shades / Brutes) rise at dusk and thin out at dawn.
@@ -28,7 +28,7 @@ export const FIRES: Fire[] = [
   { id: 'dome', name: 'Dome-side camp', x: 20, z: 64 },
 ];
 export const SAFE_R = 13, VILLAGE = { x: 3, z: 1, r: 27 };
-type GroupDef = { id: string; night: boolean; x: number; z: number; mobs: MobLook[]; r: number; camp?: boolean };
+type GroupDef = { id: string; night: boolean; x: number; z: number; mobs: MobLook[]; r: number; camp?: boolean; guard?: string };
 export const GROUPS: GroupDef[] = [
   { id: 'n-road', night: true, x: -12, z: -32, mobs: ['shade', 'shade'], r: 14 },
   { id: 'n-shrine', night: true, x: -60, z: -38, mobs: ['shade', 'brute', 'shade'], r: 14 },
@@ -43,6 +43,22 @@ export const GROUPS: GroupDef[] = [
   // M20b-2 · Ashen Hollow: a cultist camp that holds its ground day and night; once broken it stays empty for a few days (main: save.gone)
   { id: 'ashen', night: false, camp: true, x: -122, z: 148, mobs: ['cultist', 'cultist', 'zealot', 'cultist'], r: 7 },
 ];
+/** M63 · seal guards: once the first seal is claimed, every unclaimed seal gets a guard group on its approach, just outside
+ *  the nearby campfire's safe ring (the ring itself stays safe). Existing foe types only. Size follows the seal it guards:
+ *  2nd seal → Sentinel + Husk, 3rd → + Sentinel, 4th → + Gloam Brute. main.ts holds the claim until the guards fall. */
+export const GUARD_MOBS: MobLook[] = ['sentinel', 'husk', 'sentinel', 'brute'];
+export const GUARD_SIZE: Record<number, number> = { 1: 2, 2: 3, 3: 4 }; // seals already claimed → guards at each remaining seal
+function guardSpot(sx: number, sz: number) {
+  const dx = WAYFINDER.x - sx, dz = WAYFINDER.z - sz, L = Math.hypot(dx, dz) || 1;
+  for (let d = 5; d < 45; d += 0.5) { const x = sx + dx / L * d, z = sz + dz / L * d;
+    if (FIRES.every((f) => Math.hypot(x - f.x, z - f.z) > SAFE_R + 4) && Math.hypot(x - VILLAGE.x, z - VILLAGE.z) > VILLAGE.r + 4 && heightAt(x, z) > WATER_Y + 0.2) return { x: +x.toFixed(1), z: +z.toFixed(1) }; }
+  return { x: sx, z: sz };
+}
+for (const sd of SEALS) { const p = guardSpot(sd.x, sd.z); GROUPS.push({ id: 'g-' + sd.id, night: false, guard: sd.id, x: p.x, z: p.z, mobs: GUARD_MOBS, r: 4 }); }
+/** M63 · difficulty step for roaming foes. t = seals claimed (+1 once the Beacon is lit, i.e. Chapter II), 0..5. t = 0 is the
+ *  shipped M62.1 tuning, so the opening is unchanged. Damage stays whole hearts (unchanged). */
+export const FOE_TIER_MAX = 5;
+export const foeScale = (t: number) => { const k = Math.max(0, Math.min(FOE_TIER_MAX, t)); return { hp: 1 + 0.1 * k, windup: 1 - 0.03 * k, speed: 1 + 0.04 * k, notice: 1 + 0.05 * k }; };
 const TINT: Partial<Record<MobLook, string>> = { husk: '#8a7a66', brute: '#3a3540', cultist: '#4d4540', zealot: '#35282a' };
 const ACTIVE_R = 85;
 export const inSafe = (x: number, z: number, pad = 0) => Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.r + pad || FIRES.some((f) => Math.hypot(x - f.x, z - f.z) < SAFE_R + pad);
@@ -73,10 +89,23 @@ export function makeRoam(scene: THREE.Scene, high: boolean) {
     return { def: d, mobs, present: false, wpT: 0, wx: d.x, wz: d.z, near: false };
   });
   const byMob = new Map<Mob, (typeof groups)[number]>(); for (const g of groups) for (const m of g.mobs) byMob.set(m, g);
-  function spawn(g: (typeof groups)[number]) { g.present = true; g.wx = g.def.x; g.wz = g.def.z; g.mobs.forEach((m, i) => { const a = (i / g.mobs.length) * Math.PI * 2 + rnd(); m.respawn(g.def.x + Math.cos(a) * 2.5, g.def.z + Math.sin(a) * 2.5); m.group.visible = g.near; }); }
+  let tier = 0, guardTier = 0;
+  function spawn(g: (typeof groups)[number]) { g.present = true; g.wx = g.def.x; g.wz = g.def.z; const n = g.def.guard ? GUARD_SIZE[guardTier] ?? 0 : g.mobs.length, sc = foeScale(tier);
+    g.mobs.forEach((m, i) => { const a = (i / g.mobs.length) * Math.PI * 2 + rnd(); m.tune(sc); m.respawn(g.def.x + Math.cos(a) * 2.5, g.def.z + Math.sin(a) * 2.5); m.group.visible = g.near; if (i >= n) m.kill(); }); }
   function despawn(g: (typeof groups)[number]) { g.present = false; for (const m of g.mobs) if (m.alive) m.kill(); }
   return {
     fires, groups,
+    get tier() { return tier; }, get guardTier() { return guardTier; },
+    /** M63 · seals claimed + chapter → foe tier. On a change: wind-up/speed/notice re-tune at once (hp on the next respawn);
+     *  guard groups that aren't fighting are stood down so they return at their new size. */
+    setTier(seals: number, chapter2: boolean) { const t = Math.min(FOE_TIER_MAX, seals + (chapter2 ? 1 : 0));
+      if (t === tier && seals === guardTier) return; const gChange = seals !== guardTier; tier = t; guardTier = seals; const sc = foeScale(tier);
+      for (const g of groups) { for (const m of g.mobs) m.tune(sc);
+        if (gChange && g.def.guard && g.present && !g.mobs.some((m) => m.alive && m.state !== 'idle')) despawn(g); } },
+    /** M63 · a seal is guarded while its guard group stands (and is active near the player) with anyone alive. */
+    guarded(sealId: string) { const g = groups.find((q) => q.def.guard === sealId); return !!g && g.present && g.near && g.mobs.some((m) => m.alive); }, // near: roamers active here (QA runs without a time have none)
+    /** QA hook: fell every present guard group (returns the ids, so main can record them as cleared for today). */
+    clearGuards(sealId?: string): string[] { const ids: string[] = []; for (const g of groups) if (g.def.guard && g.present && (!sealId || g.def.guard === sealId)) { for (const m of g.mobs) if (m.alive) m.kill(); ids.push(g.def.id); } return ids; },
     groupOf: (m: Mob) => byMob.get(m)!,
     /** Living, nearby, present mobs (for targeting and hits). */
     live(): Mob[] { const out: Mob[] = []; for (const g of groups) if (g.present && g.near) for (const m of g.mobs) if (m.alive) out.push(m); return out; },

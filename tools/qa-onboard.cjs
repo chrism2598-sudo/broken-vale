@@ -47,7 +47,8 @@ ok('after the first seal: arrow follows the setting (off) → Journal clues',!s.
 // 7 · returning player with a seal: no tips at all, every tip marked done
 await p.reload({waitUntil:'load'});await p.waitForFunction('window.__vale&&window.__vale.ready',{timeout:240000});await sleep(500);
 for(let i=0;i<6;i++)await p.evaluate(()=>window.__vale.sim(Array(10).fill(1/30),0.6,-0.6));s=await st(p);
-ok('returning player with a seal: no tip, no forced arrow',s.coach===''&&!s.arrow&&s.done.length>=12,s);
+// M63 · with exactly one seal the Block/parry/stamina tips (LATE) stay owed for the first guard fight; everything else is marked done
+ok('returning player with a seal: no tip, no forced arrow',s.coach===''&&!s.arrow&&['move','talk','seal','attack','dodge','rolled','hurt','claim','pick'].every(k=>s.done.includes(k))&&!['parry','parried','stamina'].some(k=>s.done.includes(k)),s);
 // Guidance on still shows the arrow as before
 await p.evaluate(()=>window.__vale.setGuidance(true));await p.evaluate(()=>window.__vale.sim(Array(6).fill(1/30),0,0));s=await st(p);ok('guidance on → arrow (unchanged behaviour)',s.arrow&&/ m$/.test(s.ctext),s);
 await p.evaluate(()=>window.__vale.setGuidance(false));await p.close();

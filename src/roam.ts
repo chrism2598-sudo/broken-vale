@@ -34,11 +34,11 @@ export const GROUPS: GroupDef[] = [
   { id: 'n-shrine', night: true, x: -60, z: -38, mobs: ['shade', 'brute', 'shade'], r: 14 },
   { id: 'n-pale', night: true, x: -67, z: -83, /* M25: out past the Wing Gate (was at the stair foot) */ mobs: ['shade', 'shade', 'shade'], r: 12 },
   { id: 'n-azure', night: true, x: 62, z: -76, mobs: ['shade', 'brute', 'shade'], r: 14 },
-  { id: 'n-sun', night: true, x: -44, z: 52, mobs: ['shade', 'shade'], r: 14 },
+  { id: 'n-sun', night: true, x: -44, z: 52, mobs: ['brute', 'shade'], r: 14 }, // M64 · was 2 shades: an anchor and a flanker
   { id: 'n-dome', night: true, x: 72, z: 68, mobs: ['brute', 'shade'], r: 12 },
-  { id: 'n-east', night: true, x: 86, z: -12, mobs: ['shade', 'shade'], r: 14 },
-  { id: 'd-veil', night: false, x: -96, z: -58, mobs: ['husk', 'husk'], r: 10 },
-  { id: 'd-south', night: false, x: 4, z: 96, mobs: ['husk', 'husk'], r: 10 },
+  { id: 'n-east', night: true, x: 86, z: -12, mobs: ['husk', 'shade'], r: 14 }, // M64 · was 2 shades: slow + fast wind-ups (HP 10 → 8)
+  { id: 'd-veil', night: false, x: -96, z: -58, mobs: ['cultist', 'husk'], r: 10 }, // M64 · was 2 husks: a quick cultist with a slow husk
+  { id: 'd-south', night: false, x: 4, z: 96, mobs: ['sentinel', 'husk'], r: 10 }, // M64 · was 2 husks: a sturdier sentinel with a husk
   { id: 'd-dome', night: false, x: 8, z: 38, mobs: ['husk', 'husk'], r: 6 }, // M58 · a gentle first fight on the walk to the nearest seal (Forge Heart)
   // M20b-2 · Ashen Hollow: a cultist camp that holds its ground day and night; once broken it stays empty for a few days (main: save.gone)
   { id: 'ashen', night: false, camp: true, x: -122, z: 148, mobs: ['cultist', 'cultist', 'zealot', 'cultist'], r: 7 },
@@ -85,17 +85,21 @@ export function makeRoam(scene: THREE.Scene, high: boolean) {
   let seed = 1234; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const groups = GROUPS.map((d) => {
     const mobs = d.mobs.map((look, i) => { const a = (i / d.mobs.length) * Math.PI * 2, x = d.x + Math.cos(a) * 2.5, z = d.z + Math.sin(a) * 2.5;
-      const m = makeSentinel(`${d.id}-${i}`, x, z, 0, a, TINT[look] ?? '#8d9196', { look, ground }); m.kill(); scene.add(m.group); return m; });
+      const m = makeSentinel(`${d.id}-${i}`, x, z, 0, a, TINT[look] ?? '#8d9196', { look, ground, ai: true }); m.kill(); scene.add(m.group); return m; });
     return { def: d, mobs, present: false, wpT: 0, wx: d.x, wz: d.z, near: false };
   });
   const byMob = new Map<Mob, (typeof groups)[number]>(); for (const g of groups) for (const m of g.mobs) byMob.set(m, g);
   let tier = 0, guardTier = 0;
+  /** M64 · attack token: at most WIND_MAX foes wind up at once, and wind-ups start at least WIND_GAP s apart, so two blows
+   *  never land on the same beat — each one can be read (amber ring) and answered with a roll, block or parry. */
+  let clock = 0, lastWind = -9; const WIND_MAX = 2, WIND_GAP = 0.45;
+  let onState: ((m: Mob, from: string, to: string) => void) | null = null; // M64B · audio cues on notice / wind-up / fall
   function spawn(g: (typeof groups)[number]) { g.present = true; g.wx = g.def.x; g.wz = g.def.z; const n = g.def.guard ? GUARD_SIZE[guardTier] ?? 0 : g.mobs.length, sc = foeScale(tier);
     g.mobs.forEach((m, i) => { const a = (i / g.mobs.length) * Math.PI * 2 + rnd(); m.tune(sc); m.respawn(g.def.x + Math.cos(a) * 2.5, g.def.z + Math.sin(a) * 2.5); m.group.visible = g.near; if (i >= n) m.kill(); }); }
   function despawn(g: (typeof groups)[number]) { g.present = false; for (const m of g.mobs) if (m.alive) m.kill(); }
   return {
     fires, groups,
-    get tier() { return tier; }, get guardTier() { return guardTier; },
+    get tier() { return tier; }, get guardTier() { return guardTier; }, WIND_MAX, WIND_GAP, set onState(f: ((m: Mob, from: string, to: string) => void) | null) { onState = f; },
     /** M63 · seals claimed + chapter → foe tier. On a change: wind-up/speed/notice re-tune at once (hp on the next respawn);
      *  guard groups that aren't fighting are stood down so they return at their new size. */
     setTier(seals: number, chapter2: boolean) { const t = Math.min(FOE_TIER_MAX, seals + (chapter2 ? 1 : 0));
@@ -115,7 +119,8 @@ export function makeRoam(scene: THREE.Scene, high: boolean) {
     engaged(): boolean { for (const g of groups) if (g.present && g.near) for (const m of g.mobs) if (m.alive && m.state !== 'idle') return true; return false; },
     /** One fixed tick. `cleared(day)` decides whether a group is down for today. Returns mobs whose blow lands this tick. */
     tick(dt: number, t: number, px: number, pz: number, py: number, night: number, outside: boolean, playerDown: boolean, clearedToday: (id: string) => boolean): Mob[] {
-      const hits: Mob[] = [];
+      const hits: Mob[] = []; clock += dt;
+      let winding = 0; for (const g of groups) if (g.present && g.near) for (const m of g.mobs) if (m.alive && m.state === 'windup') winding++;
       for (const f of fires) { const k = 0.85 + 0.15 * Math.sin(t * 9 + f.def.x) * Math.sin(t * 5.3); f.flames[0].scale.setScalar(1.15 * k); f.flames[1].scale.setScalar(1.0 * (1.9 - k)); f.ash.emissiveIntensity = 0.45 + 0.25 * k; }
       for (const g of groups) {
         const dP = Math.hypot(px - g.def.x, pz - g.def.z); const near = outside && dP < ACTIVE_R;
@@ -129,7 +134,10 @@ export function makeRoam(scene: THREE.Scene, high: boolean) {
           // M21a: a tall obstacle (bonfire, tent, boulder) between foe and player → walk round it first; no blows through it
           const blk = m.alive && m.state !== 'idle' ? blockerOn(m.x, m.z, px, pz) : null; let tx = px, tz = pz;
           if (blk) { const dx = px - m.x, dz = pz - m.z, l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l, sd = Math.sign((m.x - blk.x) * nx + (m.z - blk.z) * nz) || 1; tx = blk.x + nx * sd * (blk.R + 1.4); tz = blk.z + nz * sd * (blk.R + 1.4); }
-          if (m.tick(dt, tx, tz, py, (x, z) => !inSafe(x, z) && Math.hypot(x - g.def.x, z - g.def.z) < g.def.r + 26 && heightAt(x, z) > WATER_Y - 0.4 && !blockedAt(x, z), playerDown, sees) === 'swing' && !blk) hits.push(m); });
+          const was = m.state, canWind = winding < WIND_MAX && clock - lastWind >= WIND_GAP;
+          if (m.tick(dt, tx, tz, py, (x, z) => !inSafe(x, z) && Math.hypot(x - g.def.x, z - g.def.z) < g.def.r + 26 && heightAt(x, z) > WATER_Y - 0.4 && !blockedAt(x, z), playerDown, sees, canWind) === 'swing' && !blk) hits.push(m);
+          if (was !== 'windup' && m.state === 'windup') { winding++; lastWind = clock; }
+          if (was !== m.state && onState) onState(m, was, m.state); });
       }
       return hits;
     },

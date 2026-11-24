@@ -47,6 +47,13 @@ export function finalStats(s: Save, level: number): string {
   const charted = s.charted.filter(Boolean).length, extras = [s.wind ? 'Wind Shrine ✓' : 'Wind Shrine —', s.warden ? 'Vale Warden ✓' : 'Vale Warden —', s.echo ? 'Echo Grove ✓' : 'Echo Grove —', `Map ${charted}/${MARR_MARKS.length}`];
   return `Level ${level} · ${s.xp} XP · ${extras.join(' · ')}`; // M60 · MAX_XP was stale (side content pays far more)
 }
+/** M64G · the earned beat: how this player came through, from their own counts (no invented numbers). */
+export function wayStats(s: Save): { title: string; line: string } {
+  const k = (s.kstat ?? {}) as Record<string, number>, parry = k.parry ?? 0, slip = k.slip ?? 0, felled = k.felled ?? 0;
+  const kindled = ['forge', 'dawn', 'sun', 'tide'].reduce((a, id) => a + (k[id] ?? 0), 0), ruins = (s.mended ?? []).length, relics = (s.relics ?? []).length;
+  const title = ruins >= 3 ? 'Ruin-Mender' : kindled >= 10 ? 'Seal-Kindler' : parry >= 25 ? 'Turner of Blows' : slip >= 25 ? 'Wind-Footed' : felled >= 40 ? 'Vale-Warden' : 'Wayfarer';
+  return { title, line: `Your way through: ${parry} parries · ${slip} blows rolled through · ${felled} foes felled · ${kindled} sparks kindled · ruins mended ${ruins}/3 · relics ${relics}/3${(s.perks ?? []).length ? ` · ${(s.perks ?? []).length} perks` : ''}` };
+}
 
 export const CREDITS = [
   ['The Broken Vale', 'An original fantasy adventure in two chapters'],

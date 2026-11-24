@@ -100,6 +100,8 @@ export class GameAudio {
     }
   }
   // ---------- sfx ----------
+  /** M64B QA: how often each cue was asked for (counted even when the context is locked, e.g. headless). */
+  cues: Record<string, number> = {}; private cue(n: string) { this.cues[n] = (this.cues[n] ?? 0) + 1; }
   private ok() { return !!this.ctx && this.enabled && this.ctx.state === 'running'; }
   steps = 0; lastSurf: Surface | '' = '';
   step(surf: Surface, run: boolean) {
@@ -111,8 +113,25 @@ export class GameAudio {
     else { this.noiseHit(o, t, 0.16, { lp: 1400, vol: 0.08 * v }); this.noiseHit(o, t + 0.04, 0.12, { bp: 3000, q: 3, vol: 0.025 * v }); }
   }
   swing() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.noiseHit(this.sfx, t, 0.24, { bp: 500, q: 2.2, sweep: 3200, vol: 0.12 }); }
-  hit() { if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx; for (const [f, v] of [[523, 0.08], [1347, 0.05], [2210, 0.025]] as const) this.tone(o, t, f, 0.5, { vol: v, a: 0.002, r: 0.45, send: 0.3 }); this.noiseHit(o, t, 0.06, { bp: 3500, q: 1, vol: 0.08 }); }
-  hurt() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.kick(this.sfx, t, 0.22); this.noiseHit(this.sfx, t, 0.25, { lp: 600, vol: 0.09 }); }
+  /** M64B · the struck sound follows the weapon in hand: blade (ringing steel), blunt (a deep crunch), pierce (a sharp punch), sea (a wet slap), fire (a crackling bite). */
+  hitKind: 'blade' | 'blunt' | 'pierce' | 'sea' | 'fire' = 'blade';
+  hit() { this.cue('hit'); if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx, k = this.hitKind;
+    if (k === 'blunt') { this.kick(o, t, 0.24); this.noiseHit(o, t, 0.16, { lp: 900, vol: 0.13 }); this.tone(o, t, 140, 0.25, { type: 'triangle', vol: 0.05, a: 0.002, r: 0.2, lp: 700 }); return; }
+    if (k === 'pierce') { this.noiseHit(o, t, 0.05, { bp: 2600, q: 3, vol: 0.11 }); this.tone(o, t, 780, 0.18, { type: 'triangle', vol: 0.04, a: 0.001, r: 0.15 }); this.kick(o, t, 0.08); return; }
+    if (k === 'sea') { this.noiseHit(o, t, 0.28, { bp: 900, q: 0.9, sweep: 300, vol: 0.1, send: 0.3 }); this.tone(o, t, 660, 0.4, { vol: 0.04, a: 0.002, r: 0.35, send: 0.4 }); return; }
+    if (k === 'fire') { this.noiseHit(o, t, 0.22, { bp: 1800, q: 0.7, vol: 0.1 }); this.noiseHit(o, t + 0.05, 0.3, { bp: 4200, q: 2, vol: 0.04 }); this.tone(o, t, 392, 0.3, { type: 'sawtooth', vol: 0.025, a: 0.002, r: 0.25, lp: 1600 }); return; }
+    for (const [f, v] of [[523, 0.08], [1347, 0.05], [2210, 0.025]] as const) this.tone(o, t, f, 0.5, { vol: v, a: 0.002, r: 0.45, send: 0.3 }); this.noiseHit(o, t, 0.06, { bp: 3500, q: 1, vol: 0.08 }); }
+  /** M64B · each foe type announces its wind-up in its own voice (scaled by distance, 0..1) — a second, audible telegraph. */
+  tell(look: string, vol: number) { this.cue('tell:' + look); if (!this.ok() || vol <= 0.02) return; const t = this.ctx!.currentTime, o = this.sfx, v = Math.min(1, vol);
+    if (look === 'shade') { this.noiseHit(o, t, 0.4, { bp: 5200, q: 4, sweep: 2600, vol: 0.06 * v, send: 0.3 }); }
+    else if (look === 'brute' || look === 'zealot' || look === 'king') { this.tone(o, t, 62, 0.7, { type: 'sawtooth', vol: 0.06 * v, a: 0.08, r: 0.4, lp: 380 }); this.noiseHit(o, t, 0.6, { lp: 420, vol: 0.07 * v }); }
+    else if (look === 'cultist') { this.tone(o, t, 233, 0.22, { type: 'triangle', vol: 0.035 * v, a: 0.02, r: 0.15, send: 0.5 }); this.tone(o, t + 0.2, 311, 0.3, { type: 'triangle', vol: 0.035 * v, a: 0.02, r: 0.2, send: 0.5 }); }
+    else if (look === 'sentinel') { this.noiseHit(o, t, 0.08, { bp: 2000, q: 4, vol: 0.06 * v }); this.tone(o, t, 420, 0.2, { type: 'square', vol: 0.02 * v, a: 0.002, r: 0.15, lp: 1800 }); }
+    else { this.tone(o, t, 98, 0.5, { type: 'sawtooth', vol: 0.04 * v, a: 0.1, r: 0.3, lp: 520 }); } } // husk, barrow dead, wight: a low groan
+  /** M64B · a foe notices you (short, quieter) and a foe falls (a dry crumble). */
+  notice(vol: number) { this.cue('notice'); if (!this.ok() || vol <= 0.02) return; const t = this.ctx!.currentTime; this.tone(this.sfx, t, 147, 0.25, { type: 'triangle', vol: 0.03 * Math.min(1, vol), a: 0.03, r: 0.2, lp: 900 }); }
+  fall() { this.cue('fall'); if (!this.ok()) return; const t = this.ctx!.currentTime; this.noiseHit(this.sfx, t, 0.5, { lp: 500, sweep: 160, vol: 0.1 }); this.kick(this.sfx, t + 0.12, 0.12); }
+  hurt() { this.cue('hurt'); if (!this.ok()) return; const t = this.ctx!.currentTime; this.kick(this.sfx, t, 0.22); this.noiseHit(this.sfx, t, 0.25, { lp: 600, vol: 0.09 }); }
   warn() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.tone(this.sfx, t, 220, 0.18, { type: 'square', vol: 0.025, a: 0.005, r: 0.1, lp: 900 }); this.tone(this.sfx, t + 0.2, 175, 0.22, { type: 'square', vol: 0.025, a: 0.005, r: 0.12, lp: 900 }); }
   chime() { if (!this.ok()) return; const t = this.ctx!.currentTime; [74, 78, 81, 86].forEach((m, i) => this.bell(this.sfx, t + i * 0.09, hz(m), 0.045, 0.5)); }
   ui() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.tone(this.sfx, t, 990, 0.04, { vol: 0.035, a: 0.002, r: 0.035 }); }
@@ -120,10 +139,21 @@ export class GameAudio {
   heavy() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.noiseHit(this.sfx, t, 0.36, { bp: 300, q: 1.6, sweep: 1800, vol: 0.16 }); this.kick(this.sfx, t + 0.18, 0.18); }
   /** M27 · a crowbar/hammer knock on stone, scaled by distance (vol 0..1). */
   knock(vol: number) { if (!this.ok() || vol <= 0.01) return; const t = this.ctx!.currentTime, o = this.sfx; this.noiseHit(o, t, 0.05, { bp: 1100, q: 2, vol: 0.07 * vol }); this.tone(o, t, 190, 0.12, { type: 'triangle', vol: 0.05 * vol, a: 0.002, r: 0.1, lp: 1400 }); }
-  clank() { if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx; this.noiseHit(o, t, 0.08, { bp: 2400, q: 3, vol: 0.09 }); for (const [f, v] of [[310, 0.06], [847, 0.04]] as const) this.tone(o, t, f, 0.25, { type: 'square', vol: v, a: 0.002, r: 0.2, lp: 2600 }); }
-  parry() { if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx; for (const [f, v] of [[1318, 0.07], [1975, 0.05], [2637, 0.03]] as const) this.tone(o, t, f, 0.7, { vol: v, a: 0.002, r: 0.65, send: 0.5 }); this.noiseHit(o, t, 0.06, { bp: 5000, q: 2, vol: 0.06 }); }
-  roll() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.noiseHit(this.sfx, t, 0.3, { lp: 700, vol: 0.09 }); this.noiseHit(this.sfx, t + 0.05, 0.2, { bp: 1600, q: 0.8, vol: 0.035 }); }
+  clank() { this.cue('clank'); if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx; this.noiseHit(o, t, 0.08, { bp: 2400, q: 3, vol: 0.09 }); for (const [f, v] of [[310, 0.06], [847, 0.04]] as const) this.tone(o, t, f, 0.25, { type: 'square', vol: v, a: 0.002, r: 0.2, lp: 2600 }); }
+  parry() { this.cue('parry'); if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx; for (const [f, v] of [[1318, 0.07], [1975, 0.05], [2637, 0.03]] as const) this.tone(o, t, f, 0.7, { vol: v, a: 0.002, r: 0.65, send: 0.5 }); this.noiseHit(o, t, 0.06, { bp: 5000, q: 2, vol: 0.06 }); }
+  roll() { this.cue('roll'); if (!this.ok()) return; const t = this.ctx!.currentTime; this.noiseHit(this.sfx, t, 0.3, { lp: 700, vol: 0.09 }); this.noiseHit(this.sfx, t + 0.05, 0.2, { bp: 1600, q: 0.8, vol: 0.035 }); }
   tired() { if (!this.ok()) return; const t = this.ctx!.currentTime; this.tone(this.sfx, t, 180, 0.14, { type: 'triangle', vol: 0.04, a: 0.005, r: 0.1, lp: 700 }); }
+  /** M64D · boss stingers: intro (a low swell and a toll), phase (a rising roar), win (bright bells over a warm chord). */
+  stinger(kind: string) { this.cue('stinger:' + kind); if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx;
+    if (kind === 'intro') { this.tone(o, t, hz(33), 2.6, { type: 'sawtooth', vol: 0.05, a: 0.8, r: 1.5, lp: 420, send: 0.5 }); this.tone(o, t, hz(40), 2.6, { type: 'sawtooth', vol: 0.035, a: 0.9, r: 1.5, lp: 380, det: 7, send: 0.5 }); this.bell(o, t + 0.9, hz(45), 0.07, 0.8); }
+    else if (kind === 'phase') { this.noiseHit(o, t, 1.1, { bp: 300, q: 1.4, sweep: 1600, vol: 0.12, send: 0.4 }); this.kick(o, t + 0.05, 0.25); this.tone(o, t, hz(38), 1.0, { type: 'square', vol: 0.03, a: 0.3, r: 0.6, lp: 600 }); }
+    else { [60, 64, 67, 72, 76].forEach((m, i) => this.bell(o, t + i * 0.13, hz(m + 12), 0.05, 0.7)); [48, 55, 60].forEach((m) => this.tone(o, t, hz(m), 2.4, { type: 'triangle', vol: 0.03, a: 0.3, r: 1.8, send: 0.6 })); } }
+  /** M64C · a spark gathered: a small bright crackle and a rising pair. */
+  spark() { this.cue('spark'); if (!this.ok()) return; const t = this.ctx!.currentTime; this.noiseHit(this.sfx, t, 0.12, { bp: 4200, q: 3, vol: 0.05 }); this.bell(this.sfx, t + 0.02, hz(88), 0.03, 0.4); this.bell(this.sfx, t + 0.09, hz(95), 0.025, 0.4); }
+  /** M64C · a seal kindled: a whoomph of fire under a chord in the seal's own colour (forge low, dawn bright, sun high, tide hollow). */
+  kindle(id: string) { this.cue('kindle:' + id); if (!this.ok()) return; const t = this.ctx!.currentTime, o = this.sfx; const root = ({ forge: 45, dawn: 57, sun: 64, tide: 50 } as Record<string, number>)[id] ?? 52;
+    this.kick(o, t, 0.2); this.noiseHit(o, t, 0.7, { lp: 1800, sweep: 300, vol: 0.12, send: 0.4 });
+    for (const [i, m] of [0, 7, 12, id === 'tide' ? 15 : 16].entries()) this.tone(o, t + 0.03 * i, hz(root + m), 1.4, { type: id === 'forge' ? 'sawtooth' : 'triangle', vol: 0.03, a: 0.02, r: 1.1, lp: id === 'forge' ? 1400 : 3200, send: 0.6 }); }
   pickup() { if (!this.ok()) return; const t = this.ctx!.currentTime; [69, 76, 81, 88].forEach((m, i) => this.bell(this.sfx, t + i * 0.07, hz(m), 0.05, 0.6)); }
   get state() { return { steps: this.steps, surf: this.lastSurf, ctx: this.ctx?.state ?? 'none', enabled: this.enabled, region: this.region, musicVol: this.musicVol, gains: this.ctx ? Object.fromEntries(Object.entries(this.regs).map(([k, r]) => [k, +r.g.gain.value.toFixed(2)])) : null }; }
 }

@@ -32,16 +32,20 @@ export const isWeapon = (s: unknown): s is WeaponId => typeof s === 'string' && 
 
 export const JUMP_COST = 9;
 export const ST_MAX = 100, DODGE_COST = 22, BLOCK_HIT_COST = 24, BLOCK_DRAIN = 5, PARRY_WIN = 0.24, DODGE_T = 0.42, DODGE_IFR = 0.34, DODGE_SPEED = 8.6;
-export type Strike = { dmg: number; reach: number; heavy: boolean; stagger: number; keeperMul: number; finisher: boolean; move: Weapon['heavyMove'] | 'light' };
+export type Strike = { dmg: number; reach: number; heavy: boolean; stagger: number; keeperMul: number; finisher: boolean; move: Weapon['heavyMove'] | 'light'; riposte?: boolean; pierce?: boolean };
+/** M64 · a parry opens a riposte window: the next blow inside it hits ×1.5 and hard-staggers. Rolling through a blow refunds stamina. */
+export const RIPOSTE_WIN = 1.0, RIPOSTE_MUL = 1.5, SLIP_REFUND = 12;
 export type Incoming = 'hit' | 'blocked' | 'parried' | 'dodged' | 'guardbreak';
 type Act = { kind: 'light' | 'heavy' | 'dodge'; t: number; dur: number; hitAt: number; hit: boolean; step: number; power: number };
 
 export class Combat {
   weapon: Weapon = WEAPONS.rusty;
   stamina = ST_MAX; private regenWait = 0;
+  /** M64F · level perks tune these (see quest.ts PERKS); defaults are the M63 values. */
+  mods = { parryWin: PARRY_WIN, ripWin: RIPOSTE_WIN, ripMul: RIPOSTE_MUL, dodgeMul: 1, heavyMul: 1 };
   act: Act | null = null; private combo = 0; private comboWin = 0; private queued = false;
   charge = -1; blocking = false; blockT = 0; iframes = 0; hitStop = 0; flash = 0; lastFail = 0;
-  dodgeDir = 0; counts = { light: 0, heavy: 0, dodge: 0, block: 0, parry: 0, landed: 0, jump: 0 };
+  dodgeDir = 0; counts = { light: 0, heavy: 0, dodge: 0, block: 0, parry: 0, landed: 0, jump: 0, riposte: 0, slip: 0 }; riposte = 0; temper = 0; // M64C · Tempered blows left
   get busy() { return !!this.act || this.charge >= 0; }
   get rolling() { return this.act?.kind === 'dodge'; }
   /** Swing pose progress 0..1 (0 = none) for the procedural overlay; charge holds the wind-up. */
@@ -65,7 +69,7 @@ export class Combat {
   heavyDown() { if (this.act || this.charge >= 0) return false; if (this.stamina < 12) { this.lastFail = 1; return false; } this.blocking = false; this.charge = 0; return true; }
   heavyUp(): boolean {
     if (this.charge < 0) return false; const k = this.chargeK, w = this.weapon; this.charge = -1;
-    const cost = w.heavyCost * (0.6 + 0.4 * k), short = this.stamina < cost, power = (0.55 + 0.45 * k) * (short ? 0.6 : 1);
+    const cost = w.heavyCost * (0.6 + 0.4 * k) * this.mods.heavyMul, short = this.stamina < cost, power = (0.55 + 0.45 * k) * (short ? 0.6 : 1);
     this.spend(cost); const dur = w.swing * 1.5 + 0.08; this.act = { kind: 'heavy', t: 0, dur, hitAt: dur * 0.45, hit: false, step: 0, power }; this.combo = 0; this.comboWin = 0; this.counts.heavy++; return true;
   }
   setBlock(on: boolean) { if (on && !this.blocking) { if (this.act?.kind === 'dodge') return; this.blocking = true; this.blockT = 0; this.counts.block++; } else if (!on) this.blocking = false; }
@@ -76,15 +80,15 @@ export class Combat {
   }
   /** Dodge-roll toward `dir` (world yaw). */
   dodge(dir: number): boolean {
-    if (this.act?.kind === 'dodge') return false; if (this.stamina < DODGE_COST * 0.5) { this.lastFail = 1; return false; }
-    this.spend(DODGE_COST); this.charge = -1; this.blocking = false; this.queued = false; this.combo = 0; this.dodgeDir = dir;
+    if (this.act?.kind === 'dodge') return false; if (this.stamina < DODGE_COST * this.mods.dodgeMul * 0.5) { this.lastFail = 1; return false; }
+    this.spend(DODGE_COST * this.mods.dodgeMul); this.charge = -1; this.blocking = false; this.queued = false; this.combo = 0; this.dodgeDir = dir;
     this.act = { kind: 'dodge', t: 0, dur: DODGE_T, hitAt: 99, hit: true, step: 0, power: 0 }; this.iframes = DODGE_IFR; this.counts.dodge++; return true;
   }
   /** An enemy blow reaches the player. Sweeps (the tide) can't be blocked or rolled through. */
   incoming(unblockable = false): Incoming {
-    if (!unblockable && this.iframes > 0) return 'dodged';
+    if (!unblockable && this.iframes > 0) { this.counts.slip++; this.stamina = Math.min(ST_MAX, this.stamina + SLIP_REFUND); return 'dodged'; }
     if (!unblockable && this.blocking) {
-      if (this.blockT < PARRY_WIN) { this.counts.parry++; this.stamina = Math.min(ST_MAX, this.stamina + 10); this.hitStop = 0.12; this.flash = 1; return 'parried'; }
+      if (this.blockT < this.mods.parryWin) { this.counts.parry++; this.riposte = this.mods.ripWin; this.stamina = Math.min(ST_MAX, this.stamina + 10); this.hitStop = 0.12; this.flash = 1; return 'parried'; }
       if (this.stamina >= BLOCK_HIT_COST * 0.5) { this.spend(BLOCK_HIT_COST); this.hitStop = 0.06; return 'blocked'; }
       this.stamina = 0; this.regenWait = 1.2; this.blocking = false; return 'guardbreak';
     }
@@ -92,7 +96,7 @@ export class Combat {
   }
   /** One fixed tick. Returns a strike at the moment of contact. */
   tick(dt: number): Strike | null {
-    this.flash = Math.max(0, this.flash - dt * 3); this.lastFail = Math.max(0, this.lastFail - dt * 2);
+    this.riposte = Math.max(0, this.riposte - dt); this.flash = Math.max(0, this.flash - dt * 3); this.lastFail = Math.max(0, this.lastFail - dt * 2);
     if (this.hitStop > 0) { this.hitStop = Math.max(0, this.hitStop - dt); return null; }
     this.iframes = Math.max(0, this.iframes - dt); if (this.comboWin > 0) this.comboWin -= dt;
     if (this.blocking) { this.blockT += dt; this.stamina = Math.max(0, this.stamina - BLOCK_DRAIN * dt); this.regenWait = Math.max(this.regenWait, 0.3); }
@@ -103,7 +107,9 @@ export class Combat {
     if (!a.hit && a.t >= a.hitAt) {
       a.hit = true; const heavy = a.kind === 'heavy', fin = !heavy && a.power > 1;
       out = { dmg: (heavy ? w.heavy : w.dmg) * a.power, reach: w.reach * (heavy && (w.heavyMove === 'wave' || w.heavyMove === 'lunge') ? 1.35 : heavy && w.heavyMove === 'slam' ? 1.2 : 1), heavy,
-        stagger: w.stagger + (heavy ? 0.8 : fin ? 0.3 : 0), keeperMul: w.keeperMul, finisher: fin, move: heavy ? w.heavyMove : 'light' };
+        stagger: w.stagger + (heavy ? 0.8 : fin ? 0.3 : 0), keeperMul: w.keeperMul, finisher: fin, move: heavy ? w.heavyMove : 'light', pierce: w.style === 1 };
+      if (this.temper > 0) { this.temper--; out.stagger = Math.max(out.stagger, 2); out.pierce = true; }
+      if (this.riposte > 0) { out.dmg *= this.mods.ripMul; out.stagger = Math.max(out.stagger, 1); out.riposte = true; this.riposte = 0; this.counts.riposte++; }
     }
     if (a.t >= a.dur) {
       this.act = null;
@@ -113,7 +119,7 @@ export class Combat {
   }
   /** Enemy took a blow: freeze frames scale with the blow. */
   landed(s: Strike) { this.hitStop = s.heavy ? 0.13 : s.finisher ? 0.09 : 0.06; this.counts.landed++; }
-  reset() { this.act = null; this.charge = -1; this.blocking = false; this.queued = false; this.combo = 0; this.comboWin = 0; this.iframes = 0; this.hitStop = 0; this.stamina = ST_MAX; }
+  reset() { this.riposte = 0; this.temper = 0; this.act = null; this.charge = -1; this.blocking = false; this.queued = false; this.combo = 0; this.comboWin = 0; this.iframes = 0; this.hitStop = 0; this.stamina = ST_MAX; }
 }
 
 // ---------- weapon models (1 unit = 1 m, grip at the origin, blade/haft toward −Y like the rig's original sword) ----------

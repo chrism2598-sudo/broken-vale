@@ -60,7 +60,7 @@ export function makeCoach(el: HTMLElement, pulse: (id: string | null) => void) {
       if (!Number.isNaN(lastYaw)) { let d = c.yaw - lastYaw; d = Math.atan2(Math.sin(d), Math.cos(d)); turned += Math.abs(d); } lastYaw = c.yaw;
       // combat (opening fights only: until the first seal is claimed or the tips are spent)
       const fight = c.hostile;
-      if (hp0 >= 0 && c.hp < hp0 && fight) { if (!done.has('dodge') && windShown > 0) show('dodge', `Hit! When a foe glows and raises its arm, ${c.touch ? 'tap Roll' : 'press C'} to dodge. Your hearts (♥) refill after the fight.`, 4, 'b-dge', 2.5); else once('hurt', 'You were hit! Your hearts (♥) are your health — they refill once the fight is over.', 4.5); }
+      if (hp0 >= 0 && c.hp < hp0 && fight) { if (!done.has('dodge') && windShown > 0) show('dodge', `Hit! When a foe glows and raises its arm, ${c.touch ? 'tap Roll' : 'press C'} to dodge. Your hearts (♥) refill after the fight.`, 4, 'b-dge', 2.5); else once('hurt', 'You were hit! Your hearts (♥) are your health — they refill, a heart at a time, once the fight is over.', 4.5); }
       hp0 = c.hp;
       if (fight && !done.has('attack')) {
         if (landed0 < 0) landed0 = c.landed; atkT += c.dt;

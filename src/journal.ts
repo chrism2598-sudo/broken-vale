@@ -204,7 +204,7 @@ export function drawValeMap(cv: HTMLCanvasElement, cssW: number, cssH: number, m
   // Seals.
   for (const d of SEALS) { const X = sx(d.x), Y = sz(d.z), got = !!m.save.seals[d.id]; x.save(); x.translate(X, Y); x.rotate(Math.PI / 4); x.fillStyle = got ? d.color : 'rgba(0,0,0,0)'; x.strokeStyle = '#3a2814'; x.lineWidth = 1.4; x.fillRect(-4.5, -4.5, 9, 9); x.strokeRect(-4.5, -4.5, 9, 9); x.restore(); label(d.short, X + 9, Y, 'left', got ? '#3a2814' : '#6b4a26', fs - 1); }
   // M20b-2 · places you have found at the edges.
-  for (const p of m.places ?? []) { const X = sx(p.x), Y = sz(p.z); x.fillStyle = p.kind === 'camp' ? '#7a2a14' : '#2e1e0e'; x.font = `${fs}px serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(({ tower: '♜', camp: '▲', barrow: '◒', view: '✶' } as Record<string, string>)[p.kind] ?? '•', X, Y); label(p.name, X, Y + fs, 'center', '#3a2814', fs - 2); }
+  for (const p of m.places ?? []) { const X = sx(p.x), Y = sz(p.z); x.fillStyle = p.kind === 'camp' ? '#7a2a14' : '#2e1e0e'; x.font = `${fs}px serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(({ tower: '♜', camp: '▲', barrow: '◒', view: '✶', ruin: '⌂', 'ruin-m': '✦' } as Record<string, string>)[p.kind] ?? '•', X, Y); label(p.name, X, Y + fs, 'center', '#3a2814', fs - 2); }
   // Objective marker.
   if (m.target) { const X = sx(m.target.x), Y = sz(m.target.z), p = 0.5 + 0.5 * Math.sin(m.t * 4); x.strokeStyle = `rgba(200,60,20,${0.55 + 0.4 * p})`; x.lineWidth = 2.5; x.beginPath(); x.arc(X, Y, 10 + p * 3, 0, Math.PI * 2); x.stroke(); x.lineWidth = 1.2; x.beginPath(); x.arc(X, Y, 15 + p * 3, 0, Math.PI * 2); x.stroke(); }
   // Player arrow.

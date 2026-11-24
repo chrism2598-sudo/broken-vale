@@ -7,8 +7,8 @@ export const MOB_HP = 4, MOB_XP = 12;
 export type MobHit = 'swing' | null;
 /** M20b · overworld variants: 'shade' (night wraith, quick), 'brute' (big night husk, two-HP blows), 'husk' (weak day roamer). */
 export type MobLook = 'sentinel' | 'shade' | 'brute' | 'husk' | 'cultist' | 'zealot' | 'barrow' | 'king' | 'drowned';
-export type MobOpts = { look?: MobLook; hp?: number; speed?: number; notice?: number; windup?: number; dmg?: number; xp?: number; name?: string; ground?: (x: number, z: number) => number };
-const STATS: Record<MobLook, Required<Omit<MobOpts, 'ground' | 'look'>>> = {
+export type MobOpts = { ai?: boolean; /* M64 · roaming foes: per-type tactics */ look?: MobLook; hp?: number; speed?: number; notice?: number; windup?: number; dmg?: number; xp?: number; name?: string; ground?: (x: number, z: number) => number };
+const STATS: Record<MobLook, Required<Omit<MobOpts, 'ground' | 'look' | 'ai'>>> = {
   sentinel: { hp: MOB_HP, speed: 2.0, notice: 9, windup: 0.85, dmg: 1, xp: MOB_XP, name: 'Sentinel' },
   shade: { hp: 5, speed: 3.1, notice: 14, windup: 0.7, dmg: 1, xp: 9, name: 'Gloam Shade' },
   brute: { hp: 9, speed: 2.2, notice: 12, windup: 1.15, dmg: 2, xp: 22, name: 'Gloam Brute' },
@@ -79,9 +79,11 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
   const sword = add(new THREE.BoxGeometry(0.06, 1.1, 0.02), new THREE.MeshStandardMaterial({ color: '#c8ccd0', metalness: 0.9, roughness: 0.3 }), 0, -1.15, 0.08, armR);
   if (shade) for (const o of [armL, armR]) o.traverse((q) => { (q as THREE.Mesh).castShadow = false; }); // M38 · the translucent night wraith's thin arms, shield and blade skip the shadow pass (body shadow stays)
   const ringM = new THREE.MeshBasicMaterial({ color: '#ff6a3a', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-  const RR = look === 'king' ? 3.0 : big ? 2.6 : 2.1; const ring = new THREE.Mesh(new THREE.RingGeometry(RR - 0.15, RR, 32, 1, -0.9, 1.8), ringM); ring.rotation.x = -Math.PI / 2; ring.rotation.z = -Math.PI / 2; ring.position.y = 0.05; ring.visible = false; g.add(ring); // M38: hidden while transparent (no draw call)
+  const RR = look === 'king' ? 3.0 : big ? 2.6 : 2.1; const ring = new THREE.Mesh(new THREE.RingGeometry(RR - 0.15, RR, 32, 1, -0.9, 1.8), ringM); ring.rotation.x = -Math.PI / 2; ring.rotation.z = -Math.PI / 2; ring.position.y = 0.05; ring.visible = false; g.add(ring); let sweepRing: THREE.Mesh | null = null; // M38: hidden while transparent (no draw call)
+  const AI = !!opts.ai; // M64 · per-type tactics (roaming foes only; castle/barrow foes keep their tuned behaviour)
+  const STUN_MAX = 1.5; // M64 · longest unbroken stagger before the foe is poised
   const REACH = RR, RECOVER = look === 'shade' ? 0.8 : 1.1;
-  let bob = 0, hp = HPM, state: 'idle' | 'chase' | 'windup' | 'recover' | 'stagger' | 'dead' = 'idle', t = 0, flash = 0, deadT = 0; void sword;
+  let bob = 0, hp = HPM, state: 'idle' | 'chase' | 'windup' | 'recover' | 'stagger' | 'dead' = 'idle', t = 0, flash = 0, deadT = 0, stunT = 0, poiseT = 0, spW = 0, spR = 1, spOn = false, curW = 1, twist = 0, circleT = 0, circleCd = 0, side = 1, rushT = 0, rushCd = 2, backT = 0, glance = 0; void sword; // M64 · stunT: unbroken stagger time · poiseT: poised (won't stagger) until its blow
   let flinch = 0, kbx = 0, kbz = 0, stopT = 0; // M47 · hit reaction: a short lean-back flinch and a knockback slide away from the blow
   const m = {
     id, group: g, look, get maxHp() { return HPM; }, dmg: S.dmg, xp: S.xp, name: S.name,
@@ -90,25 +92,44 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
     get windup() { return WINDUP; }, get speed() { return SPEED; }, get notice() { return NOTICE; },
     setHome(hx: number, hz: number) { homeX = hx; homeZ = hz; },
     /** Bring a dead (or wandering) mob back fresh at a spot (roaming-group respawn). */
-    respawn(rx: number, rz: number) { hp = HPM; state = 'idle'; t = 0; deadT = 0; flash = 0; homeX = rx; homeZ = rz; g.position.set(rx, ground ? ground(rx, rz) : y, rz); g.visible = true; body.rotation.set(0, 0, 0); body.position.y = 0; ringM.opacity = 0; },
+    respawn(rx: number, rz: number) { hp = HPM; state = 'idle'; t = 0; stunT = 0; poiseT = 0; circleT = 0; backT = 0; rushT = 0; deadT = 0; flash = 0; homeX = rx; homeZ = rz; g.position.set(rx, ground ? ground(rx, rz) : y, rz); g.visible = true; body.rotation.set(0, 0, 0); body.position.y = 0; ringM.opacity = 0; },
     get x() { return g.position.x; }, get z() { return g.position.z; }, get y() { return g.position.y; },
-    get hp() { return hp; }, get state() { return state; }, get alive() { return state !== 'dead'; },
+    get hp() { return hp; }, get state() { return state; }, get poised() { return poiseT > 0; }, get twist() { return twist; }, get windLeft() { return state === 'windup' ? t : -1; }, /** M64 · true once after a blow glanced off a Sentinel's guard */ takeGlance() { const r = glance > 0; glance = 0; return r; }, get tactic() { return circleT > 0 ? 'circle' : rushT > 0 ? 'rush' : backT > 0 ? 'back' : ''; }, get alive() { return state !== 'dead'; },
     get winding() { return state === 'windup'; },
-    reset() { if (state === 'dead') return; hp = HPM; state = 'idle'; t = 0; g.position.set(x, y, z); g.rotation.y = face; ringM.opacity = 0; },
+    reset() { if (state === 'dead') return; hp = HPM; state = 'idle'; t = 0; stunT = 0; poiseT = 0; g.position.set(x, y, z); g.rotation.y = face; ringM.opacity = 0; },
+    /** M64C · a Kindled power: reel for `sec` (breaks poise and wind-ups), optionally thrown back from (fx,fz). */
+    /** M64D · arm a special for the next wind-up: longer tell (`windup` s) and a wider blow (reach ×`reachMul`, any angle); the amber ring grows to match. */
+    special(windup: number, reachMul: number) { spW = windup; spR = reachMul; if (!sweepRing) { sweepRing = new THREE.Mesh(new THREE.RingGeometry(RR * reachMul - 0.3, RR * reachMul, 48), ringM); sweepRing.rotation.x = -Math.PI / 2; sweepRing.position.y = 0.06; sweepRing.visible = false; g.add(sweepRing); } }, get sweeping() { return spOn; },
+    daze(sec: number, fx?: number, fz?: number, push = 0) { if (state === 'dead') return; poiseT = 0; stunT = 0; state = 'stagger'; t = sec; flash = 0.3; ringM.opacity = 0; spOn = false;
+      if (push && fx !== undefined && fz !== undefined) { const dx = g.position.x - fx, dz = g.position.z - fz, d = Math.hypot(dx, dz) || 1; kbx = dx / d * push; kbz = dz / d * push; } },
     kill() { hp = 0; state = 'dead'; deadT = 9; g.visible = false; },
     /** dmg already scaled; stagger ≥ 0.8 interrupts a wind-up. Returns true when this blow killed it. */
-    hit(dmg: number, stagger: number, fromX?: number, fromZ?: number) {
-      if (state === 'dead') return false; hp -= dmg; flash = 0.18;
+    hit(dmg: number, stagger: number, fromX?: number, fromZ?: number, pierce = false) {
+      if (state === 'dead') return false;
+      // M64 · Sentinel guard stance: a light blow from the front glances off (half damage, no stagger) unless it's a thrust
+      // (spear-class), a hard-staggering blow (Maul, Halberd, heavies, ripostes) or the Sentinel is busy (wind-up/stagger).
+      if (AI && look === 'sentinel' && dmg > 0 && stagger < 0.8 && !pierce && fromX !== undefined && fromZ !== undefined && (state === 'chase' || state === 'idle' || state === 'recover')) {
+        const ax = fromX - g.position.x, az = fromZ - g.position.z, al = Math.hypot(ax, az) || 1;
+        if ((Math.sin(g.rotation.y) * ax + Math.cos(g.rotation.y) * az) / al > 0.5) { dmg *= 0.5; stagger = -1; glance = 1; } }
+      hp -= dmg; flash = 0.18;
+      if (dmg > 0 && fromX !== undefined && fromZ !== undefined) { const ax = fromX - g.position.x, az = fromZ - g.position.z; twist = (Math.cos(g.rotation.y) * ax - Math.sin(g.rotation.y) * az) > 0 ? -0.42 : 0.42; } // M64B · twist away from the blow's side
       if (dmg > 0 && fromX !== undefined && fromZ !== undefined) { const dx = g.position.x - fromX, dz = g.position.z - fromZ, d = Math.hypot(dx, dz) || 1, v = stagger >= 0.8 ? 5.2 : 2.8; kbx = dx / d * v; kbz = dz / d * v; flinch = 1; stopT = stagger >= 0.8 ? 0.09 : 0.055; } // M47 · hit-stop: the struck foe freezes on contact for a beat
+      if (poiseT > 0) { kbx = 0; kbz = 0; } // M64 · a poised foe isn't knocked back either
       if (hp <= 0) { state = 'dead'; deadT = 0; ringM.opacity = 0; return true; }
+      // M64 · poise (stun-lock fix): a foe held in stagger for STUN_MAX s without a break shrugs off the next hit and comes
+      // straight back with a wind-up it won't let go of (the amber ring, as ever) — roll, block or parry it, then press again.
+      if (poiseT <= 0 && stunT >= STUN_MAX && stagger < 2) { poiseT = 3; if (state === 'stagger') { state = 'chase'; t = 0; } }
+      if (poiseT > 0 && stagger < 2) return false; // poised (a Tempered blow, stagger ≥ 2, still breaks through): the blow lands (damage, flinch, hit-stop) but doesn't stagger or push it back
+      if (stagger < 0) return false; // glanced
       if (stagger >= 0.8 || state !== 'windup') { state = 'stagger'; t = stagger >= 0.8 ? 0.9 : 0.35; }
       return false;
     },
     /** walk(x,z) says whether the mob may stand there. Returns 'swing' on the frame the blow lands (main resolves it). */
-    tick(dt: number, px: number, pz: number, py: number, walk: (x: number, z: number) => boolean, playerDown: boolean, canSee = true): MobHit {
+    tick(dt: number, px: number, pz: number, py: number, walk: (x: number, z: number) => boolean, playerDown: boolean, canSee = true, canWind = true): MobHit {
+      stunT = state === 'stagger' ? stunT + dt : Math.max(0, stunT - dt); poiseT = Math.max(0, poiseT - dt); // M64 · stunT decays (not resets) between staggers, so short chase gaps don't restart it
       if (stopT > 0 && state !== 'dead') { stopT -= dt; plate.emissive.setRGB(0.72, 0.54, 0.36); return null; }
-      flash = Math.max(0, flash - dt); flinch = Math.max(0, flinch - dt * 4.5);
-      { const wk = state === 'windup' ? 1 - Math.max(0, t) / WINDUP : 0, tell = state === 'windup' && t < 0.2 ? 0.5 + 0.5 * Math.sin(t * 60) : 0; // M47 · the wind-up glows hotter as it builds, and flickers in the last 0.2 s before the blow
+      circleCd = Math.max(0, circleCd - dt); rushCd = Math.max(0, rushCd - dt); rushT = Math.max(0, rushT - dt); flash = Math.max(0, flash - dt); flinch = Math.max(0, flinch - dt * 4.5);
+      { const wk = state === 'windup' ? 1 - Math.max(0, t) / curW : 0, tell = state === 'windup' && t < 0.2 ? 0.5 + 0.5 * Math.sin(t * 60) : 0; // M47 · the wind-up glows hotter as it builds, and flickers in the last 0.2 s before the blow
         plate.emissive.setRGB(flash * 4 + wk * 0.35 + tell * 0.5, flash * 3 + wk * 0.1 + tell * 0.18, flash * 2); }
       if (state !== 'dead' && (kbx !== 0 || kbz !== 0)) { const nx = g.position.x + kbx * dt, nz = g.position.z + kbz * dt; if (walk(nx, nz)) { g.position.x = nx; g.position.z = nz; } else { kbx = 0; kbz = 0; } const dec = Math.exp(-dt * 9); kbx *= dec; kbz *= dec; if (Math.hypot(kbx, kbz) < 0.05) { kbx = 0; kbz = 0; } }
       if (state === 'dead') { deadT += dt; body.rotation.x = Math.min(1.4, deadT * 2.5); body.position.y = -Math.min(0.9, deadT * 1.2); if (deadT > 1.2) g.visible = false; return null; }
@@ -119,17 +140,25 @@ export function makeSentinel(id: string, x: number, z: number, y: number, face: 
         else { const hx = homeX - g.position.x, hz = homeZ - g.position.z, hd = Math.hypot(hx, hz); if (hd > 0.3) { const s = Math.min(SPEED * 0.6 * dt, hd); const nx = g.position.x + hx / hd * s, nz = g.position.z + hz / hd * s; if (walk(nx, nz)) g.position.set(nx, g.position.y, nz); g.rotation.y = Math.atan2(hx, hz); } } }
       else if (state === 'chase') {
         if (!sameFloor || d > NOTICE * 1.6 || playerDown) state = 'idle';
-        else { turn(3.2); if (d > REACH * 0.8) { const s = Math.min(SPEED * dt, d - REACH * 0.75); const nx = g.position.x + Math.sin(g.rotation.y) * s, nz = g.position.z + Math.cos(g.rotation.y) * s; if (walk(nx, nz)) g.position.set(nx, g.position.y, nz); else if (walk(nx, g.position.z)) g.position.x = nx; else if (walk(g.position.x, nz)) g.position.z = nz;
+        else if (AI && (circleT > 0 || backT > 0)) { // M64 · Shade circles to flank before it commits; Cultist steps back after a blow
+          turn(3.2); const l = d || 1; let vx: number, vz: number;
+          if (circleT > 0) { circleT -= dt; const inw = d > 2.4 ? 0.45 : d < 1.6 ? -0.45 : 0; vx = (-dz / l) * side + (dx / l) * inw; vz = (dx / l) * side + (dz / l) * inw; }
+          else { backT -= dt; vx = -dx / l * 0.8; vz = -dz / l * 0.8; }
+          const s = SPEED * dt, nx = g.position.x + vx * s, nz = g.position.z + vz * s; if (walk(nx, nz)) g.position.set(nx, g.position.y, nz); else { side = -side; circleT = Math.min(circleT, 0.2); backT = 0; } }
+        else { turn(3.2);
+          if (AI && look === 'shade' && circleCd <= 0 && d < 3.4 && d > REACH) { circleT = 0.6 + Math.random() * 0.5; circleCd = 4.5; side = Math.random() < 0.5 ? -1 : 1; } // M64 · flank
+          if (AI && look === 'brute' && rushCd <= 0 && d > 3 && d < 7.5) { rushT = 0.9; rushCd = 5.5; } // M64 · lumbering rush to close distance
+          if (d > REACH * 0.8) { const s = Math.min(SPEED * (rushT > 0 ? 2.1 : 1) * dt, d - REACH * 0.75); const nx = g.position.x + Math.sin(g.rotation.y) * s, nz = g.position.z + Math.cos(g.rotation.y) * s; if (walk(nx, nz)) g.position.set(nx, g.position.y, nz); else if (walk(nx, g.position.z)) g.position.x = nx; else if (walk(g.position.x, nz)) g.position.z = nz;
           else for (const k of [1.25, -1.25, 2.0, -2.0]) { const sx = g.position.x + Math.sin(g.rotation.y + k) * s, sz = g.position.z + Math.cos(g.rotation.y + k) * s; if (walk(sx, sz)) { g.position.set(sx, g.position.y, sz); break; } } } // M20b-2: edge round tents and fires
-          if (d < REACH * 0.95) { state = 'windup'; t = WINDUP; } }
-      } else if (state === 'windup') { turn(1.2); if (t <= 0) { state = 'recover'; t = RECOVER; let a = want - g.rotation.y; a = Math.atan2(Math.sin(a), Math.cos(a)); if (sameFloor && d < REACH + 0.35 && Math.abs(a) < 1.1) out = 'swing'; } }
-      else if (state === 'recover' || state === 'stagger') { if (t <= 0) state = 'chase'; }
+          if (d < REACH * 0.95 && canWind) { state = 'windup'; if (spW > 0) { t = curW = spW; spOn = true; spW = 0; } else { t = curW = WINDUP; spOn = false; } } } // M64 · canWind: the group's attack token (roam.ts)
+      } else if (state === 'windup') { turn(1.2); if (t <= 0) { state = 'recover'; t = RECOVER; poiseT = 0; stunT = 0; let a = want - g.rotation.y; a = Math.atan2(Math.sin(a), Math.cos(a)); if (sameFloor && (spOn ? d < REACH * spR + 0.35 : d < REACH + 0.35 + (AI && look === 'husk' ? 0.45 : 0) && Math.abs(a) < 1.1)) out = 'swing'; spOn = false; /* M64 · Husk lurches into its blow */ } }
+      else if (state === 'recover' || state === 'stagger') { if (t <= 0) { if (AI && look === 'cultist' && state === 'recover') backT = 0.55; state = 'chase'; } }
       // pose
-      const k = state === 'windup' ? 1 - Math.max(0, t) / WINDUP : 0;
+      const k = state === 'windup' ? 1 - Math.max(0, t) / curW : 0;
       armR.rotation.x = state === 'windup' ? -2.4 * Math.min(1, k * 1.6) : state === 'recover' ? THREE.MathUtils.lerp(0.9, 0, 1 - Math.max(0, t) / RECOVER) : 0;
       body.rotation.z = state === 'stagger' ? Math.sin(t * 30) * 0.08 : 0; body.rotation.x = (state === 'stagger' ? -0.15 : state === 'windup' ? 0.2 * Math.min(1, k * 1.4) : 0) - 0.4 * flinch * flinch; // M47: rear back into the wind-up; snap back on a hit
-      armL.rotation.x = state === 'chase' || state === 'windup' ? -0.6 : 0;
-      ringM.opacity = state === 'windup' ? 0.25 + 0.55 * k : 0; ring.visible = ringM.opacity > 0; eyeM.color.set(state === 'windup' ? '#ff7a4a' : EYE).multiplyScalar(1 + 2.2 * mobFx.night.value + (state === 'windup' ? 1.5 : 0)); // M52: eyes burn brighter at night (bloom picks them up) and flare on the wind-up
+      armL.rotation.x = state === 'chase' || state === 'windup' ? -0.6 : 0; twist *= Math.exp(-dt * 7); body.rotation.y = twist;
+      ringM.opacity = state === 'windup' ? 0.25 + 0.55 * k : 0; ring.visible = ringM.opacity > 0; if (sweepRing) sweepRing.visible = ring.visible && spOn; // M64D · a full ring for a sweep eyeM.color.set(state === 'windup' ? '#ff7a4a' : EYE).multiplyScalar(1 + 2.2 * mobFx.night.value + (state === 'windup' ? 1.5 : 0)); // M52: eyes burn brighter at night (bloom picks them up) and flare on the wind-up
       if (ground) g.position.y = ground(g.position.x, g.position.z) + (shade ? 0.14 + 0.07 * Math.sin((bob += dt) * 2.6) : 0); return out;
     },
   };

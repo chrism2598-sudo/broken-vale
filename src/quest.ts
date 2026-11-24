@@ -2,9 +2,11 @@ import { readRawSave, writeRawSave, clearRawSave } from './savestore';
 import * as THREE from 'three';
 import { SEALS, heightAt, WAYFINDER, type SealDef } from './world';
 import { fill, type Profile } from './dialogue';
+import { PERK_TIERS, RELIC_IDS } from './perks';
+import { RUIN_IDS } from './ruins';
 
 /** Save format (localStorage 'vale3d-save'). */
-export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean; mirrors: number[]; beacon: boolean; echo: boolean; charted: boolean[]; cave: number; coast: number; sea: number; lamp: number; weapons?: string[]; weapon?: string; fog?: number[]; chests?: string[]; lore?: string[]; foes?: string[]; secrets?: string[]; views?: string[]; stashes?: string[]; whet?: number; tod?: number; day?: number; rk?: Record<string, number>; sq?: Record<string, number>; found?: string[]; hpUp?: number; fogV?: number; gone?: Record<string, number>; ressStair?: number; kit?: string[] };
+export type Save = { v: 1; started: boolean; done: boolean; xp: number; seals: Record<string, boolean>; runes: number[]; wind: boolean; warden: boolean; mirrors: number[]; beacon: boolean; echo: boolean; charted: boolean[]; cave: number; coast: number; sea: number; lamp: number; weapons?: string[]; weapon?: string; fog?: number[]; chests?: string[]; lore?: string[]; foes?: string[]; secrets?: string[]; views?: string[]; stashes?: string[]; whet?: number; tod?: number; day?: number; rk?: Record<string, number>; sq?: Record<string, number>; found?: string[]; hpUp?: number; fogV?: number; gone?: Record<string, number>; ressStair?: number; kit?: string[]; kindle?: number; attune?: string; perks?: string[]; relics?: string[]; relic?: string; mended?: string[]; disc?: string[]; kstat?: Record<string, number> };
 export const SEAL_XP = 50, QUEST_XP = 80; // M60 · a seal is worth a full level (was 25)
 export const levelOf = (xp: number) => 1 + Math.floor(xp / 50);
 /** M60 · levels give power: +3 % blows per level above 1, capped at Level 13 (+36 %; C S 12:37 AM, was +4 %). Derived from XP — no save field. */
@@ -38,6 +40,14 @@ function gear(s: { weapons?: unknown; weapon?: unknown; fog?: unknown }) {
   { const v = num(o.sq, 9); if (v) ext.sq = v; const g = num(o.gone, 1e6); if (g) ext.gone = g; }
   if (typeof o.hpUp === 'number') ext.hpUp = Math.max(0, Math.min(3, o.hpUp | 0));
   if (o.fogV === 2) ext.fogV = 2;
+  // M64 · Kindling sparks (halves, 0..4), the attuned seal, chosen level perks, found relics and the worn one. Absent in M54–M63 saves → defaults.
+  if (typeof o.kindle === 'number' && isFinite(o.kindle)) ext.kindle = Math.max(0, Math.min(4, Math.round(o.kindle * 2) / 2));
+  if (typeof o.attune === 'string' && ['dawn', 'sun', 'tide', 'forge'].includes(o.attune)) ext.attune = o.attune;
+  { const v = L(o.perks); if (v) ext.perks = PERK_TIERS.map((t) => t.pair.find((p) => v.includes(p.id))?.id).filter((x): x is string => !!x); } // known perks only, at most one per tier
+  { const v = L(o.relics); if (v) ext.relics = RELIC_IDS.filter((id) => v.includes(id)); }
+  for (const k of ['mended', 'disc'] as const) { const v = L(o[k]); if (v) ext[k] = RUIN_IDS.filter((id) => v.includes(id)); } // M64E · ruins mended / relic taken
+  if (typeof o.relic === 'string' && ((ext.relics as string[] | undefined) ?? []).includes(o.relic)) ext.relic = o.relic; // a worn relic must be one you found
+  { const v = num(o.kstat, 1e6); if (v) ext.kstat = v; }
   return { weapons: w, weapon: cur, ...(fog ? { fog } : {}), ...ext };
 }
 /** M54: verified write (write-ahead + read-back + backup of the last good save); false when it could not be saved (the UI is warned). */
@@ -51,7 +61,7 @@ export const WAYFINDER_LINES = {
   start: [
     '{fullname}. Enna’s {child}. The Broken Vale’s beacons have gone dark.',
     'Dawn Sigil at Pale Keep · Sun Shard at Sunspire · Tide Seal at Azure Keep · Forge Heart at Iron Dome.',
-    'Return the seals to me, {name}. The Wind Shrine up the path holds an optional trial.',
+    'Return the seals to me, {name}. The Wind Shrine up the path holds the trial the Beacon will ask of you.',
   ],
   progress: [
     'You hold {n}/4 seals, {name}.',

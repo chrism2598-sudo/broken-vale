@@ -1,0 +1,80 @@
+BROKEN VALE - M64 "THE BROKEN VALE: REFORGED"
+Status: implemented, tested, verified (internal, automated and emulated only).
+Tagged locally as release-M64. NOT deployed. Prod stays on M63.
+No human playtesting has happened. Nothing here is player data.
+Authority: C S (M64 brief + REFORGED scope, Nov 23 2026; long autonomous session).
+
+BUILD
+- RC commit 65e24fa. Prod bundle index-DJVpi3r6.js, diag index-CvIDRSOm.js.
+- Release zip: /workspace/vale3d-m64-release.zip (no refs/, no logs/)
+  sha256 (recorded outside the zip in logs/m64/STATE.txt and the release reply; a zip cannot contain its own hash)
+- Rollback points kept: release-M63 (add7bc4), release-M54 (2027a56).
+- No Chapter III.
+
+WHAT CHANGED (before -> after)
+1. Combat core. Stun-lock removed: foes break out ("poised") after 1.5 s
+   of stagger (longest lock ~19.7 s -> ~1.8 s, computed). At most 2 foes
+   wind up at once, 0.45 s apart. Foe tactics: Shade flanks, Brute rushes,
+   Cultist steps back, Husk lurches, Sentinel guards its front (spears
+   pierce). Riposte after a parry; rolling through a blow refunds stamina.
+   Hearts come back one at a time when calm.
+2. Feedback. Swing arc and sparks in the weapon's colour, a struck sound
+   per weapon class, foes twist away from blows, ash on death, a wind-up
+   voice per foe type, boss stingers. All procedural.
+3. Kindling (signature mechanic). Parries and roll-throughs earn sparks;
+   spend one on the attuned seal's power: Temper, Daybreak, Glare,
+   Undertow. A kindled seal breaks the Vale Warden's slam.
+4. Bosses. Title / phase / victory cards. Warden phase 2 follow-up slam;
+   Ossric grave-sweep with a 1.3 s tell.
+5. World. Three new ruins (Hearth Ruin, Reed Shrine, Shepherd's Rise):
+   mend with a spark -> relic + lore page, on the map. Region banners and
+   a fog tint per place. Rewards are relics and lore, not XP.
+6. Progression. Perk choice at Lv 3/6/9/12 (8 perks). One relic slot,
+   three relics. A group cleared on an earlier day pays half XP.
+7. Story/UI. Skippable 3-line opening for new games; each seal has its
+   own claim beat; fight music in overworld fights; the ending names how
+   you played (e.g. "Turner of Blows") with your own counts.
+8. Overlay fix (found in screenshot review): seal card no longer stacks
+   on the claim toast + level banner; region banner off the quest pill.
+9. Bug fix found by the emulated playthrough: after beating the Vale
+   Warden, the game still thought it was awake for the rest of the
+   session (since M63: campfire rest refused until reload; in M64 also
+   no heart regen and no perk card). Fixed; full gates rerun.
+
+GATES (exact RC 65e24fa, one heavy job at a time)
+- 37/37 gates PASS.
+- Includes all V2 suites, save 145/145 (M54-M63 saves + migrations),
+  rollback 20/20, shaders, draw calls, perfrun, perf HUD, diag,
+  onboarding, new-player runs, readability, progress 21/21, label,
+  M63 guards 27/27, M64 combat 23/23, feedback 11/11, and the new
+  M64 Kindling, bosses, world, progress, story/UI tests.
+
+PERF VS M63 (headless SwiftShader estimates, not phone fps)
+- Draw calls: hub 358->358, night-hub 350->350, track 308->312,
+  under-bridge 400->400, hall 160->160.
+- perfrun fps: meadow 1.4 -> 1.3, castle 3.5 -> 3.5, underbridge 1.2 -> 1.2.
+  Heap unchanged (~116-123 MB). Landed swing <= +5 draws; ruin in view +5.
+
+EMULATED PLAYTHROUGH (scripted bot, not a player)
+Ch I (bot): every guard fight won, 0 downs; 3/3 ruins mended; Warden
+beaten; finale + chapter card; Lv 9, 3 relics at end of Ch I; no page
+errors. Ch II story via qa-run: completed, errors [].
+
+RISKS
+- No human playtest: difficulty and feel are computed/emulated only.
+  Seals 3-4 may be harder than M63 for real players; Kindling may be
+  under-used; perk balance (Stout Heart + Tide-Pearl) untested.
+- Audio never heard on a phone; real-phone fps unmeasured.
+- Overlay stacking was caught by eye, not by the old tests (now tested).
+- Ruins are simple procedural forms.
+
+COMMERCIAL READINESS
+Strong free / early-access RC: deeper combat, a signature mechanic,
+complete Chapters I-II, green regression. Not commercially ready until
+a closed human playtest confirms difficulty, readability and real-phone
+fps.
+
+DECISIONS NEEDED FROM C S
+1. Deploy release-M64 to the live site (yes / no)?
+2. Run the closed playtest on M64 (yes / no)?
+3. Keep the half-XP rule for repeat clears (yes / no)?

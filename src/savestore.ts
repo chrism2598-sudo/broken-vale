@@ -15,7 +15,8 @@ export const SAVE_KEY = 'vale3d-save', BAK_KEY = 'vale3d-save-bak', TMP_KEY = 'v
 export const SAVE_V = 1, EXT_SCHEMA = 2;
 /** Every field of the v1 Save type (quest.ts). Anything else in a save is "unknown" and is preserved in -ext. */
 export const KNOWN_FIELDS = new Set(['v', 'started', 'done', 'xp', 'seals', 'runes', 'wind', 'warden', 'mirrors', 'beacon', 'echo', 'charted', 'cave', 'coast', 'sea', 'lamp',
-  'weapons', 'weapon', 'fog', 'chests', 'lore', 'foes', 'secrets', 'views', 'stashes', 'whet', 'tod', 'day', 'rk', 'sq', 'found', 'hpUp', 'fogV', 'gone', 'ressStair', 'kit']);
+  'weapons', 'weapon', 'fog', 'chests', 'lore', 'foes', 'secrets', 'views', 'stashes', 'whet', 'tod', 'day', 'rk', 'sq', 'found', 'hpUp', 'fogV', 'gone', 'ressStair', 'kit',
+  'kindle', 'attune', 'perks', 'relics', 'relic', 'kstat', 'mended', 'disc']); // M64 · Kindling, perks, relics, mended fractures, discoveries
 type Raw = Record<string, unknown>;
 const st = {
   available: true, readOnly: '' as '' | 'unavailable' | 'newer' | 'perf', extReadOnly: false, source: 'fresh' as 'primary' | 'tmp' | 'backup' | 'fresh',
